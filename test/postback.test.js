@@ -83,6 +83,35 @@ test('他人の予約 ID への postback は無視する', async () => {
   assert.equal(replies.length, 0);
 });
 
+test('followup good: 応答を記録して感謝を返信、Slack 通知しない', async () => {
+  const { pool, lineClient, slack, queries, replies, notifications } = makeFakes({
+    reservation: baseReservation,
+  });
+  const handler = createPostbackHandler({ pool, lineClient, slack });
+
+  await handler(makeEvent('action=followup&res=42&v=good'));
+
+  const response = queries.find((q) => /INSERT INTO customer_responses/.test(q.sql));
+  assert.equal(response.params[1], 'good');
+  assert.match(replies[0], /ありがとうございます/);
+  assert.equal(notifications.length, 0);
+});
+
+test('followup concern: Slack へ通知して詳細の返信を促す', async () => {
+  const { pool, lineClient, slack, queries, replies, notifications } = makeFakes({
+    reservation: baseReservation,
+  });
+  const handler = createPostbackHandler({ pool, lineClient, slack });
+
+  await handler(makeEvent('action=followup&res=42&v=concern'));
+
+  const response = queries.find((q) => /INSERT INTO customer_responses/.test(q.sql));
+  assert.equal(response.params[1], 'concern');
+  assert.match(replies[0], /このままメッセージ/);
+  assert.equal(notifications.length, 1);
+  assert.match(notifications[0], /山田/);
+});
+
 test('未知の action は何もしない', async () => {
   const { pool, lineClient, slack, queries } = makeFakes();
   const handler = createPostbackHandler({ pool, lineClient, slack });

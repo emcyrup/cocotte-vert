@@ -11,11 +11,14 @@ import { createLinkService } from './customers/linkService.js';
 import { createWebhookHandler } from './webhook/handler.js';
 import { createJobRunner } from './jobs/runner.js';
 import { createPreReminderJob } from './jobs/preReminder.js';
+import { createAfterVisitJob } from './jobs/afterVisit.js';
+import { createFollowupClassifier } from './ai/classifyFollowup.js';
 
 const config = loadConfig();
 const lineClient = createLineClient({ config, pool });
 const slack = createSlackNotifier({ webhookUrl: config.slackWebhookUrl });
 const linkService = createLinkService({ pool, slack });
+const classifier = createFollowupClassifier({ apiKey: config.anthropicApiKey });
 
 const app = express();
 
@@ -25,7 +28,7 @@ app.get('/health', (_req, res) => res.json({ ok: true, sendMode: config.sendMode
 app.post(
   '/webhook',
   middleware({ channelSecret: config.line.channelSecret }),
-  createWebhookHandler({ pool, lineClient, slack, linkService, liffUrl: config.liffUrl })
+  createWebhookHandler({ pool, lineClient, slack, linkService, classifier, liffUrl: config.liffUrl })
 );
 
 // ---- ここから下は JSON パースを使う（webhook 以外のルート） ----
@@ -86,6 +89,7 @@ app.use((err, _req, res, next) => {
 const runner = createJobRunner({ slack });
 runner.scheduleDaily({
   preReminder: createPreReminderJob({ pool, lineClient }),
+  afterVisit: createAfterVisitJob({ pool, lineClient }),
 });
 
 app.listen(config.port, () => {

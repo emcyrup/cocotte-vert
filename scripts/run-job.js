@@ -5,7 +5,7 @@
 const jobArg = process.argv.find((a) => a.startsWith('--job='));
 const dryRun = process.argv.includes('--dry-run');
 
-const JOB_NAMES = ['preReminder'];
+const JOB_NAMES = ['preReminder', 'afterVisit'];
 
 const jobName = jobArg?.slice('--job='.length);
 if (!jobName || !JOB_NAMES.includes(jobName)) {
@@ -24,6 +24,7 @@ const { createLineClient } = await import('../src/line/client.js');
 const { createSlackNotifier } = await import('../src/notify/slack.js');
 const { createJobRunner } = await import('../src/jobs/runner.js');
 const { createPreReminderJob } = await import('../src/jobs/preReminder.js');
+const { createAfterVisitJob } = await import('../src/jobs/afterVisit.js');
 
 const config = loadConfig();
 console.log(`[run-job] job=${jobName} SEND_MODE=${config.sendMode}`);
@@ -34,6 +35,7 @@ const runner = createJobRunner({ slack });
 
 const jobs = {
   preReminder: createPreReminderJob({ pool, lineClient }),
+  afterVisit: createAfterVisitJob({ pool, lineClient }),
 };
 
 const summary = await runner.runJob(jobName, jobs[jobName]);

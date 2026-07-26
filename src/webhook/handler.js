@@ -5,11 +5,18 @@ import { createUnfollowHandler } from './events/unfollow.js';
 import { createMessageHandler } from './events/message.js';
 import { createPostbackHandler } from './events/postback.js';
 
-export function createWebhookHandler({ pool, lineClient, slack, linkService, liffUrl = null }) {
+export function createWebhookHandler({
+  pool,
+  lineClient,
+  slack,
+  linkService,
+  classifier,
+  liffUrl = null,
+}) {
   const handlers = {
     follow: createFollowHandler({ pool, lineClient, liffUrl }),
     unfollow: createUnfollowHandler({ pool }),
-    message: createMessageHandler({ lineClient, linkService }),
+    message: createMessageHandler({ pool, lineClient, slack, linkService, classifier }),
     postback: createPostbackHandler({ pool, lineClient, slack }),
   };
 

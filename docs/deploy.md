@@ -1,103 +1,145 @@
 # デプロイ手順
 
-Webhook と LIFF には**固定の HTTPS URL** が必要。以下のどちらかで公開する。
+Webhook と LIFF には**固定の HTTPS URL** が必要。構成は3通り。
 
-| | 構成 A: VPS / EC2 + Docker Compose | 構成 B: Render（PaaS） |
-|---|---|---|
-| 向いている人 | 既にサーバーを持っている | サーバー管理をしたくない |
-| 月額目安 | サーバー代のみ（既存なら追加ゼロ） | 約 $14（Web $7 + DB $7） |
-| ドメイン | 必要（サブドメインで可） | 不要（`xxx.onrender.com` が付与される） |
-| HTTPS 証明書 | Caddy が自動取得・自動更新 | 自動 |
+| 構成 | 対象 |
+|---|---|
+| A. 既存 EC2（Nginx 稼働中）+ Docker Compose | **推奨。既存のマルチテナント EC2 に載せる場合** |
+| B. 新規 VPS + Docker Compose（Caddy 同梱） | リバースプロキシが何もないサーバーの場合 |
+| C. Render（PaaS） | サーバー管理をしたくない場合（月約 $14、ドメイン不要） |
 
 ---
 
-## 構成 A: VPS / EC2 + Docker Compose
+## 構成 A: 既存 EC2（Nginx 稼働中）
 
-アプリ・PostgreSQL・Caddy（HTTPS リバースプロキシ）を `docker-compose.yml` でまとめて起動する。
+アプリと PostgreSQL をコンテナで起動し、既存の Nginx から `127.0.0.1:3000` へプロキシする。
+アプリのポートはループバックにのみ束縛されるため、外部から直接は届かない。
 
-### 前提
+### 1. DNS
 
-- Docker と Docker Compose が入ったサーバー（Ubuntu 22.04+ 推奨）
-- ポート **80 と 443** が開いていること（EC2 はセキュリティグループで開放）
-- ドメインの DNS に **A レコード**を1件追加: `line.example.com → サーバーの IP`
+サブドメインを1つ決め（例 `line.example.com`）、DNS に **A レコード**を追加して EC2 の IP に向ける。
 
-### 手順
+### 2. アプリの起動
 
 ```bash
-# 1. サーバーに SSH して取得
+# EC2 に SSH して（Docker 未導入なら sudo apt install docker.io docker-compose-v2）
 git clone https://github.com/emcyrup/cocotte-vert.git
 cd cocotte-vert
-
-# 2. 環境変数を設定
 cp .env.example .env
 nano .env
 ```
 
-`.env` に以下を設定する（compose 用の2行を**追記**する点に注意）:
+`.env` の設定内容：
 
 ```
-# compose 用（追記）
+# compose 用（追記する）
 POSTGRES_PASSWORD=強いパスワードを生成して設定
-DOMAIN=line.example.com
 
-# LINE / Slack（取得済みの値）
+# LINE / Slack（テスト用チャネルの値から始める）
 LINE_CHANNEL_ACCESS_TOKEN=...
 LINE_CHANNEL_SECRET=...
 LIFF_ID=...
 SLACK_WEBHOOK_URL=...
 
-# 誤爆防止: 本番でも当面 dry_run のまま。live は手動で切り替える
+# 誤爆防止: 本番でも当面 dry_run のまま。live は実行時に明示して渡す
 SEND_MODE=dry_run
 ```
 
-`DATABASE_URL` は compose が内部の DB を指すよう自動設定するため、`.env` の値は使われない（空のままで良い）。
+`DATABASE_URL` は compose が内部 DB を指すよう自動設定するため空で良い。
 
 ```bash
-# 3. 起動（初回はビルド + マイグレーション適用まで自動で行われる）
 docker compose up -d --build
-
-# 4. 確認
-docker compose logs -f app     # [migrate] 完了 → [boot] port=3000 SEND_MODE=dry_run
-curl https://line.example.com/health   # {"ok":true,"sendMode":"dry_run"}
+docker compose logs -f app   # [migrate] 完了 → [boot] port=3000 SEND_MODE=dry_run
+curl http://127.0.0.1:3000/health   # {"ok":true,"sendMode":"dry_run"}
 ```
 
-### LINE 側の URL 設定
+### 3. Nginx の vhost 追加
 
-- Webhook URL: `https://line.example.com/webhook`（Messaging API 設定タブ → 検証 → Webhook の利用オン）
-- LIFF エンドポイント URL: `https://line.example.com/liff/`
+`/etc/nginx/sites-available/line.example.com` を作成（パスは既存構成の流儀に合わせる）：
+
+```nginx
+server {
+    listen 80;
+    server_name line.example.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+```bash
+sudo ln -s /etc/nginx/sites-available/line.example.com /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+
+# HTTPS 化（certbot が listen 443 の設定とリダイレクトを自動追記する）
+sudo certbot --nginx -d line.example.com
+```
+
+certbot 未導入なら `sudo apt install certbot python3-certbot-nginx`。
+
+### 4. 確認
+
+```bash
+curl https://line.example.com/health   # {"ok":true,"sendMode":"dry_run"}
+```
 
 ### 更新時
 
 ```bash
-git pull
+cd cocotte-vert && git pull
 docker compose up -d --build   # マイグレーションも自動適用
 ```
 
 ### 運用メモ
 
-- DB のバックアップ: `docker compose exec db pg_dump -U postgres cocotte_vert > backup.sql`（cron で日次推奨）
-- ログ確認: `docker compose logs -f app`
-- 送信モード切替（Phase 3 の実機検証後）: `.env` の `SEND_MODE` は書き換えず、`docker compose run --rm -e SEND_MODE=test app node scripts/run-job.js --job=...` のように実行時に渡す
+- DB バックアップ: `docker compose exec db pg_dump -U postgres cocotte_vert > backup.sql`（cron で日次推奨）
+- ログ: `docker compose logs -f app`
+- 送信モード切替（実機検証後）: `.env` は書き換えず実行時に渡す
+  `docker compose run --rm -e SEND_MODE=test app node scripts/run-job.js --job=preReminder`
+- 既存 EC2 のホスト側 PostgreSQL に相乗りしたい場合は、`.env` の `DATABASE_URL` にホスト DB を指定し、`docker-compose.yml` の `db` サービスと `environment.DATABASE_URL` を削る（コンテナからホストへは `host.docker.internal` ではなく EC2 のプライベート IP か `--network host` を使う）。迷ったら同梱 DB のままで良い
 
 ---
 
-## 構成 B: Render
+## 構成 B: 新規 VPS（リバースプロキシなし）
+
+Caddy（HTTPS 自動化）を同梱した standalone プロファイルで起動する。
+
+前提: ポート 80/443 開放、DNS A レコード設定済み。
+
+```bash
+# .env に構成 A の内容に加えて DOMAIN を設定
+DOMAIN=line.example.com
+
+docker compose --profile standalone up -d --build
+curl https://line.example.com/health
+```
+
+---
+
+## 構成 C: Render
 
 1. https://render.com にサインアップし、GitHub リポジトリを接続
 2. ダッシュボード → New + → **Blueprint** → このリポジトリを選択（`render.yaml` が読まれる）
-3. 環境変数の入力を求められるので `LINE_CHANNEL_ACCESS_TOKEN` / `LINE_CHANNEL_SECRET` / `LIFF_ID` / `SLACK_WEBHOOK_URL` を設定
-4. デプロイ完了後、`https://cocotte-vert-xxxx.onrender.com` が固定 URL になる
-   - Webhook URL: `https://…onrender.com/webhook`
-   - LIFF エンドポイント URL: `https://…onrender.com/liff/`
+3. 環境変数 `LINE_CHANNEL_ACCESS_TOKEN` / `LINE_CHANNEL_SECRET` / `LIFF_ID` / `SLACK_WEBHOOK_URL` を入力
+4. デプロイ完了後の `https://cocotte-vert-xxxx.onrender.com` が固定 URL
 
-git push するたびに自動で再デプロイされる（起動時にマイグレーションも適用される）。
-
-**注意**: Free プランは15分でスリープし Webhook を取りこぼすため、Web サービスは Starter 以上を使うこと。
+git push で自動再デプロイ。Free プランはスリープして Webhook を取りこぼすため Starter 以上を使うこと。
 
 ---
 
-## どちらの構成でも守ること
+## LINE 側の URL 設定（全構成共通）
 
-- `SEND_MODE` は本番環境でも **dry_run のまま**にしておき、`live` は動作検証が済んでから実行時に明示して切り替える（CLAUDE.md の運用ルール）
-- 資格情報（トークン・シークレット）はリポジトリにコミットしない。`.env` またはダッシュボードの環境変数でのみ管理する
-- 本番用チャネルとテスト用チャネルの値を取り違えないこと。まずテスト用チャネルの値で公開し、実機確認が全て通ってから本番用に切り替える
+- Webhook URL: `https://<URL>/webhook`
+  （Messaging API 設定タブ → 編集 → 保存 → **検証** → **Webhook の利用をオン**）
+- LIFF エンドポイント URL: `https://<URL>/liff/`
+  （LINE ログインチャネル → LIFF タブ）
+
+## どの構成でも守ること
+
+- `SEND_MODE` は本番環境でも **dry_run のまま**。`live` は動作検証後に実行時に明示して切り替える（CLAUDE.md の運用ルール）
+- 資格情報はリポジトリにコミットしない
+- まず**テスト用チャネル**の値で公開し、実機確認が全て通ってから本番用チャネルに切り替える

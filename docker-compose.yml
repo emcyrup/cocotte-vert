@@ -1,5 +1,13 @@
-# VPS / EC2 用の本番構成: アプリ + PostgreSQL + Caddy（HTTPS 自動化）
-# 使い方は docs/deploy.md を参照。
+# 本番構成: アプリ + PostgreSQL。使い方は docs/deploy.md を参照。
+#
+# 既存の Nginx があるサーバー（既存 EC2 など）:
+#   docker compose up -d --build
+#   → アプリは 127.0.0.1:3000 にだけ公開されるので、Nginx から proxy_pass する
+#
+# リバースプロキシが何もない新規サーバー:
+#   .env に DOMAIN を設定し、
+#   docker compose --profile standalone up -d --build
+#   → Caddy が 80/443 を受けて HTTPS を自動化する
 services:
   app:
     build: .
@@ -14,8 +22,9 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    expose:
-      - "3000"
+    ports:
+      # ホストの Nginx からだけ届くよう、ループバックにのみ束縛する
+      - "127.0.0.1:3000:3000"
 
   db:
     image: postgres:16
@@ -32,15 +41,18 @@ services:
       timeout: 3s
       retries: 10
 
-  # Let's Encrypt の証明書取得・更新を自動で行うリバースプロキシ
+  # Let's Encrypt の証明書取得・更新を自動で行うリバースプロキシ。
+  # 既存 Nginx があるサーバーでは起動しないこと（80/443 が衝突する）
   caddy:
     image: caddy:2
+    profiles: ["standalone"]
     restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
     environment:
-      DOMAIN: "${DOMAIN:?DOMAIN を .env に設定してください}"
+      # standalone プロファイル利用時は .env の DOMAIN が必須
+      DOMAIN: "${DOMAIN:-}"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

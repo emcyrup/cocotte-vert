@@ -35,8 +35,14 @@ jobs:
       - name: Deploy to VM via SSH
         run: |
           mkdir -p ~/.ssh
-          printf '%s\n' "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/deploy_key
+          # CR（Windows 改行）を除去し、末尾に改行を保証する
+          printf '%s\n' "${{ secrets.VM_SSH_KEY }}" | tr -d '\r' > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
+          # 秘密鍵として読めるかを SSH 前に検証し、原因を明確にする
+          if ! ssh-keygen -y -f ~/.ssh/deploy_key > /dev/null; then
+            echo "::error::VM_SSH_KEY が秘密鍵として読めません。deploy_key（秘密鍵）の全文を -----BEGIN/END----- 行込みで Secret に登録してください（.pub は公開鍵なので不可）"
+            exit 1
+          fi
           ssh-keyscan -H "${{ secrets.VM_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
           ssh -i ~/.ssh/deploy_key "${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}" '
             set -e

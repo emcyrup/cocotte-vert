@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { middleware, SignatureValidationFailed } from '@line/bot-sdk';
@@ -28,7 +29,12 @@ const classifier = createFollowupClassifier({ apiKey: config.anthropicApiKey });
 
 const app = express();
 
-app.get('/health', (_req, res) => res.json({ ok: true, sendMode: config.sendMode }));
+// デプロイ確認用にバージョンも返す
+const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+
+app.get('/health', (_req, res) =>
+  res.json({ ok: true, sendMode: config.sendMode, version: pkg.version })
+);
 
 // 署名検証には生ボディが必要なため、express.json() を webhook より前に適用しない
 app.post(

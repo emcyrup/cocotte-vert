@@ -15,6 +15,10 @@ import { createAfterVisitJob } from './jobs/afterVisit.js';
 import { createDormantJob } from './jobs/dormant.js';
 import { createBirthdayJob } from './jobs/birthday.js';
 import { createFollowupClassifier } from './ai/classifyFollowup.js';
+import { createReservationService } from './reservations/service.js';
+import { basicAuth, bearerAuth } from './http/auth.js';
+import { createAdminRouter } from './http/adminRoutes.js';
+import { createImportRouter } from './http/importRoutes.js';
 
 const config = loadConfig();
 const lineClient = createLineClient({ config, pool });
@@ -77,6 +81,22 @@ app.post('/liff/register', async (req, res) => {
     return res.status(500).json({ ok: false, error: 'internal' });
   }
 });
+
+// ---- 予約データの取り込み（Phase 6）----
+const reservationService = createReservationService({ pool, slack });
+
+// 管理画面（Basic 認証。ADMIN_USER / ADMIN_PASSWORD 未設定なら無効）
+const adminGuard = basicAuth({ user: config.adminUser, password: config.adminPassword });
+const adminDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'admin');
+app.use('/admin', adminGuard, express.static(adminDir));
+app.use('/api/admin', adminGuard, createAdminRouter({ pool, reservationService }));
+
+// 外部予約システムからの取り込み（Bearer トークン。INGEST_API_TOKEN 未設定なら無効）
+app.use(
+  '/api/import',
+  bearerAuth({ token: config.ingestApiToken }),
+  createImportRouter({ reservationService, slack })
+);
 
 // 署名検証失敗は 401 で即返す
 app.use((err, _req, res, next) => {

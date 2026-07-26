@@ -52,6 +52,10 @@ export function loadConfig(env = process.env) {
     testLineUserId: env.TEST_LINE_USER_ID || null,
     dormantDailyLimit: Number(env.DORMANT_DAILY_LIMIT || 50),
     birthdayCouponUrl: env.BIRTHDAY_COUPON_URL || null,
+    // 未設定なら管理画面・取り込み API はそれぞれ無効（503）になる
+    adminUser: env.ADMIN_USER || null,
+    adminPassword: env.ADMIN_PASSWORD || null,
+    ingestApiToken: env.INGEST_API_TOKEN || null,
     quotaWarnRemaining: Number(env.QUOTA_WARN_REMAINING || 300),
     port: Number(env.PORT || 3000),
   };

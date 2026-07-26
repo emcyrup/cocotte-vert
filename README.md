@@ -28,6 +28,11 @@ npm start
 npm test
 ```
 
+## 予約データの取り込み・管理画面
+
+外部予約システムからの取り込み API と、スタッフ向け管理画面（`/admin/`）の使い方は
+[docs/import-api.md](docs/import-api.md) を参照。
+
 ## デプロイ（インターネット公開）
 
 VPS / EC2 + Docker Compose、または Render での公開手順を [docs/deploy.md](docs/deploy.md) にまとめている。

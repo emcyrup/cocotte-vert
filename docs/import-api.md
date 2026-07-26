@@ -1,0 +1,91 @@
+# 予約取り込み API
+
+外部予約システム（予約 SaaS・CSV エクスポート等）から `reservations` へ予約を取り込むための API。
+`external_id` をキーに**冪等に upsert** するため、同じデータを何度送っても二重登録されない。
+
+## 認証
+
+`.env` の `INGEST_API_TOKEN` に設定したトークンを Bearer で送る（未設定の場合 API は 503 で無効）。
+
+```
+Authorization: Bearer <INGEST_API_TOKEN>
+```
+
+## エンドポイント
+
+```
+POST /api/import/reservations
+Content-Type: application/json
+```
+
+### リクエスト
+
+```json
+{
+  "reservations": [
+    {
+      "external_id": "hotpepper-20260801-001",
+      "customer_name": "山田 花子",
+      "phone": "090-1234-5678",
+      "birthday": "1990-04-01",
+      "menu": "カット＋カラー",
+      "staff_name": "佐藤",
+      "reserved_at": "2026-08-01T14:00:00+09:00",
+      "status": "confirmed"
+    }
+  ]
+}
+```
+
+| フィールド | 必須 | 説明 |
+|---|---|---|
+| `external_id` | ○ | 外部システム側の予約 ID。冪等キー |
+| `customer_name` | ○ | 顧客名。突合は電話番号で行い、名前は新規作成時のみ使用 |
+| `phone` | ○ | 顧客の電話番号（表記ゆれは自動正規化） |
+| `birthday` | - | `YYYY-MM-DD`。新規顧客作成時のみ反映 |
+| `menu` | - | メニュー名 |
+| `staff_name` | - | 担当者名。存在しなければ staff に自動作成 |
+| `reserved_at` | ○ | ISO 8601。タイムゾーン付き推奨（`+09:00`） |
+| `status` | - | `confirmed`（デフォルト） / `cancelled` / `visited` / `no_show` |
+
+- 1リクエスト最大 500 件
+- 顧客は電話番号（正規化済み）で既存台帳と突合。ヒットしなければ新規作成（LINE 連携には触らない）
+- `status: "visited"` で送ると `customers.last_visit_at` も更新される（来店実績の取り込みに使う）
+- 新規の確定予約は Slack に通知される（更新では通知しない）
+
+### レスポンス
+
+```json
+{
+  "summary": { "total": 1, "created": 1, "updated": 0, "failed": 0 },
+  "results": [
+    { "external_id": "hotpepper-20260801-001", "ok": true, "reservationId": 12, "customerId": 3, "created": true }
+  ]
+}
+```
+
+行単位でエラーを返すため、1件の不正データで全体は失敗しない。
+
+## 使用例（curl）
+
+```bash
+curl -X POST https://<ドメイン>/api/import/reservations \
+  -H "Authorization: Bearer $INGEST_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d @reservations.json
+```
+
+## 運用パターン
+
+- **予約 SaaS に Webhook がある場合**: Webhook 受信側でこの形式に変換して POST する
+- **CSV エクスポートしかない場合**: CSV → JSON 変換スクリプトを cron で回して定期 POST する
+- **来店実績の反映**: 営業終了後に当日分を `status: "visited"` で再送すれば、来店7日後フォロー・休眠判定が回り出す
+
+# 管理画面
+
+`https://<ドメイン>/admin/` でスタッフ向けの簡易管理画面が使える（Basic 認証。`.env` の `ADMIN_USER` / `ADMIN_PASSWORD`）。
+
+- 予約一覧（期間指定）と、来店 / 取消 / 無断キャンセルの操作（来店で `last_visit_at` が自動更新）
+- 新規予約の手入力（顧客検索 → 日時・メニュー・担当を指定）
+- 電話予約など LINE 未連携の顧客登録、スタッフ追加
+- 前々日確認に「このまま伺います」と回答済みの予約には「本人確認済」バッジが付く

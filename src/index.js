@@ -9,6 +9,7 @@ import { createLineClient } from './line/client.js';
 import { createIdTokenVerifier } from './line/verifyIdToken.js';
 import { createSlackNotifier } from './notify/slack.js';
 import { createStaffNotifier } from './notify/staffNotifier.js';
+import { createSettings } from './settings.js';
 import { createLinkService } from './customers/linkService.js';
 import { createWebhookHandler } from './webhook/handler.js';
 import { createJobRunner } from './jobs/runner.js';
@@ -24,11 +25,12 @@ import { createImportRouter } from './http/importRoutes.js';
 
 const config = loadConfig();
 const lineClient = createLineClient({ config, pool });
+const settings = createSettings({ pool });
 // スタッフ通知は staffNotifier に集約（Slack / LINE グループ / 両方を設定で切替）
 const slackChannel = config.slackWebhookUrl
   ? createSlackNotifier({ webhookUrl: config.slackWebhookUrl })
   : null;
-const slack = createStaffNotifier({ config, slack: slackChannel, lineClient });
+const slack = createStaffNotifier({ config, slack: slackChannel, lineClient, settings });
 const linkService = createLinkService({ pool, slack });
 const classifier = createFollowupClassifier({ apiKey: config.anthropicApiKey });
 
@@ -45,7 +47,15 @@ app.get('/health', (_req, res) =>
 app.post(
   '/webhook',
   middleware({ channelSecret: config.line.channelSecret }),
-  createWebhookHandler({ pool, lineClient, slack, linkService, classifier, liffUrl: config.liffUrl })
+  createWebhookHandler({
+    pool,
+    lineClient,
+    slack,
+    linkService,
+    classifier,
+    settings,
+    liffUrl: config.liffUrl,
+  })
 );
 
 // ---- ここから下は JSON パースを使う（webhook 以外のルート） ----

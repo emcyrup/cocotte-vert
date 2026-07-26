@@ -40,11 +40,7 @@ export function loadConfig(env = process.env) {
   if (['slack', 'both'].includes(staffNotifyChannel) && !env.SLACK_WEBHOOK_URL) {
     throw new Error('STAFF_NOTIFY_CHANNEL に slack を含む場合は SLACK_WEBHOOK_URL が必要です');
   }
-  if (['line', 'both'].includes(staffNotifyChannel) && !env.STAFF_LINE_GROUP_ID) {
-    throw new Error(
-      'STAFF_NOTIFY_CHANNEL に line を含む場合は STAFF_LINE_GROUP_ID が必要です（Bot をグループに招待すると ID が返信されます）'
-    );
-  }
+  // STAFF_LINE_GROUP_ID は任意（Bot のグループ参加時に DB へ自動設定される。env は手動上書き用）
 
   const liffId = env.LIFF_ID || null;
 

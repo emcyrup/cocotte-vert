@@ -4,12 +4,9 @@
 const SEND_MODES = ['dry_run', 'test', 'live'];
 
 // フェーズ進行に合わせて必須化する変数はここに追加していく
-const REQUIRED_VARS = [
-  'DATABASE_URL',
-  'LINE_CHANNEL_ACCESS_TOKEN',
-  'LINE_CHANNEL_SECRET',
-  'SLACK_WEBHOOK_URL',
-];
+const REQUIRED_VARS = ['DATABASE_URL', 'LINE_CHANNEL_ACCESS_TOKEN', 'LINE_CHANNEL_SECRET'];
+
+const STAFF_NOTIFY_CHANNELS = ['slack', 'line', 'both'];
 
 export function loadConfig(env = process.env) {
   const missing = REQUIRED_VARS.filter((key) => !env[key]);
@@ -33,6 +30,22 @@ export function loadConfig(env = process.env) {
     throw new Error(`TZ は Asia/Tokyo を想定しています（現在: ${env.TZ}）`);
   }
 
+  // スタッフ通知チャネル。使うチャネルに応じて必要な設定を起動時に検証する
+  const staffNotifyChannel = env.STAFF_NOTIFY_CHANNEL || 'slack';
+  if (!STAFF_NOTIFY_CHANNELS.includes(staffNotifyChannel)) {
+    throw new Error(
+      `STAFF_NOTIFY_CHANNEL が不正です: "${staffNotifyChannel}"（${STAFF_NOTIFY_CHANNELS.join(' | ')} のいずれか）`
+    );
+  }
+  if (['slack', 'both'].includes(staffNotifyChannel) && !env.SLACK_WEBHOOK_URL) {
+    throw new Error('STAFF_NOTIFY_CHANNEL に slack を含む場合は SLACK_WEBHOOK_URL が必要です');
+  }
+  if (['line', 'both'].includes(staffNotifyChannel) && !env.STAFF_LINE_GROUP_ID) {
+    throw new Error(
+      'STAFF_NOTIFY_CHANNEL に line を含む場合は STAFF_LINE_GROUP_ID が必要です（Bot をグループに招待すると ID が返信されます）'
+    );
+  }
+
   const liffId = env.LIFF_ID || null;
 
   return {
@@ -46,7 +59,9 @@ export function loadConfig(env = process.env) {
     // 通常は導出で足りるが、異なる構成の場合は LIFF_CHANNEL_ID で明示できる
     liffChannelId: env.LIFF_CHANNEL_ID || (liffId ? liffId.split('-')[0] : null),
     liffUrl: liffId ? `https://liff.line.me/${liffId}` : null,
-    slackWebhookUrl: env.SLACK_WEBHOOK_URL,
+    slackWebhookUrl: env.SLACK_WEBHOOK_URL || null,
+    staffNotifyChannel,
+    staffLineGroupId: env.STAFF_LINE_GROUP_ID || null,
     anthropicApiKey: env.ANTHROPIC_API_KEY || null,
     sendMode,
     testLineUserId: env.TEST_LINE_USER_ID || null,

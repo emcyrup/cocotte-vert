@@ -8,6 +8,7 @@ import { pool } from './db/pool.js';
 import { createLineClient } from './line/client.js';
 import { createIdTokenVerifier } from './line/verifyIdToken.js';
 import { createSlackNotifier } from './notify/slack.js';
+import { createStaffNotifier } from './notify/staffNotifier.js';
 import { createLinkService } from './customers/linkService.js';
 import { createWebhookHandler } from './webhook/handler.js';
 import { createJobRunner } from './jobs/runner.js';
@@ -23,7 +24,11 @@ import { createImportRouter } from './http/importRoutes.js';
 
 const config = loadConfig();
 const lineClient = createLineClient({ config, pool });
-const slack = createSlackNotifier({ webhookUrl: config.slackWebhookUrl });
+// スタッフ通知は staffNotifier に集約（Slack / LINE グループ / 両方を設定で切替）
+const slackChannel = config.slackWebhookUrl
+  ? createSlackNotifier({ webhookUrl: config.slackWebhookUrl })
+  : null;
+const slack = createStaffNotifier({ config, slack: slackChannel, lineClient });
 const linkService = createLinkService({ pool, slack });
 const classifier = createFollowupClassifier({ apiKey: config.anthropicApiKey });
 

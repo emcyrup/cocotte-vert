@@ -156,7 +156,9 @@ WHERE c.line_user_id IS NOT NULL
 
 ## 4. スタッフ通知（Slack）
 
-通知先は Slack Incoming Webhook。**LINE グループへの Push は通数を消費するため使わない。**
+通知先は Slack Incoming Webhook、またはスタッフ用 LINE グループ（`STAFF_NOTIFY_CHANNEL` で選択。両方も可）。
+**LINE グループへの Push は1件につき通数を1消費する**（グループ宛は人数に関わらず1通）点に留意し、
+通数を節約したい場合は Slack を使う。
 
 | トリガー | 内容 |
 |---|---|

@@ -22,6 +22,7 @@ const { loadConfig } = await import('../src/config.js');
 const { pool } = await import('../src/db/pool.js');
 const { createLineClient } = await import('../src/line/client.js');
 const { createSlackNotifier } = await import('../src/notify/slack.js');
+const { createStaffNotifier } = await import('../src/notify/staffNotifier.js');
 const { createJobRunner } = await import('../src/jobs/runner.js');
 const { createPreReminderJob } = await import('../src/jobs/preReminder.js');
 const { createAfterVisitJob } = await import('../src/jobs/afterVisit.js');
@@ -32,7 +33,10 @@ const config = loadConfig();
 console.log(`[run-job] job=${jobName} SEND_MODE=${config.sendMode}`);
 
 const lineClient = createLineClient({ config, pool });
-const slack = createSlackNotifier({ webhookUrl: config.slackWebhookUrl });
+const slackChannel = config.slackWebhookUrl
+  ? createSlackNotifier({ webhookUrl: config.slackWebhookUrl })
+  : null;
+const slack = createStaffNotifier({ config, slack: slackChannel, lineClient });
 const runner = createJobRunner({ slack });
 
 const jobs = {

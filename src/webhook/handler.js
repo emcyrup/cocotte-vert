@@ -4,6 +4,7 @@ import { createFollowHandler } from './events/follow.js';
 import { createUnfollowHandler } from './events/unfollow.js';
 import { createMessageHandler } from './events/message.js';
 import { createPostbackHandler } from './events/postback.js';
+import { createJoinHandler } from './events/join.js';
 
 export function createWebhookHandler({
   pool,
@@ -18,6 +19,7 @@ export function createWebhookHandler({
     unfollow: createUnfollowHandler({ pool }),
     message: createMessageHandler({ pool, lineClient, slack, linkService, classifier }),
     postback: createPostbackHandler({ pool, lineClient, slack }),
+    join: createJoinHandler({ lineClient }),
   };
 
   return async function webhookHandler(req, res) {

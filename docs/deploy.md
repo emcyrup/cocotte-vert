@@ -138,6 +138,50 @@ git push で自動再デプロイ。Free プランはスリープして Webhook 
 - LIFF エンドポイント URL: `https://<URL>/liff/`
   （LINE ログインチャネル → LIFF タブ）
 
+## CI/CD（テスト自動実行と VM 自動デプロイ）
+
+`.github/workflows/ci.yml` により、プッシュ・PR のたびにテストが自動実行される。
+さらに以下を設定すると、**main へのマージ → テスト成功 → VM へ自動デプロイ**まで自動化される。
+
+### 1. VM にデプロイ用 SSH 鍵を用意
+
+ローカル（または VM 上）で鍵ペアを作り、公開鍵を VM に登録する:
+
+```bash
+ssh-keygen -t ed25519 -f deploy_key -N "" -C "github-actions-deploy"
+# 公開鍵を VM の authorized_keys へ追加
+cat deploy_key.pub >> ~/.ssh/authorized_keys   # VM 上で実行する場合
+```
+
+### 2. GitHub リポジトリに登録
+
+Settings → Secrets and variables → Actions:
+
+| 種別 | 名前 | 値 |
+|---|---|---|
+| Secret | `VM_HOST` | VM の IP またはドメイン |
+| Secret | `VM_USER` | SSH ユーザー名（例: `iwako105`） |
+| Secret | `VM_SSH_KEY` | `deploy_key`（秘密鍵ファイル）の中身全文 |
+| Variable | `DEPLOY_ENABLED` | `true` |
+
+`DEPLOY_ENABLED` を設定するまでデプロイはスキップされる（テストのみ実行）。
+
+### 3. VM 側を main ブランチに切り替え
+
+自動デプロイは main を反映するため、VM のリポジトリを main に切り替えておく:
+
+```bash
+cd cocotte-vert && git fetch origin main && git checkout main && git pull origin main
+docker compose --profile standalone up -d --build
+```
+
+### 動作
+
+- 全ブランチのプッシュ / PR → `npm test`（98件）
+- main へのプッシュ（PR マージ含む）→ テスト成功後、SSH で VM に入り
+  `git pull` + `docker compose up -d --build` + ヘルスチェックまで実行
+- 失敗時は GitHub の Actions タブに赤で表示される
+
 ## どの構成でも守ること
 
 - `SEND_MODE` は本番環境でも **dry_run のまま**。`live` は動作検証後に実行時に明示して切り替える（CLAUDE.md の運用ルール）

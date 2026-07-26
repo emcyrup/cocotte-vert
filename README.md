@@ -28,6 +28,10 @@ npm start
 npm test
 ```
 
+## デプロイ（インターネット公開）
+
+VPS / EC2 + Docker Compose、または Render での公開手順を [docs/deploy.md](docs/deploy.md) にまとめている。
+
 ## Webhook のローカル確認
 
 cloudflared / ngrok でトンネルを張り、LINE Developers の Webhook URL に

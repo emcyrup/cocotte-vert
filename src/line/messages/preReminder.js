@@ -1,20 +1,7 @@
 // 前々日確認の Flex Message テンプレート。
+import { formatJstDateTime } from '../../util/jst.js';
 
-// TZ 設定に依存せず必ず JST で整形する（テスト環境が UTC でも壊れないように）
-const jstParts = new Intl.DateTimeFormat('ja-JP', {
-  timeZone: 'Asia/Tokyo',
-  month: 'numeric',
-  day: 'numeric',
-  weekday: 'short',
-  hour: '2-digit',
-  minute: '2-digit',
-  hour12: false,
-});
-
-export function formatReservedAt(date) {
-  const parts = Object.fromEntries(jstParts.formatToParts(date).map((p) => [p.type, p.value]));
-  return `${parts.month}月${parts.day}日(${parts.weekday}) ${parts.hour}:${parts.minute}`;
-}
+export const formatReservedAt = formatJstDateTime;
 
 export function buildPreReminderMessage({ customerName, reservedAt, menu, staffName, reservationId }) {
   const when = formatReservedAt(reservedAt);

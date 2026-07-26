@@ -8,6 +8,22 @@ const fmt = new Intl.DateTimeFormat('en-CA', {
   day: '2-digit',
 });
 
+const dateTimeParts = new Intl.DateTimeFormat('ja-JP', {
+  timeZone: 'Asia/Tokyo',
+  month: 'numeric',
+  day: 'numeric',
+  weekday: 'short',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+});
+
+/** 「7月28日(火) 20:00」形式（JST）。顧客向け・スタッフ向けの日時表記はこれに統一する */
+export function formatJstDateTime(date) {
+  const parts = Object.fromEntries(dateTimeParts.formatToParts(date).map((p) => [p.type, p.value]));
+  return `${parts.month}月${parts.day}日(${parts.weekday}) ${parts.hour}:${parts.minute}`;
+}
+
 export function jstToday(now = new Date()) {
   const iso = fmt.format(now); // "2026-07-26" 形式
   const [year, month, day] = iso.split('-').map(Number);

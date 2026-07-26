@@ -3,6 +3,7 @@
 //   followup — 来店7日後フォローへの返答（good / concern）
 //   opt_out  — 販促配信の停止希望
 // 応答メッセージは通数無料のため、必ず reply で返す。
+import { formatJstDateTime } from '../../util/jst.js';
 
 export function createPostbackHandler({ pool, lineClient, slack }) {
   // 本人の予約であることを確認してから処理する（他人の予約 ID を投げられても無視）
@@ -68,7 +69,7 @@ export function createPostbackHandler({ pool, lineClient, slack }) {
       await slack.notify(
         `:rotating_light: *【要対応】予約変更希望*\n` +
           `顧客: ${reservation.customer_name}（customer=${reservation.customer_id}）\n` +
-          `現予約: ${reservation.reserved_at.toISOString()}\n担当: ${reservation.staff_name ?? '未定'}\n` +
+          `現予約: ${formatJstDateTime(reservation.reserved_at)}\n担当: ${reservation.staff_name ?? '未定'}\n` +
           `お客様へ連絡をお願いします。`
       );
     }

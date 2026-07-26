@@ -1,6 +1,7 @@
 // 予約書き込みのアダプタ層。上流（外部 SaaS / 管理画面の手入力）が何であっても
 // 必ずここを経由して reservations に入れる。上流を差し替えてもここから下は作り直さない。
 import { normalizePhone } from '../customers/phone.js';
+import { formatJstDateTime } from '../util/jst.js';
 
 export function createReservationService({ pool, slack }) {
   async function findOrCreateStaff(client, staffName) {
@@ -19,7 +20,7 @@ export function createReservationService({ pool, slack }) {
 
   async function notifyNewReservation({ customerName, reservedAt, menu, staffName }) {
     await slack.notify(
-      `:calendar: *新規予約*\n顧客: ${customerName}\n日時: ${new Date(reservedAt).toISOString()}\n` +
+      `:calendar: *新規予約*\n顧客: ${customerName}\n日時: ${formatJstDateTime(new Date(reservedAt))}\n` +
         `メニュー: ${menu ?? '未設定'}\n担当: ${staffName ?? '未定'}`
     );
   }

@@ -114,6 +114,26 @@ test('pushStaff: dry_run は API を呼ばず、test は宛先差し替え、liv
   assert.equal(pushed[1].messages[0].text, '通知');
 });
 
+test('pushTest: 宛先は常にテスト用ID、live では拒否、DB には書かない', async () => {
+  const { api, pool, pushed, queries } = makeFakes();
+
+  const dry = createLineClient({ config: { sendMode: 'dry_run' }, pool, api });
+  assert.deepEqual(await dry.pushTest([{ type: 'text', text: 'x' }]), { status: 'dry_run' });
+  assert.equal(pushed.length, 0);
+
+  const testMode = createLineClient(
+    { config: { sendMode: 'test', testLineUserId: 'Utester' }, pool, api }
+  );
+  const sent = await testMode.pushTest([{ type: 'text', text: 'x' }]);
+  assert.equal(sent.status, 'sent');
+  assert.equal(pushed[0].to, 'Utester');
+
+  const live = createLineClient({ config: { sendMode: 'live' }, pool, api });
+  assert.deepEqual(await live.pushTest([{ type: 'text', text: 'x' }]), { status: 'refused' });
+  assert.equal(pushed.length, 1, 'live では送信されない');
+  assert.equal(queries.length, 0, 'message_logs に記録しない（本番の dedupe に影響させない）');
+});
+
 test('送信失敗時は message_logs を failed に更新する', async () => {
   const { api, pool, queries } = makeFakes();
   api.pushMessage = async () => {

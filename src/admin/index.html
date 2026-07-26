@@ -64,6 +64,21 @@
     </section>
 
     <section>
+      <h2>配信メッセージのテスト送信</h2>
+      <p style="font-size:0.8rem;color:#666;margin-top:0;">
+        日付条件を待たずに実物のメッセージを確認できます。宛先は常にテスト用アカウント（顧客には届きません）。
+        予約に紐づく「前々日確認」「来店フォロー」は上の予約一覧の📩ボタンから送れます。
+      </p>
+      <form id="test-send">
+        <input type="text" id="test-cust-search" placeholder="顧客名 or 電話番号で検索" />
+        <button type="button" id="test-cust-search-btn" class="ghost">検索</button>
+        <select id="test-cust-select"><option value="">顧客を選択</option></select>
+        <button type="button" class="ghost" data-test-type="dormant">📩 休眠フォロー</button>
+        <button type="button" class="ghost" data-test-type="birthday">📩 誕生日</button>
+      </form>
+    </section>
+
+    <section>
       <h2>顧客登録（電話予約などLINE未連携の顧客）</h2>
       <form id="new-customer">
         <input type="text" id="cust-name" placeholder="氏名" required />

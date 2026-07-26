@@ -1,0 +1,198 @@
+# 詳細仕様
+
+## 1. 顧客と LINE ユーザーの紐付け
+
+システム全体の前提となる最重要ポイント。**この紐付けができていない顧客には一切配信できない。**
+
+### 主経路：LIFF 登録フォーム
+
+友だち追加時のあいさつメッセージから LIFF を開かせ、以下を登録する。
+
+| 項目 | 必須 | 備考 |
+|---|---|---|
+| 氏名 | ○ | 既存顧客との突合に使用 |
+| 電話番号 | ○ | 突合キー。ハイフン除去して正規化 |
+| 誕生日 | 任意 | **LINE のプロフィール API では取得できないため、ここでしか取れない** |
+| 配信同意 | ○ | チェックボックス。未同意なら `opt_out = true` |
+
+LIFF 側は `liff.getProfile()` で `userId` を取得し、フォーム内容と合わせてサーバへ POST する。サーバは電話番号で既存 `customers` を検索し、ヒットすれば `line_user_id` を更新、なければ新規作成する。
+
+**注意**: LIFF から送られてきた `userId` を無条件で信用しない。`liff.getIDToken()` を送らせ、サーバ側で LINE の検証エンドポイントに投げて `sub` を取り出す。なりすまし防止のため必須。
+
+### 補助経路：あいさつメッセージからのテキスト応答
+
+LIFF 未対応端末や離脱者向けに、「電話番号を送信してください」と案内し、`message` イベントで電話番号らしき文字列を受け取ったら突合する。ヒットしなければスタッフへ Slack 通知して手動対応に回す。
+
+---
+
+## 2. 配信ジョブ仕様
+
+全ジョブ共通で、以下の対象者は除外する。
+
+- `line_user_id IS NULL`
+- `opt_out = true`
+- `is_blocked = true`（unfollow イベントで立てる）
+
+### 2-1. 前々日確認（preReminder）
+
+**実行**: 毎日 10:00 JST
+
+**抽出条件**
+```sql
+SELECT r.id, r.reserved_at, r.menu, c.id AS customer_id, c.line_user_id, s.name AS staff_name
+FROM reservations r
+JOIN customers c ON c.id = r.customer_id
+LEFT JOIN staff s ON s.id = r.staff_id
+WHERE r.status = 'confirmed'
+  AND (r.reserved_at AT TIME ZONE 'Asia/Tokyo')::date = (CURRENT_DATE + INTERVAL '2 day')::date
+  AND c.line_user_id IS NOT NULL
+  AND c.is_blocked = false;
+```
+
+`opt_out` はこのジョブでは**除外条件にしない**。予約確認は営業ではなく取引に必要な連絡のため。
+
+**dedupe_key**: `pre_reminder:res:{reservation_id}`
+
+**メッセージ**（Flex Message。ボタン2つ）
+
+> ○○様
+> ご予約日が近づいてまいりましたのでご連絡いたします。
+>
+> 【日時】8月3日(月) 14:00
+> 【メニュー】カット＋カラー
+> 【担当】山田
+>
+> ご都合はいかがでしょうか？
+
+- ボタン1「このまま伺います」→ postback `action=confirm&res={id}&v=ok`
+- ボタン2「日程を変更したい」→ postback `action=confirm&res={id}&v=change`
+
+**postback 受信時の挙動**
+- `ok` → 「お待ちしております」と応答メッセージ（**通数無料**）。`reservations.confirmed_by_customer = true`
+- `change` → 「担当者よりご連絡いたします」と応答し、Slack へ即時通知（顧客名・予約日時・担当者）
+
+### 2-2. 来店7日後フォロー（afterVisit）
+
+**実行**: 毎日 10:00 JST
+
+**抽出条件**: `status = 'visited'` かつ来店日が7日前ちょうど。同一顧客が期間内に複数回来店している場合は最新の1件のみ。
+
+**dedupe_key**: `after_visit:res:{reservation_id}`
+
+**メッセージ**
+
+> ○○様
+> 先日はご来店いただきありがとうございました。
+> その後の調子はいかがでしょうか？
+> 気になる点があれば、このままメッセージでお知らせください。
+
+- ボタン「調子いいです」→ postback `v=good`
+- ボタン「気になることがある」→ postback `v=concern` → Slack 通知
+
+**自由入力の返信があった場合**: Claude Haiku で `good` / `concern` / `question` の3値に分類し、`concern` と `question` のみ Slack へ通知する。プロンプトは分類のみを返させ、JSON パース失敗時は安全側に倒して `concern` 扱いにする。
+
+### 2-3. 休眠フォロー（dormant）
+
+**実行**: 毎日 10:00 JST。ただし**同一顧客への送信は90日に1回まで**。
+
+**抽出条件**
+```sql
+SELECT c.id, c.line_user_id, c.name, c.last_visit_at
+FROM customers c
+WHERE c.line_user_id IS NOT NULL
+  AND c.opt_out = false
+  AND c.is_blocked = false
+  AND c.last_visit_at IS NOT NULL
+  AND c.last_visit_at <= CURRENT_DATE - INTERVAL '90 day'
+  -- 未来の確定予約がある顧客は除外
+  AND NOT EXISTS (
+    SELECT 1 FROM reservations r
+    WHERE r.customer_id = c.id AND r.status = 'confirmed' AND r.reserved_at > now()
+  )
+  -- 直近90日以内に休眠フォローを送っていない
+  AND NOT EXISTS (
+    SELECT 1 FROM message_logs m
+    WHERE m.customer_id = c.id AND m.job_type = 'dormant'
+      AND m.sent_at > now() - INTERVAL '90 day'
+  );
+```
+
+`= 90日` ではなく `<= 90日` にしている理由：バッチが1日でも失敗すると、ちょうど90日の顧客が永久に漏れるため。
+
+**dedupe_key**: `dormant:cust:{customer_id}:{YYYY-MM-DD}`
+
+**初回導入時の注意**: リリース直後は「90日以上来ていない顧客」が全員一斉に対象になる。初回実行前に必ず件数を確認し、必要なら日次上限（例：1日50件）を設けて分散させること。これを忘れると通数を一気に食い潰す。
+
+**メッセージ**: 営業色を抑え、末尾に配信停止導線（「今後この案内が不要な方はこちら」→ postback `action=opt_out`）を必ず入れる。
+
+### 2-4. 誕生日（birthday）
+
+**実行**: 毎日 10:00 JST
+
+**抽出条件**: `EXTRACT(MONTH FROM birthday) = EXTRACT(MONTH FROM CURRENT_DATE) AND EXTRACT(DAY FROM birthday) = EXTRACT(DAY FROM CURRENT_DATE)`
+
+**2月29日生まれの扱い**: 平年は 2月28日 に送る。閏年判定を入れ、平年かつ本日が2/28の場合は 2/29生まれも対象に含める。
+
+**dedupe_key**: `birthday:cust:{customer_id}:{YYYY}`
+
+**メッセージ**: お祝い＋クーポン。クーポンは LINE 公式アカウントのクーポン機能で作成し、URL を Flex に埋める（クーポン機能自体は通数を消費しない）。有効期限は誕生月末。
+
+---
+
+## 3. Webhook イベント設計
+
+| イベント | 処理 |
+|---|---|
+| `follow` | `customers` に line_user_id を upsert。あいさつメッセージ（**通数無料**）で LIFF 登録を案内 |
+| `unfollow` | `is_blocked = true` を立てる。以降の全配信対象から外れる |
+| `message` | 電話番号らしき文字列なら突合を試行。それ以外はフォロー回答として分類 → 必要なら Slack |
+| `postback` | `action` で分岐（confirm / followup / opt_out） |
+
+署名検証（`x-line-signature`）は必須。検証失敗は 401 で即返す。
+
+**Express の注意**: 署名検証には生のリクエストボディが必要。`express.json()` を webhook ルートより前に適用しないこと。`@line/bot-sdk` の `middleware` を使うのが安全。
+
+---
+
+## 4. スタッフ通知（Slack）
+
+通知先は Slack Incoming Webhook。**LINE グループへの Push は通数を消費するため使わない。**
+
+| トリガー | 内容 |
+|---|---|
+| 新規予約 | 顧客名・日時・メニュー・担当 |
+| 予約変更希望（postback） | 顧客名・現予約日時。**要対応**として強調 |
+| フォロー回答が concern | 顧客名・回答本文・前回来店日 |
+| 突合失敗 | 受信した電話番号・LINE表示名 |
+| ジョブ実行結果 | 毎日のサマリ（対象件数・成功・失敗） |
+| ジョブ異常終了 | エラー内容とスタックトレース |
+
+---
+
+## 5. 環境変数
+
+```
+DATABASE_URL=postgres://...
+LINE_CHANNEL_ACCESS_TOKEN=
+LINE_CHANNEL_SECRET=
+LIFF_ID=
+SLACK_WEBHOOK_URL=
+ANTHROPIC_API_KEY=
+SEND_MODE=dry_run          # dry_run | test | live
+TEST_LINE_USER_ID=         # SEND_MODE=test のときの送信先
+DORMANT_DAILY_LIMIT=50
+TZ=Asia/Tokyo
+PORT=3000
+```
+
+`config.js` で起動時に必須変数の存在を検証し、欠けていたら即座に落とす。
+
+---
+
+## 6. コストの前提
+
+Push / Multicast / Broadcast / Narrowcast は通数カウント対象。一方、応答メッセージ・あいさつメッセージ・1対1のLINEチャットは**カウント対象外で無料**。
+
+したがって設計方針として、**こちらから起点を作る配信だけが課金対象**であり、postback への応答は無料で返せる。顧客数500人規模なら月数百通に収まる想定のため、ライトプラン（月5,000円／5,000通）が目安。
+
+配信前に月間通数の残数を Messaging API の quota エンドポイントで確認し、残数が閾値を下回ったら Slack へ警告を出す。

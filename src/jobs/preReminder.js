@@ -12,7 +12,8 @@ export function createPreReminderJob({ pool, lineClient }) {
        JOIN customers c ON c.id = r.customer_id
        LEFT JOIN staff s ON s.id = r.staff_id
        WHERE r.status = 'confirmed'
-         AND (r.reserved_at AT TIME ZONE 'Asia/Tokyo')::date = (CURRENT_DATE + INTERVAL '2 day')::date
+         AND (r.reserved_at AT TIME ZONE 'Asia/Tokyo')::date
+             = ((now() AT TIME ZONE 'Asia/Tokyo')::date + INTERVAL '2 day')::date
          AND c.line_user_id IS NOT NULL
          AND c.is_blocked = false`
     );

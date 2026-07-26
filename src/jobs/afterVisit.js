@@ -11,7 +11,8 @@ export function createAfterVisitJob({ pool, lineClient }) {
        FROM reservations r
        JOIN customers c ON c.id = r.customer_id
        WHERE r.status = 'visited'
-         AND (r.reserved_at AT TIME ZONE 'Asia/Tokyo')::date = (CURRENT_DATE - INTERVAL '7 day')::date
+         AND (r.reserved_at AT TIME ZONE 'Asia/Tokyo')::date
+             = ((now() AT TIME ZONE 'Asia/Tokyo')::date - INTERVAL '7 day')::date
          AND c.line_user_id IS NOT NULL
          AND c.opt_out = false
          AND c.is_blocked = false

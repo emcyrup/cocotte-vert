@@ -90,8 +90,8 @@ export function createAdminRouter({ pool, reservationService }) {
          JOIN customers c ON c.id = r.customer_id
          LEFT JOIN staff s ON s.id = r.staff_id
          WHERE (r.reserved_at AT TIME ZONE 'Asia/Tokyo')::date
-               BETWEEN COALESCE($1::date, CURRENT_DATE)
-                   AND COALESCE($2::date, CURRENT_DATE + INTERVAL '14 day')
+               BETWEEN COALESCE($1::date, (now() AT TIME ZONE 'Asia/Tokyo')::date)
+                   AND COALESCE($2::date, (now() AT TIME ZONE 'Asia/Tokyo')::date + INTERVAL '14 day')
          ORDER BY r.reserved_at`,
         [from, to]
       );

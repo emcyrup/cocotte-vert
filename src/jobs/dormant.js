@@ -16,7 +16,7 @@ export function createDormantJob({ pool, lineClient, dailyLimit = 50 }) {
          AND c.opt_out = false
          AND c.is_blocked = false
          AND c.last_visit_at IS NOT NULL
-         AND c.last_visit_at <= CURRENT_DATE - INTERVAL '90 day'
+         AND c.last_visit_at <= (now() AT TIME ZONE 'Asia/Tokyo')::date - INTERVAL '90 day'
          -- 未来の確定予約がある顧客は除外
          AND NOT EXISTS (
            SELECT 1 FROM reservations r

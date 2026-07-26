@@ -44,7 +44,7 @@ test('抽出クエリが仕様の条件を含む', async () => {
   await job();
 
   assert.match(capturedSql, /status = 'visited'/);
-  assert.match(capturedSql, /CURRENT_DATE - INTERVAL '7 day'/);
+  assert.match(capturedSql, /\(now\(\) AT TIME ZONE 'Asia\/Tokyo'\)::date - INTERVAL '7 day'/, '基準日も DB の TZ 設定に依存させない');
   assert.match(capturedSql, /AT TIME ZONE 'Asia\/Tokyo'/, '日付比較は JST に明示変換');
   assert.match(capturedSql, /opt_out = false/, 'フォローは opt_out を除外する');
   assert.match(capturedSql, /is_blocked = false/);

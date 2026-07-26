@@ -22,7 +22,7 @@ test('抽出クエリが仕様の条件を含み、日次上限がパラメー�
   const job = createDormantJob({ pool, lineClient: {}, dailyLimit: 25 });
   await job();
 
-  assert.match(captured.sql, /last_visit_at <= CURRENT_DATE - INTERVAL '90 day'/, '= ではなく <= で取り漏れを防ぐ');
+  assert.match(captured.sql, /last_visit_at <= \(now\(\) AT TIME ZONE 'Asia\/Tokyo'\)::date - INTERVAL '90 day'/, '= ではなく <= で取り漏れを防ぐ。基準日は JST 明示');
   assert.match(captured.sql, /opt_out = false/);
   assert.match(captured.sql, /is_blocked = false/);
   assert.match(captured.sql, /NOT EXISTS[\s\S]*status = 'confirmed' AND r\.reserved_at > now\(\)/, '未来の確定予約がある顧客は除外');

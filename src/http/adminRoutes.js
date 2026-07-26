@@ -1,8 +1,12 @@
 // 管理画面用 API。全ルートが Basic 認証（index.js 側で適用）配下にある前提。
 import express from 'express';
 import { normalizePhone } from '../customers/phone.js';
+import { buildPreReminderMessage } from '../line/messages/preReminder.js';
+import { buildAfterVisitMessage } from '../line/messages/afterVisit.js';
+import { buildDormantMessage } from '../line/messages/dormant.js';
+import { buildBirthdayMessage } from '../line/messages/birthday.js';
 
-export function createAdminRouter({ pool, reservationService }) {
+export function createAdminRouter({ pool, reservationService, lineClient, config }) {
   const router = express.Router();
 
   // ---- スタッフ ----
@@ -126,6 +130,65 @@ export function createAdminRouter({ pool, reservationService }) {
         return res.status(result.error === 'not_found' ? 404 : 400).json(result);
       }
       res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // ---- 配信メッセージのテスト送信 ----
+  // 日付条件を待たずに各ジョブの実物メッセージを確認するための機能。
+  // 宛先は常に TEST_LINE_USER_ID（lineClient.pushTest 側で保証）。
+  router.post('/test-message', async (req, res, next) => {
+    try {
+      const { type, reservationId, customerId } = req.body ?? {};
+      let message;
+
+      if (type === 'preReminder' || type === 'afterVisit') {
+        const id = Number(reservationId);
+        if (!Number.isInteger(id)) return res.status(400).json({ error: 'invalid_reservation' });
+        const { rows } = await pool.query(
+          `SELECT r.id, r.reserved_at, r.menu, c.name AS customer_name, s.name AS staff_name
+           FROM reservations r
+           JOIN customers c ON c.id = r.customer_id
+           LEFT JOIN staff s ON s.id = r.staff_id
+           WHERE r.id = $1`,
+          [id]
+        );
+        const r = rows[0];
+        if (!r) return res.status(404).json({ error: 'reservation_not_found' });
+        message =
+          type === 'preReminder'
+            ? buildPreReminderMessage({
+                customerName: r.customer_name,
+                reservedAt: r.reserved_at,
+                menu: r.menu,
+                staffName: r.staff_name,
+                reservationId: r.id,
+              })
+            : buildAfterVisitMessage({ customerName: r.customer_name, reservationId: r.id });
+      } else if (type === 'dormant' || type === 'birthday') {
+        const id = Number(customerId);
+        if (!Number.isInteger(id)) return res.status(400).json({ error: 'invalid_customer' });
+        const { rows } = await pool.query(`SELECT id, name FROM customers WHERE id = $1`, [id]);
+        const c = rows[0];
+        if (!c) return res.status(404).json({ error: 'customer_not_found' });
+        message =
+          type === 'dormant'
+            ? buildDormantMessage({ customerName: c.name })
+            : buildBirthdayMessage({ customerName: c.name, couponUrl: config.birthdayCouponUrl });
+      } else {
+        return res.status(400).json({ error: 'invalid_type' });
+      }
+
+      const result = await lineClient.pushTest([message]);
+      if (result.status === 'refused') {
+        return res.status(400).json({
+          ok: false,
+          error: 'live_mode',
+          message: 'SEND_MODE=live ではテスト送信できません（誤配信防止）',
+        });
+      }
+      res.json({ ok: true, mode: result.status });
     } catch (err) {
       next(err);
     }

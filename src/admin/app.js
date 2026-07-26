@@ -78,6 +78,20 @@ async function loadReservations() {
 
     const actionTd = document.createElement('td');
     actionTd.className = 'row-actions';
+
+    // 配信メッセージのテスト送信（宛先は常にテスト用アカウント）
+    for (const [type, label] of [
+      ['preReminder', '📩前々日'],
+      ['afterVisit', '📩フォロー'],
+    ]) {
+      const btn = document.createElement('button');
+      btn.textContent = label;
+      btn.className = 'ghost';
+      btn.title = 'テスト送信（テスト用アカウントに届きます）';
+      btn.onclick = () => testSend({ type, reservationId: r.id });
+      actionTd.appendChild(btn);
+    }
+
     if (r.status === 'confirmed') {
       for (const [status, label, cls] of [
         ['visited', '来店', ''],
@@ -110,21 +124,67 @@ document.getElementById('list-form').addEventListener('submit', (e) => {
   loadReservations().catch((err) => showMsg(`エラー: ${err.message}`));
 });
 
+// ---- テスト送信 ----
+async function testSend(payload) {
+  try {
+    const { mode } = await api('/test-message', { method: 'POST', body: JSON.stringify(payload) });
+    showMsg(
+      mode === 'dry_run'
+        ? 'dry_run のため送信せずログ出力しました（実際に受け取るには SEND_MODE=test にしてください）'
+        : 'テスト用アカウントに送信しました'
+    );
+  } catch (err) {
+    const messages = {
+      live_mode: 'SEND_MODE=live ではテスト送信できません',
+      reservation_not_found: '予約が見つかりません',
+      customer_not_found: '顧客が見つかりません',
+    };
+    showMsg(messages[err.message] ?? `エラー: ${err.message}`);
+  }
+}
+
+async function searchCustomersInto(query, selectId) {
+  const { customers } = await api(`/customers?q=${encodeURIComponent(query)}`);
+  const select = document.getElementById(selectId);
+  select.innerHTML = '<option value="">顧客を選択</option>';
+  for (const c of customers) {
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    const line = c.line_linked ? ' / LINE連携済' : '';
+    opt.textContent = `${c.name}（${c.phone_norm ?? '電話なし'}${line}）`;
+    select.appendChild(opt);
+  }
+  return customers.length;
+}
+
+document.getElementById('test-cust-search-btn').addEventListener('click', async () => {
+  try {
+    const count = await searchCustomersInto(
+      document.getElementById('test-cust-search').value.trim(),
+      'test-cust-select'
+    );
+    if (count === 0) showMsg('該当する顧客がいません');
+  } catch (err) {
+    showMsg(`エラー: ${err.message}`);
+  }
+});
+
+for (const btn of document.querySelectorAll('#test-send [data-test-type]')) {
+  btn.addEventListener('click', () => {
+    const customerId = document.getElementById('test-cust-select').value;
+    if (!customerId) return showMsg('顧客を選択してください');
+    testSend({ type: btn.dataset.testType, customerId: Number(customerId) });
+  });
+}
+
 // ---- 顧客検索（新規予約用） ----
 document.getElementById('cust-search-btn').addEventListener('click', async () => {
-  const q = document.getElementById('cust-search').value.trim();
   try {
-    const { customers } = await api(`/customers?q=${encodeURIComponent(q)}`);
-    const select = document.getElementById('cust-select');
-    select.innerHTML = '<option value="">顧客を選択</option>';
-    for (const c of customers) {
-      const opt = document.createElement('option');
-      opt.value = c.id;
-      const line = c.line_linked ? ' / LINE連携済' : '';
-      opt.textContent = `${c.name}（${c.phone_norm ?? '電話なし'}${line}）`;
-      select.appendChild(opt);
-    }
-    if (customers.length === 0) showMsg('該当する顧客がいません');
+    const count = await searchCustomersInto(
+      document.getElementById('cust-search').value.trim(),
+      'cust-select'
+    );
+    if (count === 0) showMsg('該当する顧客がいません');
   } catch (err) {
     showMsg(`エラー: ${err.message}`);
   }

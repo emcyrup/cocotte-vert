@@ -102,6 +102,23 @@ export function createLineClient({ config, pool, api }) {
   }
 
   /**
+   * 管理画面からのテスト送信。宛先は常にテスト用 ID（顧客本人には送らない設計）。
+   * message_logs には記録しない＝本番ジョブの dedupe や抽出条件に影響を与えない。
+   * live モードでは誤操作防止のため拒否する。
+   */
+  async function pushTest(messages) {
+    if (config.sendMode === 'live') {
+      return { status: 'refused' };
+    }
+    if (config.sendMode === 'dry_run') {
+      console.log(`[dry_run test-send]\n${JSON.stringify(messages, null, 2)}`);
+      return { status: 'dry_run' };
+    }
+    await client.pushMessage({ to: config.testLineUserId, messages });
+    return { status: 'sent' };
+  }
+
+  /**
    * 月間通数の残数確認（読み取りのみ。全モードで実行可）。
    * @returns {Promise<{limited: boolean, limit?: number, used: number, remaining?: number}>}
    */
@@ -115,5 +132,5 @@ export function createLineClient({ config, pool, api }) {
     return { limited: true, limit: quota.value, used, remaining: quota.value - used };
   }
 
-  return { deliver, reply, getProfile, getQuota, pushStaff };
+  return { deliver, reply, getProfile, getQuota, pushStaff, pushTest };
 }

@@ -110,7 +110,7 @@ const reservationService = createReservationService({ pool, slack });
 const adminGuard = basicAuth({ user: config.adminUser, password: config.adminPassword });
 const adminDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'admin');
 app.use('/admin', adminGuard, express.static(adminDir));
-app.use('/api/admin', adminGuard, createAdminRouter({ pool, reservationService }));
+app.use('/api/admin', adminGuard, createAdminRouter({ pool, reservationService, lineClient, config }));
 
 // 外部予約システムからの取り込み（Bearer トークン。INGEST_API_TOKEN 未設定なら無効）
 app.use(

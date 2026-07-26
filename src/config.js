@@ -33,13 +33,19 @@ export function loadConfig(env = process.env) {
     throw new Error(`TZ は Asia/Tokyo を想定しています（現在: ${env.TZ}）`);
   }
 
+  const liffId = env.LIFF_ID || null;
+
   return {
     databaseUrl: env.DATABASE_URL,
     line: {
       channelAccessToken: env.LINE_CHANNEL_ACCESS_TOKEN,
       channelSecret: env.LINE_CHANNEL_SECRET,
     },
-    liffId: env.LIFF_ID || null,
+    liffId,
+    // ID トークン検証の client_id はチャネル ID。LIFF ID の先頭部分と一致するため
+    // 通常は導出で足りるが、異なる構成の場合は LIFF_CHANNEL_ID で明示できる
+    liffChannelId: env.LIFF_CHANNEL_ID || (liffId ? liffId.split('-')[0] : null),
+    liffUrl: liffId ? `https://liff.line.me/${liffId}` : null,
     slackWebhookUrl: env.SLACK_WEBHOOK_URL,
     anthropicApiKey: env.ANTHROPIC_API_KEY || null,
     sendMode,

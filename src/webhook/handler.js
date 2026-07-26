@@ -2,12 +2,14 @@
 // イベントは1件ずつ捕捉し、1件の失敗で他イベントの処理を止めない。
 import { createFollowHandler } from './events/follow.js';
 import { createUnfollowHandler } from './events/unfollow.js';
+import { createMessageHandler } from './events/message.js';
 
-export function createWebhookHandler({ pool, lineClient, slack }) {
+export function createWebhookHandler({ pool, lineClient, slack, linkService, liffUrl = null }) {
   const handlers = {
-    follow: createFollowHandler({ pool, lineClient }),
+    follow: createFollowHandler({ pool, lineClient, liffUrl }),
     unfollow: createUnfollowHandler({ pool }),
-    // message / postback は Phase 2 以降で追加
+    message: createMessageHandler({ lineClient, linkService }),
+    // postback は Phase 3 で追加
   };
 
   return async function webhookHandler(req, res) {

@@ -9,6 +9,8 @@ import { createIdTokenVerifier } from './line/verifyIdToken.js';
 import { createSlackNotifier } from './notify/slack.js';
 import { createLinkService } from './customers/linkService.js';
 import { createWebhookHandler } from './webhook/handler.js';
+import { createJobRunner } from './jobs/runner.js';
+import { createPreReminderJob } from './jobs/preReminder.js';
 
 const config = loadConfig();
 const lineClient = createLineClient({ config, pool });
@@ -78,6 +80,12 @@ app.use((err, _req, res, next) => {
   }
   console.error(`[http] ${err.message}`);
   return res.status(500).json({ error: 'internal error' });
+});
+
+// 毎日 10:00 JST の配信ジョブ（Phase 4・5 のジョブもここに追加していく）
+const runner = createJobRunner({ slack });
+runner.scheduleDaily({
+  preReminder: createPreReminderJob({ pool, lineClient }),
 });
 
 app.listen(config.port, () => {

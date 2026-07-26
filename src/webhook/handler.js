@@ -3,13 +3,14 @@
 import { createFollowHandler } from './events/follow.js';
 import { createUnfollowHandler } from './events/unfollow.js';
 import { createMessageHandler } from './events/message.js';
+import { createPostbackHandler } from './events/postback.js';
 
 export function createWebhookHandler({ pool, lineClient, slack, linkService, liffUrl = null }) {
   const handlers = {
     follow: createFollowHandler({ pool, lineClient, liffUrl }),
     unfollow: createUnfollowHandler({ pool }),
     message: createMessageHandler({ lineClient, linkService }),
-    // postback は Phase 3 で追加
+    postback: createPostbackHandler({ pool, lineClient, slack }),
   };
 
   return async function webhookHandler(req, res) {

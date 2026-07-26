@@ -1,0 +1,50 @@
+# CI/CD: 全ブランチでテスト実行、main へのプッシュで VM へ自動デプロイ。
+#
+# デプロイの有効化手順（docs/deploy.md にも記載）:
+#   1. VM に GitHub Actions 用の SSH 鍵を用意し、公開鍵を ~/.ssh/authorized_keys に追加
+#   2. リポジトリの Settings → Secrets and variables → Actions に登録:
+#        Secrets:   VM_HOST（IP またはドメイン） / VM_USER / VM_SSH_KEY（秘密鍵の中身）
+#        Variables: DEPLOY_ENABLED = true
+#   DEPLOY_ENABLED を設定するまでデプロイジョブはスキップされる（テストだけ動く）
+name: ci
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  deploy:
+    # main が更新されたときだけ、テスト成功を条件に VM へ反映する
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.DEPLOY_ENABLED == 'true'
+    needs: test
+    runs-on: ubuntu-latest
+    concurrency: deploy-vm   # 同時デプロイを防ぐ
+    steps:
+      - name: Deploy to VM via SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.VM_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh -i ~/.ssh/deploy_key "${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}" '
+            set -e
+            cd cocotte-vert
+            git fetch origin main
+            git checkout main
+            git pull --ff-only origin main
+            docker compose --profile standalone up -d --build
+            sleep 5
+            curl -sf http://127.0.0.1:3000/health
+          '

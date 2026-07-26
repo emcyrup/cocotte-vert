@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>予約管理</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif; margin: 0; background: #f4f4f5; color: #222; }
+    header { background: #1f2937; color: #fff; padding: 12px 16px; font-weight: 700; }
+    main { max-width: 900px; margin: 0 auto; padding: 16px; }
+    section { background: #fff; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+    h2 { font-size: 1rem; margin: 0 0 12px; border-left: 4px solid #06c755; padding-left: 8px; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eee; }
+    th { color: #666; font-weight: 600; white-space: nowrap; }
+    input, select, button { font-size: 0.9rem; padding: 7px 10px; border: 1px solid #ccc; border-radius: 6px; }
+    button { background: #06c755; color: #fff; border: none; cursor: pointer; }
+    button.sub { background: #6b7280; }
+    button.warn { background: #dc2626; }
+    button.ghost { background: #fff; color: #333; border: 1px solid #ccc; }
+    form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .status-confirmed { color: #059669; }
+    .status-visited { color: #2563eb; }
+    .status-cancelled, .status-no_show { color: #9ca3af; }
+    .badge { font-size: 0.7rem; background: #e5e7eb; border-radius: 4px; padding: 2px 6px; margin-left: 4px; }
+    .badge.ok { background: #d1fae5; color: #065f46; }
+    #msg { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+           background: #1f2937; color: #fff; padding: 10px 20px; border-radius: 8px; display: none; }
+    .row-actions { display: flex; gap: 4px; }
+    .row-actions button { padding: 4px 8px; font-size: 0.75rem; }
+  </style>
+</head>
+<body>
+  <header>予約管理</header>
+  <main>
+    <section>
+      <h2>予約一覧</h2>
+      <form id="list-form">
+        <input type="date" id="list-from" />
+        <span>〜</span>
+        <input type="date" id="list-to" />
+        <button type="submit" class="ghost">表示</button>
+      </form>
+      <table>
+        <thead>
+          <tr><th>日時</th><th>顧客</th><th>メニュー</th><th>担当</th><th>状態</th><th>操作</th></tr>
+        </thead>
+        <tbody id="reservations"></tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>新規予約</h2>
+      <form id="new-reservation">
+        <input type="text" id="cust-search" placeholder="顧客名 or 電話番号で検索" />
+        <button type="button" id="cust-search-btn" class="ghost">検索</button>
+        <select id="cust-select"><option value="">顧客を選択</option></select>
+        <input type="datetime-local" id="res-datetime" required />
+        <input type="text" id="res-menu" placeholder="メニュー" />
+        <select id="res-staff"><option value="">担当（任意）</option></select>
+        <button type="submit">予約を登録</button>
+      </form>
+    </section>
+
+    <section>
+      <h2>顧客登録（電話予約などLINE未連携の顧客）</h2>
+      <form id="new-customer">
+        <input type="text" id="cust-name" placeholder="氏名" required />
+        <input type="tel" id="cust-phone" placeholder="電話番号" required />
+        <input type="date" id="cust-birthday" title="誕生日（任意）" />
+        <button type="submit">登録</button>
+      </form>
+    </section>
+
+    <section>
+      <h2>スタッフ追加</h2>
+      <form id="new-staff">
+        <input type="text" id="staff-name" placeholder="スタッフ名" required />
+        <button type="submit">追加</button>
+      </form>
+    </section>
+  </main>
+  <div id="msg"></div>
+  <script src="./app.js"></script>
+</body>
+</html>

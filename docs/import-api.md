@@ -75,6 +75,25 @@ curl -X POST https://<ドメイン>/api/import/reservations \
   -d @reservations.json
 ```
 
+## CSV からの取り込み（EPARK など）
+
+EPARK のように公開 API がない予約システムは、管理画面から CSV をエクスポートして
+`scripts/import-csv.js` で取り込む。列名の対応は `scripts/mappings/*.json` で調整する。
+
+```bash
+# 変換結果の確認（API には送らない）
+node scripts/import-csv.js --file=epark.csv --map=scripts/mappings/epark.json --dry-run
+
+# 取り込み実行（VM 上なら）
+docker compose exec app node scripts/import-csv.js \
+  --file=/tmp/epark.csv --map=scripts/mappings/epark.json --token=$INGEST_API_TOKEN
+```
+
+- `scripts/mappings/epark.json` の `columns` を、実際の CSV のヘッダ行に合わせて修正する
+- 文字コードは `encoding`（`shift_jis` / `utf-8`）で指定
+- ステータスの文言 →`confirmed`/`visited`/`cancelled`/`no_show` の対応は `statusMap` で定義
+- 営業終了後に当日分（来店済み）を再エクスポート→再実行すれば、来店実績も反映される（冪等）
+
 ## 運用パターン
 
 - **予約 SaaS に Webhook がある場合**: Webhook 受信側でこの形式に変換して POST する

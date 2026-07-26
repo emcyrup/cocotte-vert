@@ -50,6 +50,7 @@ test('upsertExternal: 新規予約は顧客・スタッフを作成して Slack 
   assert.equal(notifications.length, 1);
   assert.match(notifications[0], /新規予約/);
   assert.match(notifications[0], /山田 花子/);
+  assert.match(notifications[0], /8月1日\(土\) 14:00/, '日時は JST の読みやすい形式で通知する');
 });
 
 test('upsertExternal: 既存予約の更新（2回目以降）は通知しない', async () => {

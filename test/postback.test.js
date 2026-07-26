@@ -67,6 +67,7 @@ test('change: 応答して Slack へ要対応通知を送る', async () => {
   assert.equal(notifications.length, 1);
   assert.match(notifications[0], /要対応/);
   assert.match(notifications[0], /山田/);
+  assert.match(notifications[0], /8月3日\(月\) 14:00/, '現予約の日時は JST の読みやすい形式');
 });
 
 test('他人の予約 ID への postback は無視する', async () => {

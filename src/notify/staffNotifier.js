@@ -1,0 +1,54 @@
+// スタッフ通知の送信先を抽象化する。呼び出し側は従来どおり notify / notifyError を使い、
+// 実際の送信先（Slack / LINE グループ / 両方）は STAFF_NOTIFY_CHANNEL で切り替える。
+// 注意: LINE グループへの Push は通数を消費する（グループ宛は人数に関わらず1通）。
+
+// Slack 記法を LINE 用のプレーンテキストに変換する
+const EMOJI_MAP = {
+  ':rotating_light:': '🚨',
+  ':warning:': '⚠️',
+  ':calendar:': '📅',
+  ':mag:': '🔍',
+  ':package:': '📦',
+  ':bust_in_silhouette:': '👤',
+};
+
+export function toPlainText(slackText) {
+  let text = slackText;
+  for (const [code, emoji] of Object.entries(EMOJI_MAP)) {
+    text = text.replaceAll(code, emoji);
+  }
+  return text
+    .replace(/:[a-z0-9_+-]+:/g, '') // 未知の絵文字コードは除去
+    .replace(/\*([^*\n]+)\*/g, '$1') // *強調* を外す
+    .replace(/```([\s\S]*?)```/g, '$1') // コードブロック記法を外す
+    .replace(/^> ?/gm, ''); // 引用記法を外す
+}
+
+export function createStaffNotifier({ config, slack, lineClient }) {
+  const useSlack = ['slack', 'both'].includes(config.staffNotifyChannel);
+  const useLine = ['line', 'both'].includes(config.staffNotifyChannel);
+
+  async function notify(text) {
+    let delivered = false;
+    if (useSlack && slack) {
+      delivered = (await slack.notify(text)) || delivered;
+    }
+    if (useLine && config.staffLineGroupId) {
+      // LINE 側の失敗で本処理（予約登録など）を落とさない
+      try {
+        await lineClient.pushStaff(config.staffLineGroupId, toPlainText(text));
+        delivered = true;
+      } catch (err) {
+        console.error(`[staff-notify] LINE 通知失敗: ${err.message}`);
+      }
+    }
+    return delivered;
+  }
+
+  async function notifyError(context, err) {
+    const stack = err?.stack || String(err);
+    return notify(`:rotating_light: *${context}*\n\`\`\`${stack.slice(0, 2800)}\`\`\``);
+  }
+
+  return { notify, notifyError };
+}

@@ -95,6 +95,25 @@ test('同じ dedupe_key での2回目は送信されない', async () => {
   assert.equal(pushed.length, 1, '2通目が送られてはならない');
 });
 
+test('pushStaff: dry_run は API を呼ばず、test は宛先差し替え、live はグループ宛', async () => {
+  const { api, pool, pushed } = makeFakes();
+
+  const dry = createLineClient({ config: { sendMode: 'dry_run' }, pool, api });
+  assert.deepEqual(await dry.pushStaff('Cgroup1', '通知'), { status: 'dry_run' });
+  assert.equal(pushed.length, 0);
+
+  const testMode = createLineClient(
+    { config: { sendMode: 'test', testLineUserId: 'Utester' }, pool, api }
+  );
+  await testMode.pushStaff('Cgroup1', '通知');
+  assert.equal(pushed[0].to, 'Utester');
+
+  const live = createLineClient({ config: { sendMode: 'live' }, pool, api });
+  await live.pushStaff('Cgroup1', '通知');
+  assert.equal(pushed[1].to, 'Cgroup1');
+  assert.equal(pushed[1].messages[0].text, '通知');
+});
+
 test('送信失敗時は message_logs を failed に更新する', async () => {
   const { api, pool, queries } = makeFakes();
   api.pushMessage = async () => {

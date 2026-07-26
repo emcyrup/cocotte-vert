@@ -87,6 +87,21 @@ export function createLineClient({ config, pool, api }) {
   }
 
   /**
+   * スタッフ向け通知の Push（宛先はスタッフ用グループ等。通数を消費する）。
+   * 顧客配信ではないため message_logs には記録しないが、SEND_MODE のガードは同様に効かせる。
+   */
+  async function pushStaff(to, text) {
+    if (config.sendMode === 'dry_run') {
+      console.log(`[dry_run staff-notify]\n${text}`);
+      return { status: 'dry_run' };
+    }
+    // test モードでは通常配信と同様、宛先をテスト用 ID に差し替える
+    const dest = config.sendMode === 'test' ? config.testLineUserId : to;
+    await client.pushMessage({ to: dest, messages: [{ type: 'text', text }] });
+    return { status: 'sent' };
+  }
+
+  /**
    * 月間通数の残数確認（読み取りのみ。全モードで実行可）。
    * @returns {Promise<{limited: boolean, limit?: number, used: number, remaining?: number}>}
    */
@@ -100,5 +115,5 @@ export function createLineClient({ config, pool, api }) {
     return { limited: true, limit: quota.value, used, remaining: quota.value - used };
   }
 
-  return { deliver, reply, getProfile, getQuota };
+  return { deliver, reply, getProfile, getQuota, pushStaff };
 }

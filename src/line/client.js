@@ -86,5 +86,19 @@ export function createLineClient({ config, pool, api }) {
     return client.getProfile(lineUserId);
   }
 
-  return { deliver, reply, getProfile };
+  /**
+   * 月間通数の残数確認（読み取りのみ。全モードで実行可）。
+   * @returns {Promise<{limited: boolean, limit?: number, used: number, remaining?: number}>}
+   */
+  async function getQuota() {
+    const quota = await client.getMessageQuota();
+    const consumption = await client.getMessageQuotaConsumption();
+    const used = consumption.totalUsage;
+    if (quota.type !== 'limited') {
+      return { limited: false, used };
+    }
+    return { limited: true, limit: quota.value, used, remaining: quota.value - used };
+  }
+
+  return { deliver, reply, getProfile, getQuota };
 }

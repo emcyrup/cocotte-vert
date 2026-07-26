@@ -1,7 +1,7 @@
 // postback イベント: action で分岐する。
 //   confirm  — 前々日確認への返答（ok / change）
 //   followup — 来店7日後フォローへの返答（good / concern）
-//   （opt_out は Phase 5 で追加）
+//   opt_out  — 販促配信の停止希望
 // 応答メッセージは通数無料のため、必ず reply で返す。
 
 export function createPostbackHandler({ pool, lineClient, slack }) {
@@ -129,6 +129,39 @@ export function createPostbackHandler({ pool, lineClient, slack }) {
     }
   }
 
+  async function handleOptOut(event) {
+    const lineUserId = event.source?.userId;
+    if (!lineUserId) return;
+
+    const { rows } = await pool.query(
+      `UPDATE customers SET opt_out = true, updated_at = now()
+       WHERE line_user_id = $1
+       RETURNING id`,
+      [lineUserId]
+    );
+    const customer = rows[0];
+    if (!customer) return;
+
+    await pool.query(
+      `INSERT INTO customer_responses (customer_id, kind) VALUES ($1, $2)`,
+      [customer.id, 'opt_out']
+    );
+    console.log(`[postback] opt_out customer=${customer.id}`);
+
+    if (event.replyToken) {
+      await lineClient.reply(
+        event.replyToken,
+        [
+          {
+            type: 'text',
+            text: 'ご案内の配信を停止しました。\n※ご予約の確認など、お取引に必要なご連絡はお送りする場合があります。\n配信の再開をご希望の際はスタッフまでお声がけください。',
+          },
+        ],
+        { customerId: customer.id }
+      );
+    }
+  }
+
   return async function handlePostback(event) {
     const params = new URLSearchParams(event.postback?.data ?? '');
     const action = params.get('action');
@@ -136,6 +169,8 @@ export function createPostbackHandler({ pool, lineClient, slack }) {
       await handleConfirm(event, params);
     } else if (action === 'followup') {
       await handleFollowup(event, params);
+    } else if (action === 'opt_out') {
+      await handleOptOut(event);
     }
     // 未知の action は将来のフェーズ用。ログだけ残して無視する
     else if (action) {

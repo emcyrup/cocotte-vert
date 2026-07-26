@@ -36,21 +36,44 @@ export function createJobRunner({ slack }) {
   }
 
   /**
+   * 全ジョブ実行後の通数残数チェック。残数が閾値を下回ったら Slack へ警告する。
+   * 確認自体の失敗でジョブ結果を汚さないよう、ここで握って警告ログのみ残す。
+   */
+  async function checkQuota(lineClient, warnRemaining) {
+    try {
+      const quota = await lineClient.getQuota();
+      if (quota.limited && quota.remaining <= warnRemaining) {
+        await slack.notify(
+          `:warning: *LINE 月間通数の残りが少なくなっています*\n` +
+            `使用済み ${quota.used} / 上限 ${quota.limit}（残り ${quota.remaining} 通）\n` +
+            `プランの見直し、または休眠フォローの日次上限の引き下げを検討してください。`
+        );
+      }
+    } catch (err) {
+      console.error(`[quota] 残数確認失敗: ${err.message}`);
+    }
+  }
+
+  /**
    * 毎日 10:00 JST に全ジョブを直列実行する。
    * 配信時刻は 10:00 JST 固定（深夜・早朝の送信は絶対に行わない）。
    * @param {Record<string, () => Promise<object>>} jobs
+   * @param {{lineClient?: object, quotaWarnRemaining?: number}} [options]
    */
-  function scheduleDaily(jobs) {
+  function scheduleDaily(jobs, { lineClient, quotaWarnRemaining = 300 } = {}) {
     return cron.schedule(
       '0 10 * * *',
       async () => {
         for (const [name, jobFn] of Object.entries(jobs)) {
           await runJob(name, jobFn);
         }
+        if (lineClient) {
+          await checkQuota(lineClient, quotaWarnRemaining);
+        }
       },
       { timezone: 'Asia/Tokyo' }
     );
   }
 
-  return { runJob, scheduleDaily };
+  return { runJob, scheduleDaily, checkQuota };
 }

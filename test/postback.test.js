@@ -112,6 +112,29 @@ test('followup concern: Slack へ通知して詳細の返信を促す', async ()
   assert.match(notifications[0], /山田/);
 });
 
+test('opt_out: opt_out を立てて記録し、停止完了を返信する', async () => {
+  const queries = [];
+  const replies = [];
+  const pool = {
+    query: async (sql, params) => {
+      queries.push({ sql, params });
+      if (/UPDATE customers SET opt_out = true/.test(sql)) return { rows: [{ id: 7 }] };
+      return { rows: [] };
+    },
+  };
+  const lineClient = { reply: async (token, messages) => replies.push(messages[0].text) };
+  const slack = { notify: async () => {} };
+  const handler = createPostbackHandler({ pool, lineClient, slack });
+
+  await handler(makeEvent('action=opt_out'));
+
+  const update = queries.find((q) => /SET opt_out = true/.test(q.sql));
+  assert.equal(update.params[0], 'U1');
+  const response = queries.find((q) => /INSERT INTO customer_responses/.test(q.sql));
+  assert.equal(response.params[1], 'opt_out');
+  assert.match(replies[0], /配信を停止しました/);
+});
+
 test('未知の action は何もしない', async () => {
   const { pool, lineClient, slack, queries } = makeFakes();
   const handler = createPostbackHandler({ pool, lineClient, slack });

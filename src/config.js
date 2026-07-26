@@ -51,6 +51,8 @@ export function loadConfig(env = process.env) {
     sendMode,
     testLineUserId: env.TEST_LINE_USER_ID || null,
     dormantDailyLimit: Number(env.DORMANT_DAILY_LIMIT || 50),
+    birthdayCouponUrl: env.BIRTHDAY_COUPON_URL || null,
+    quotaWarnRemaining: Number(env.QUOTA_WARN_REMAINING || 300),
     port: Number(env.PORT || 3000),
   };
 }

@@ -5,7 +5,7 @@
 const jobArg = process.argv.find((a) => a.startsWith('--job='));
 const dryRun = process.argv.includes('--dry-run');
 
-const JOB_NAMES = ['preReminder', 'afterVisit'];
+const JOB_NAMES = ['preReminder', 'afterVisit', 'dormant', 'birthday'];
 
 const jobName = jobArg?.slice('--job='.length);
 if (!jobName || !JOB_NAMES.includes(jobName)) {
@@ -25,6 +25,8 @@ const { createSlackNotifier } = await import('../src/notify/slack.js');
 const { createJobRunner } = await import('../src/jobs/runner.js');
 const { createPreReminderJob } = await import('../src/jobs/preReminder.js');
 const { createAfterVisitJob } = await import('../src/jobs/afterVisit.js');
+const { createDormantJob } = await import('../src/jobs/dormant.js');
+const { createBirthdayJob } = await import('../src/jobs/birthday.js');
 
 const config = loadConfig();
 console.log(`[run-job] job=${jobName} SEND_MODE=${config.sendMode}`);
@@ -36,6 +38,8 @@ const runner = createJobRunner({ slack });
 const jobs = {
   preReminder: createPreReminderJob({ pool, lineClient }),
   afterVisit: createAfterVisitJob({ pool, lineClient }),
+  dormant: createDormantJob({ pool, lineClient, dailyLimit: config.dormantDailyLimit }),
+  birthday: createBirthdayJob({ pool, lineClient, couponUrl: config.birthdayCouponUrl }),
 };
 
 const summary = await runner.runJob(jobName, jobs[jobName]);

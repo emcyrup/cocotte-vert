@@ -12,6 +12,8 @@ import { createWebhookHandler } from './webhook/handler.js';
 import { createJobRunner } from './jobs/runner.js';
 import { createPreReminderJob } from './jobs/preReminder.js';
 import { createAfterVisitJob } from './jobs/afterVisit.js';
+import { createDormantJob } from './jobs/dormant.js';
+import { createBirthdayJob } from './jobs/birthday.js';
 import { createFollowupClassifier } from './ai/classifyFollowup.js';
 
 const config = loadConfig();
@@ -87,10 +89,15 @@ app.use((err, _req, res, next) => {
 
 // 毎日 10:00 JST の配信ジョブ（Phase 4・5 のジョブもここに追加していく）
 const runner = createJobRunner({ slack });
-runner.scheduleDaily({
-  preReminder: createPreReminderJob({ pool, lineClient }),
-  afterVisit: createAfterVisitJob({ pool, lineClient }),
-});
+runner.scheduleDaily(
+  {
+    preReminder: createPreReminderJob({ pool, lineClient }),
+    afterVisit: createAfterVisitJob({ pool, lineClient }),
+    dormant: createDormantJob({ pool, lineClient, dailyLimit: config.dormantDailyLimit }),
+    birthday: createBirthdayJob({ pool, lineClient, couponUrl: config.birthdayCouponUrl }),
+  },
+  { lineClient, quotaWarnRemaining: config.quotaWarnRemaining }
+);
 
 app.listen(config.port, () => {
   console.log(`[boot] port=${config.port} SEND_MODE=${config.sendMode}`);

@@ -45,14 +45,16 @@ test('スタッフ通知: デフォルト slack は SLACK_WEBHOOK_URL 必須', (
   assert.throws(() => loadConfig(env), /SLACK_WEBHOOK_URL/);
 });
 
-test('スタッフ通知: line チャネルは STAFF_LINE_GROUP_ID 必須、Slack URL は不要', () => {
+test('スタッフ通知: line チャネルは Slack URL 不要、グループ ID は任意（参加時に自動設定）', () => {
   const env = { ...baseEnv, STAFF_NOTIFY_CHANNEL: 'line' };
   delete env.SLACK_WEBHOOK_URL;
-  assert.throws(() => loadConfig(env), /STAFF_LINE_GROUP_ID/);
 
-  const config = loadConfig({ ...env, STAFF_LINE_GROUP_ID: 'Cgroup1' });
+  const config = loadConfig(env);
   assert.equal(config.staffNotifyChannel, 'line');
-  assert.equal(config.staffLineGroupId, 'Cgroup1');
+  assert.equal(config.staffLineGroupId, null);
+
+  const withOverride = loadConfig({ ...env, STAFF_LINE_GROUP_ID: 'Cgroup1' });
+  assert.equal(withOverride.staffLineGroupId, 'Cgroup1');
 });
 
 test('スタッフ通知: 不正なチャネルは拒否する', () => {

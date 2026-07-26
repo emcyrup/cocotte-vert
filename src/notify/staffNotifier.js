@@ -2,6 +2,8 @@
 // 実際の送信先（Slack / LINE グループ / 両方）は STAFF_NOTIFY_CHANNEL で切り替える。
 // 注意: LINE グループへの Push は通数を消費する（グループ宛は人数に関わらず1通）。
 
+import { SETTING_KEYS } from '../settings.js';
+
 // Slack 記法を LINE 用のプレーンテキストに変換する
 const EMOJI_MAP = {
   ':rotating_light:': '🚨',
@@ -24,20 +26,36 @@ export function toPlainText(slackText) {
     .replace(/^> ?/gm, ''); // 引用記法を外す
 }
 
-export function createStaffNotifier({ config, slack, lineClient }) {
+export function createStaffNotifier({ config, slack, lineClient, settings = null }) {
   const useSlack = ['slack', 'both'].includes(config.staffNotifyChannel);
   const useLine = ['line', 'both'].includes(config.staffNotifyChannel);
+
+  // グループ ID は DB（join イベントで自動設定）を優先し、環境変数をフォールバックにする
+  async function resolveGroupId() {
+    if (settings) {
+      const stored = await settings.get(SETTING_KEYS.staffLineGroupId).catch(() => null);
+      if (stored) return stored;
+    }
+    return config.staffLineGroupId ?? null;
+  }
 
   async function notify(text) {
     let delivered = false;
     if (useSlack && slack) {
       delivered = (await slack.notify(text)) || delivered;
     }
-    if (useLine && config.staffLineGroupId) {
+    if (useLine) {
       // LINE 側の失敗で本処理（予約登録など）を落とさない
       try {
-        await lineClient.pushStaff(config.staffLineGroupId, toPlainText(text));
-        delivered = true;
+        const groupId = await resolveGroupId();
+        if (groupId) {
+          await lineClient.pushStaff(groupId, toPlainText(text));
+          delivered = true;
+        } else {
+          console.warn(
+            '[staff-notify] 通知先グループが未設定です。Bot をスタッフ用グループに招待してください'
+          );
+        }
       } catch (err) {
         console.error(`[staff-notify] LINE 通知失敗: ${err.message}`);
       }

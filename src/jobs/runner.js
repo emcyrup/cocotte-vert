@@ -60,7 +60,7 @@ export function createJobRunner({ slack }) {
    * @param {Record<string, () => Promise<object>>} jobs
    * @param {{lineClient?: object, quotaWarnRemaining?: number}} [options]
    */
-  function scheduleDaily(jobs, { lineClient, quotaWarnRemaining = 300 } = {}) {
+  function scheduleDaily(jobs, { lineClient, quotaWarnRemaining = 500 } = {}) {
     return cron.schedule(
       '0 10 * * *',
       async () => {

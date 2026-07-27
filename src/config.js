@@ -67,7 +67,8 @@ export function loadConfig(env = process.env) {
     adminUser: env.ADMIN_USER || null,
     adminPassword: env.ADMIN_PASSWORD || null,
     ingestApiToken: env.INGEST_API_TOKEN || null,
-    quotaWarnRemaining: Number(env.QUOTA_WARN_REMAINING || 300),
+    // デフォルトはライトプラン（月5,000通）の残り10%を想定
+    quotaWarnRemaining: Number(env.QUOTA_WARN_REMAINING || 500),
     port: Number(env.PORT || 3000),
   };
 }

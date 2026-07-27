@@ -1,14 +1,34 @@
-// ジョブ共通処理: cron 登録・実行サマリの Slack 通知・異常終了の捕捉。
+// ジョブ共通処理: cron 登録・実行サマリのスタッフ通知・異常終了の捕捉。
 // 個々の対象者のエラーはジョブ側で捕捉する前提（1件の失敗で他を止めない）。
 // ここで捕捉するのはジョブ全体の異常（DB 接続断など）。
 import cron from 'node-cron';
 
+const JOB_LABELS = {
+  preReminder: '前々日確認',
+  afterVisit: '来店フォロー',
+  dormant: '休眠フォロー',
+  birthday: '誕生日',
+};
+
+// まとめ通知の1行。0 の項目は省いて読みやすくする
+export function summaryLine(name, summary) {
+  const label = JOB_LABELS[name] ?? name;
+  if (!summary) return `・${label}: 🚨 異常終了（詳細は別途通知）`;
+  const parts = [`対象 ${summary.total}`];
+  if (summary.sent > 0) parts.push(`送信 ${summary.sent}`);
+  if (summary.dryRun > 0) parts.push(`dry_run ${summary.dryRun}`);
+  if (summary.skipped > 0) parts.push(`スキップ ${summary.skipped}`);
+  if (summary.failed > 0) parts.push(`⚠️ 失敗 ${summary.failed}`);
+  return `・${label}: ${parts.join(' / ')}`;
+}
+
 export function createJobRunner({ slack }) {
   /**
-   * ジョブを1つ実行し、サマリを Slack へ送る。
+   * ジョブを1つ実行する。
    * ジョブ関数は { total, sent, dryRun, skipped, failed, errors } を返す規約とする。
+   * notify=false のときは通知せずサマリだけ返す（日次のまとめ通知用）。
    */
-  async function runJob(name, jobFn) {
+  async function runJob(name, jobFn, { notify = true } = {}) {
     const startedAt = Date.now();
     console.log(`[job:${name}] 開始`);
     try {
@@ -18,62 +38,88 @@ export function createJobRunner({ slack }) {
         `対象 ${summary.total} / 送信 ${summary.sent} / dry_run ${summary.dryRun}` +
         ` / スキップ ${summary.skipped} / 失敗 ${summary.failed}（${sec}秒）`;
       console.log(`[job:${name}] 完了 ${line}`);
-      await slack.notify(`:package: ジョブ実行結果 *${name}*\n${line}`);
-      if (summary.failed > 0 && summary.errors?.length) {
-        // 顧客は内部 id でのみ参照する（氏名・LINE userId を通知に含めない）
-        const detail = summary.errors
-          .slice(0, 10)
-          .map((e) => `customer=${e.customerId}: ${e.message}`)
-          .join('\n');
-        await slack.notify(`:warning: *${name}* 失敗詳細（最大10件）\n\`\`\`${detail}\`\`\``);
+      if (notify) {
+        await slack.notify(`:package: ジョブ実行結果 *${name}*\n${line}`);
+        if (summary.failed > 0 && summary.errors?.length) {
+          // 顧客は内部 id でのみ参照する（氏名・LINE userId を通知に含めない）
+          const detail = summary.errors
+            .slice(0, 10)
+            .map((e) => `customer=${e.customerId}: ${e.message}`)
+            .join('\n');
+          await slack.notify(`:warning: *${name}* 失敗詳細（最大10件）\n\`\`\`${detail}\`\`\``);
+        }
       }
       return summary;
     } catch (err) {
       console.error(`[job:${name}] 異常終了: ${err.message}`);
+      // 異常終了はまとめを待たずスタックトレース付きで即時通知する
       await slack.notifyError(`ジョブ異常終了: ${name}`, err);
       return null;
     }
   }
 
   /**
-   * 全ジョブ実行後の通数残数チェック。残数が閾値を下回ったら Slack へ警告する。
-   * 確認自体の失敗でジョブ結果を汚さないよう、ここで握って警告ログのみ残す。
+   * 通数残数の警告文を返す（警告不要・確認失敗時は null）。
    */
-  async function checkQuota(lineClient, warnRemaining) {
+  async function quotaWarning(lineClient, warnRemaining) {
     try {
       const quota = await lineClient.getQuota();
       if (quota.limited && quota.remaining <= warnRemaining) {
-        await slack.notify(
+        return (
           `:warning: *LINE 月間通数の残りが少なくなっています*\n` +
-            `使用済み ${quota.used} / 上限 ${quota.limit}（残り ${quota.remaining} 通）\n` +
-            `プランの見直し、または休眠フォローの日次上限の引き下げを検討してください。`
+          `使用済み ${quota.used} / 上限 ${quota.limit}（残り ${quota.remaining} 通）\n` +
+          `プランの見直し、または休眠フォローの日次上限の引き下げを検討してください。`
         );
       }
+      return null;
     } catch (err) {
       console.error(`[quota] 残数確認失敗: ${err.message}`);
+      return null;
     }
   }
 
-  /**
-   * 毎日 10:00 JST に全ジョブを直列実行する。
-   * 配信時刻は 10:00 JST 固定（深夜・早朝の送信は絶対に行わない）。
-   * @param {Record<string, () => Promise<object>>} jobs
-   * @param {{lineClient?: object, quotaWarnRemaining?: number}} [options]
-   */
-  function scheduleDaily(jobs, { lineClient, quotaWarnRemaining = 500 } = {}) {
-    return cron.schedule(
-      '0 10 * * *',
-      async () => {
-        for (const [name, jobFn] of Object.entries(jobs)) {
-          await runJob(name, jobFn);
-        }
-        if (lineClient) {
-          await checkQuota(lineClient, quotaWarnRemaining);
-        }
-      },
-      { timezone: 'Asia/Tokyo' }
-    );
+  /** 単発の通数チェック＋通知（手動確認用） */
+  async function checkQuota(lineClient, warnRemaining) {
+    const warning = await quotaWarning(lineClient, warnRemaining);
+    if (warning) await slack.notify(warning);
   }
 
-  return { runJob, scheduleDaily, checkQuota };
+  /**
+   * 全ジョブを直列実行し、結果を1つのまとめメッセージで通知する。
+   * 失敗詳細（ジョブごとに最大5件）と通数警告も同じメッセージに含める。
+   */
+  async function runAll(jobs, { lineClient, quotaWarnRemaining = 500 } = {}) {
+    const lines = [];
+    const failures = [];
+    for (const [name, jobFn] of Object.entries(jobs)) {
+      const summary = await runJob(name, jobFn, { notify: false });
+      lines.push(summaryLine(name, summary));
+      if (summary?.failed > 0 && summary.errors?.length) {
+        const label = JOB_LABELS[name] ?? name;
+        failures.push(
+          ...summary.errors.slice(0, 5).map((e) => `${label}: customer=${e.customerId}: ${e.message}`)
+        );
+      }
+    }
+
+    let text = `:package: *本日のジョブ実行結果*\n${lines.join('\n')}`;
+    if (failures.length > 0) {
+      text += `\n\n:warning: 失敗詳細（ジョブごとに最大5件）\n\`\`\`${failures.join('\n')}\`\`\``;
+    }
+    if (lineClient) {
+      const warning = await quotaWarning(lineClient, quotaWarnRemaining);
+      if (warning) text += `\n\n${warning}`;
+    }
+    await slack.notify(text);
+  }
+
+  /**
+   * 毎日 10:00 JST に全ジョブを実行する。
+   * 配信時刻は 10:00 JST 固定（深夜・早朝の送信は絶対に行わない）。
+   */
+  function scheduleDaily(jobs, options = {}) {
+    return cron.schedule('0 10 * * *', () => runAll(jobs, options), { timezone: 'Asia/Tokyo' });
+  }
+
+  return { runJob, runAll, scheduleDaily, checkQuota, quotaWarning };
 }

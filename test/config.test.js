@@ -25,6 +25,12 @@ test('SEND_MODE 未指定時のデフォルトは dry_run', () => {
   assert.equal(config.sendMode, 'dry_run');
 });
 
+test('通数警告のデフォルト閾値はライトプラン想定の500', () => {
+  const config = loadConfig({ ...baseEnv });
+  assert.equal(config.quotaWarnRemaining, 500);
+  assert.equal(loadConfig({ ...baseEnv, QUOTA_WARN_REMAINING: '3000' }).quotaWarnRemaining, 3000);
+});
+
 test('不正な SEND_MODE は拒否する', () => {
   assert.throws(() => loadConfig({ ...baseEnv, SEND_MODE: 'production' }), /SEND_MODE/);
 });

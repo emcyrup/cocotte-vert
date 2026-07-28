@@ -40,27 +40,48 @@ test('失敗があると詳細通知が追加で送られる（顧客は内部 i
   assert.match(notifications[1], /customer=7/);
 });
 
-test('通数残数が閾値以下なら Slack へ警告する', async () => {
+const quotaClient = (limit, remaining) => ({
+  getQuota: async () => ({ limited: true, limit, used: limit - remaining, remaining }),
+});
+
+test('ライトプラン: 残り10%（500通）を切ると警告する', async () => {
   const { slack, notifications } = makeSlack();
   const runner = createJobRunner({ slack });
-  const lineClient = {
-    getQuota: async () => ({ limited: true, limit: 5000, used: 4800, remaining: 200 }),
-  };
 
-  await runner.checkQuota(lineClient, 300);
+  await runner.checkQuota(quotaClient(5000, 480));
   assert.equal(notifications.length, 1);
-  assert.match(notifications[0], /残り 200 通/);
+  assert.match(notifications[0], /残り 480 通・約10%/);
+});
+
+test('スタンダードプランでも設定変更なしで残り10%（3,000通）判定になる', async () => {
+  const { slack, notifications } = makeSlack();
+  const runner = createJobRunner({ slack });
+
+  await runner.checkQuota(quotaClient(30000, 2500));
+  assert.equal(notifications.length, 1, '上限に応じて閾値が自動で上がる');
+
+  await runner.checkQuota(quotaClient(30000, 4000));
+  assert.equal(notifications.length, 1, '残り13%では警告しない');
 });
 
 test('残数が十分なら警告しない', async () => {
   const { slack, notifications } = makeSlack();
   const runner = createJobRunner({ slack });
-  const lineClient = {
-    getQuota: async () => ({ limited: true, limit: 5000, used: 100, remaining: 4900 }),
-  };
 
-  await runner.checkQuota(lineClient, 300);
+  await runner.checkQuota(quotaClient(5000, 4900));
   assert.equal(notifications.length, 0);
+});
+
+test('通数を明示した場合は割合より優先される', async () => {
+  const { slack, notifications } = makeSlack();
+  const runner = createJobRunner({ slack });
+
+  // 残り800通は既定（10%=500）では警告されないが、閾値1000を明示すれば警告される
+  await runner.checkQuota(quotaClient(5000, 800));
+  assert.equal(notifications.length, 0);
+
+  await runner.checkQuota(quotaClient(5000, 800), { warnRemaining: 1000 });
+  assert.equal(notifications.length, 1);
 });
 
 test('無制限プラン（type=none）は警告しない', async () => {
@@ -68,7 +89,7 @@ test('無制限プラン（type=none）は警告しない', async () => {
   const runner = createJobRunner({ slack });
   const lineClient = { getQuota: async () => ({ limited: false, used: 100 }) };
 
-  await runner.checkQuota(lineClient, 300);
+  await runner.checkQuota(lineClient);
   assert.equal(notifications.length, 0);
 });
 
@@ -81,7 +102,7 @@ test('残数確認の失敗はジョブを止めず警告も出さない', async
     },
   };
 
-  await runner.checkQuota(lineClient, 300);
+  await runner.checkQuota(lineClient);
   assert.equal(notifications.length, 0);
 });
 
@@ -118,7 +139,7 @@ test('runAll: 失敗詳細と通数警告も同じメッセージに含まれる
     getQuota: async () => ({ limited: true, limit: 5000, used: 4700, remaining: 300 }),
   };
 
-  await runner.runAll({ preReminder: async () => withFailure }, { lineClient, quotaWarnRemaining: 500 });
+  await runner.runAll({ preReminder: async () => withFailure }, { lineClient });
 
   assert.equal(notifications.length, 1);
   const text = notifications[0];

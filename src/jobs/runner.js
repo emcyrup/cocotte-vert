@@ -60,18 +60,22 @@ export function createJobRunner({ slack }) {
 
   /**
    * 通数残数の警告文を返す（警告不要・確認失敗時は null）。
+   * 閾値は上限の割合から算出する。プランを変えても設定変更が要らないようにするため。
+   * warnRemaining を明示した場合のみ、その通数を閾値として使う。
    */
-  async function quotaWarning(lineClient, warnRemaining) {
+  async function quotaWarning(lineClient, { warnRatio = 0.1, warnRemaining = null } = {}) {
     try {
       const quota = await lineClient.getQuota();
-      if (quota.limited && quota.remaining <= warnRemaining) {
-        return (
-          `:warning: *LINE 月間通数の残りが少なくなっています*\n` +
-          `使用済み ${quota.used} / 上限 ${quota.limit}（残り ${quota.remaining} 通）\n` +
-          `プランの見直し、または休眠フォローの日次上限の引き下げを検討してください。`
-        );
-      }
-      return null;
+      if (!quota.limited) return null;
+      const threshold = warnRemaining ?? Math.ceil(quota.limit * warnRatio);
+      if (quota.remaining > threshold) return null;
+
+      const percent = Math.round((quota.remaining / quota.limit) * 100);
+      return (
+        `:warning: *LINE 月間通数の残りが少なくなっています*\n` +
+        `使用済み ${quota.used} / 上限 ${quota.limit}（残り ${quota.remaining} 通・約${percent}%）\n` +
+        `プランの見直し、または休眠フォローの日次上限の引き下げを検討してください。`
+      );
     } catch (err) {
       console.error(`[quota] 残数確認失敗: ${err.message}`);
       return null;
@@ -79,8 +83,8 @@ export function createJobRunner({ slack }) {
   }
 
   /** 単発の通数チェック＋通知（手動確認用） */
-  async function checkQuota(lineClient, warnRemaining) {
-    const warning = await quotaWarning(lineClient, warnRemaining);
+  async function checkQuota(lineClient, options = {}) {
+    const warning = await quotaWarning(lineClient, options);
     if (warning) await slack.notify(warning);
   }
 
@@ -88,7 +92,7 @@ export function createJobRunner({ slack }) {
    * 全ジョブを直列実行し、結果を1つのまとめメッセージで通知する。
    * 失敗詳細（ジョブごとに最大5件）と通数警告も同じメッセージに含める。
    */
-  async function runAll(jobs, { lineClient, quotaWarnRemaining = 500 } = {}) {
+  async function runAll(jobs, { lineClient, quotaWarnRatio, quotaWarnRemaining } = {}) {
     const lines = [];
     const failures = [];
     for (const [name, jobFn] of Object.entries(jobs)) {
@@ -107,7 +111,10 @@ export function createJobRunner({ slack }) {
       text += `\n\n:warning: 失敗詳細（ジョブごとに最大5件）\n\`\`\`${failures.join('\n')}\`\`\``;
     }
     if (lineClient) {
-      const warning = await quotaWarning(lineClient, quotaWarnRemaining);
+      const warning = await quotaWarning(lineClient, {
+        warnRatio: quotaWarnRatio,
+        warnRemaining: quotaWarnRemaining,
+      });
       if (warning) text += `\n\n${warning}`;
     }
     await slack.notify(text);

@@ -137,7 +137,11 @@ runner.scheduleDaily(
     dormant: createDormantJob({ pool, lineClient, dailyLimit: config.dormantDailyLimit }),
     birthday: createBirthdayJob({ pool, lineClient, couponUrl: config.birthdayCouponUrl }),
   },
-  { lineClient, quotaWarnRemaining: config.quotaWarnRemaining }
+  {
+    lineClient,
+    quotaWarnRatio: config.quotaWarnRatio,
+    quotaWarnRemaining: config.quotaWarnRemaining,
+  }
 );
 
 app.listen(config.port, () => {

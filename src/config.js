@@ -67,8 +67,11 @@ export function loadConfig(env = process.env) {
     adminUser: env.ADMIN_USER || null,
     adminPassword: env.ADMIN_PASSWORD || null,
     ingestApiToken: env.INGEST_API_TOKEN || null,
-    // デフォルトはライトプラン（月5,000通）の残り10%を想定
-    quotaWarnRemaining: Number(env.QUOTA_WARN_REMAINING || 500),
+    // 通数警告は上限の一定割合（既定10%）で判定する。割合ベースにしておけば
+    // プラン変更のたびに設定を直さずに済む（ライト5,000通→500 / スタンダード30,000通→3,000）。
+    // 通数で固定したい場合のみ QUOTA_WARN_REMAINING で明示する
+    quotaWarnRatio: Number(env.QUOTA_WARN_RATIO || 0.1),
+    quotaWarnRemaining: env.QUOTA_WARN_REMAINING ? Number(env.QUOTA_WARN_REMAINING) : null,
     port: Number(env.PORT || 3000),
   };
 }

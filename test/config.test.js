@@ -25,10 +25,14 @@ test('SEND_MODE 未指定時のデフォルトは dry_run', () => {
   assert.equal(config.sendMode, 'dry_run');
 });
 
-test('通数警告のデフォルト閾値はライトプラン想定の500', () => {
+test('通数警告は既定で上限の10%判定（通数固定は任意）', () => {
   const config = loadConfig({ ...baseEnv });
-  assert.equal(config.quotaWarnRemaining, 500);
-  assert.equal(loadConfig({ ...baseEnv, QUOTA_WARN_REMAINING: '3000' }).quotaWarnRemaining, 3000);
+  assert.equal(config.quotaWarnRatio, 0.1);
+  assert.equal(config.quotaWarnRemaining, null, '未指定なら割合判定を使う');
+
+  const fixed = loadConfig({ ...baseEnv, QUOTA_WARN_REMAINING: '800' });
+  assert.equal(fixed.quotaWarnRemaining, 800);
+  assert.equal(loadConfig({ ...baseEnv, QUOTA_WARN_RATIO: '0.2' }).quotaWarnRatio, 0.2);
 });
 
 test('不正な SEND_MODE は拒否する', () => {

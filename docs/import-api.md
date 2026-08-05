@@ -111,6 +111,12 @@ docker compose exec app node scripts/import-csv.js \
 - **顧客への通知**: 承認・見送りのどちらでも顧客へ Push で結果を伝える（1件につき通数を1消費）
 - **連投防止**: 承認待ちが3件たまっている顧客は追加でリクエストできない
 
+動作確認用のデモメニューを一括投入する（同名は飛ばすため何度実行しても安全）:
+
+```bash
+docker compose exec app node scripts/seed-menus.js
+```
+
 リッチメニューの設定（左：ご予約／右：お客様情報）:
 
 ```bash

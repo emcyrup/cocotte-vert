@@ -4,8 +4,8 @@ Webhook と LIFF には**固定の HTTPS URL** が必要。構成は3通り。
 
 | 構成 | 対象 |
 |---|---|
-| A. 既存 EC2（Nginx 稼働中）+ Docker Compose | **推奨。既存のマルチテナント EC2 に載せる場合** |
-| B. 新規 VPS + Docker Compose（Caddy 同梱） | リバースプロキシが何もないサーバーの場合 |
+| A. 既存 EC2（Nginx 稼働中）+ Docker Compose | 既存のマルチテナント EC2 に載せる場合 |
+| B. 新規 VM / VPS + Docker Compose（Caddy 同梱） | **現在の検証環境はこれ**（GCP Compute Engine） |
 | C. Render（PaaS） | サーバー管理をしたくない場合（月約 $14、ドメイン不要） |
 
 ---
@@ -104,7 +104,7 @@ docker compose up -d --build   # マイグレーションも自動適用
 
 ---
 
-## 構成 B: 新規 VPS（リバースプロキシなし）
+## 構成 B: 新規 VM / VPS（リバースプロキシなし）
 
 Caddy（HTTPS 自動化）を同梱した standalone プロファイルで起動する。
 
@@ -117,6 +117,15 @@ DOMAIN=line.example.com
 docker compose --profile standalone up -d --build
 curl https://line.example.com/health
 ```
+
+### GCP Compute Engine の場合
+
+- 外部 IP は**静的**にする（エフェメラルのままだと再起動で変わり、DNS と証明書が壊れる）
+- VPC ファイアウォールで 80/443 を許可する（既定の `default-allow-http/https` タグを付けるか、
+  ルールを追加する）。**ここを開けないと Caddy が Let's Encrypt の検証に失敗し、HTTPS にならない**
+- 操作は必ず **VM に SSH した状態**で行う。Cloud Shell は別マシンで外部からの通信を受けられないため、
+  Cloud Shell 上で起動しても Webhook は届かない（プロンプトが `@cloudshell` なら間違い）
+- 無料ドメインで済ませる場合は DuckDNS などの A レコードを VM の外部 IP に向ける
 
 ---
 

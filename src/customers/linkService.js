@@ -58,22 +58,25 @@ export function createLinkService({ pool, slack }) {
         result = { ok: true, customerId, outcome: 'conflict' };
       } else if (matched) {
         // 既存顧客にヒット。新規作成ではなく既存レコードを更新する。
-        // 氏名は店舗の台帳側を正とし、LIFF の入力では上書きしない
         if (selfRow && selfRow.id !== matched.id) {
           // follow 時の仮レコードから line_user_id を外して既存顧客側へ付け替える
           await client.query('UPDATE customers SET line_user_id = NULL WHERE id = $1', [
             selfRow.id,
           ]);
         }
+        // 初回の紐付けでは氏名を上書きしない（店舗の台帳側を正とする）が、
+        // 既に本人と紐付いているレコードなら、本人による訂正として氏名も反映する
+        const isOwnRecord = matched.line_user_id === lineUserId;
         await client.query(
           `UPDATE customers
            SET line_user_id = $2,
+               name = CASE WHEN $5::boolean THEN $6 ELSE name END,
                birthday = COALESCE($3, birthday),
                opt_out = $4,
                is_blocked = false,
                updated_at = now()
            WHERE id = $1`,
-          [matched.id, lineUserId, birthday || null, optOut]
+          [matched.id, lineUserId, birthday || null, optOut, isOwnRecord, name.trim()]
         );
         if (selfRow && selfRow.id !== matched.id) {
           // 履歴のない仮レコードだけ掃除する。履歴があれば残して人間のマージ判断に委ねる

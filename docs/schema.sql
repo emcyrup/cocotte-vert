@@ -1,8 +1,18 @@
--- LINE リマインド配信システム 初期スキーマ
+-- LINE リマインド配信システム スキーマ全体像（読み物用）
+--
+-- ※ これは現在のスキーマを1枚にまとめた参照用ファイルであり、適用対象ではない。
+--    実際に適用されるのは src/db/migrations/NNN_*.sql（`npm run migrate`）で、
+--    スキーマの正はそちら。差異が出た場合は migrations を信じること。
+--
 -- 全タイムスタンプは TIMESTAMPTZ。日付比較は Asia/Tokyo に明示変換して行う。
 
-CREATE TYPE reservation_status AS ENUM ('confirmed', 'cancelled', 'visited', 'no_show');
-CREATE TYPE job_type          AS ENUM ('pre_reminder', 'after_visit', 'dormant', 'birthday');
+-- requested: LIFF 予約フォームからの承認待ち。配信ジョブは confirmed のみを対象にするため、
+-- 未承認の予約に前々日確認は飛ばない
+CREATE TYPE reservation_status AS ENUM
+  ('requested', 'confirmed', 'cancelled', 'visited', 'no_show');
+-- reservation_confirmed: 予約リクエストを承認したときに顧客へ送る確定通知
+CREATE TYPE job_type          AS ENUM
+  ('pre_reminder', 'after_visit', 'dormant', 'birthday', 'reservation_confirmed');
 CREATE TYPE send_status       AS ENUM ('sent', 'failed', 'skipped');
 
 CREATE TABLE staff (
@@ -35,7 +45,8 @@ CREATE TABLE reservations (
   id            BIGSERIAL PRIMARY KEY,
   customer_id   BIGINT NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
   staff_id      BIGINT REFERENCES staff(id),
-  menu          TEXT,
+  menu          TEXT,                      -- menus.name のコピー。後からメニュー名を変えても過去の予約は変わらない
+  note          TEXT,                      -- 予約フォームの「ご要望」欄
   reserved_at   TIMESTAMPTZ NOT NULL,
   status        reservation_status NOT NULL DEFAULT 'confirmed',
   confirmed_by_customer BOOLEAN NOT NULL DEFAULT FALSE,  -- 前々日確認への返答
@@ -73,8 +84,29 @@ CREATE TABLE customer_responses (
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- 予約フォームで顧客が選ぶメニュー。管理画面から登録する
+CREATE TABLE menus (
+  id               BIGSERIAL PRIMARY KEY,
+  name             TEXT NOT NULL,
+  duration_minutes INTEGER,                          -- 任意。顧客への表示と店舗の目安に使う
+  active           BOOLEAN NOT NULL DEFAULT TRUE,
+  sort_order       INTEGER NOT NULL DEFAULT 0,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX menus_active_idx ON menus (active, sort_order, id);
+
+-- 実行時に変わる設定値（スタッフ通知先グループなど）。
+-- 環境変数と違い、再デプロイなしで更新できる
+CREATE TABLE app_settings (
+  key        TEXT PRIMARY KEY,
+  value      TEXT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- dedupe_key の命名規則
---   pre_reminder : pre_reminder:res:{reservation_id}
---   after_visit  : after_visit:res:{reservation_id}
---   dormant      : dormant:cust:{customer_id}:{YYYY-MM-DD}
---   birthday     : birthday:cust:{customer_id}:{YYYY}
+--   pre_reminder          : pre_reminder:res:{reservation_id}
+--   after_visit           : after_visit:res:{reservation_id}
+--   dormant               : dormant:cust:{customer_id}:{YYYY-MM-DD}
+--   birthday              : birthday:cust:{customer_id}:{YYYY}
+--   reservation_confirmed : reservation_{confirmed|cancelled}:res:{reservation_id}

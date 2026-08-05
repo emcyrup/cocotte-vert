@@ -18,13 +18,42 @@ async function main() {
     liff.login();
     return;
   }
+  const idToken = liff.getIDToken();
+
+  // 登録済みなら現在の内容を出して「変更」として使えるようにする
+  let registered = false;
+  try {
+    const profileRes = await fetch('./profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken }),
+    });
+    if (profileRes.ok) {
+      const profile = await profileRes.json();
+      if (profile.registered) {
+        registered = true;
+        document.getElementById('name').value = profile.name ?? '';
+        document.getElementById('phone').value = profile.phone ?? '';
+        document.getElementById('birthday').value = profile.birthday ?? '';
+        document.getElementById('consent').checked = profile.consent;
+        document.getElementById('heading').textContent = 'お客様情報の確認・変更';
+        document.getElementById('lead').textContent =
+          '現在ご登録いただいている内容です。変更する場合は書き換えて保存してください。';
+        submitBtn.textContent = '保存する';
+        document.getElementById('to-reserve').classList.remove('hidden');
+      }
+    }
+  } catch {
+    // 取得に失敗しても新規登録として続行できるようにする
+  }
+  document.getElementById('loading').classList.add('hidden');
+  document.getElementById('form').classList.remove('hidden');
 
   document.getElementById('form').addEventListener('submit', async (e) => {
     e.preventDefault();
     submitBtn.disabled = true;
     showStatus('送信中…', '');
     try {
-      const idToken = liff.getIDToken();
       const body = {
         idToken,
         name: document.getElementById('name').value,
@@ -48,7 +77,12 @@ async function main() {
         submitBtn.disabled = false;
         return;
       }
-      showStatus('ご登録ありがとうございました。この画面は閉じて構いません。', 'ok');
+      showStatus(
+        registered
+          ? '変更を保存しました。この画面は閉じて構いません。'
+          : 'ご登録ありがとうございました。この画面は閉じて構いません。',
+        'ok'
+      );
       // LIFF ブラウザ内ならウィンドウを閉じる
       setTimeout(() => { if (liff.isInClient()) liff.closeWindow(); }, 1500);
     } catch (err) {
@@ -58,4 +92,7 @@ async function main() {
   });
 }
 
-main().catch(() => showStatus('初期化に失敗しました。LINE アプリから開き直してください。', 'error'));
+main().catch(() => {
+  document.getElementById('loading').classList.add('hidden');
+  showStatus('初期化に失敗しました。LINE アプリから開き直してください。', 'error');
+});

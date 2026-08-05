@@ -48,6 +48,34 @@ test('不正な電話番号は登録前に弾く', async () => {
   assert.equal(queries.length, 0, 'DB に触れない');
 });
 
+test('本人が既に紐付いているレコードなら、氏名の訂正も反映する', async () => {
+  const { pool, slack, queries } = makeFakes({
+    byPhone: [{ id: 7, line_user_id: 'U-new' }], // 本人の既存レコード
+    byLine: [{ id: 7 }],
+  });
+  const service = createLinkService({ pool, slack });
+
+  await service.registerFromLiff({ ...baseInput, name: '山田 花子（訂正）' });
+
+  const update = queries.find((q) => /SET line_user_id = \$2/.test(q.sql));
+  assert.match(update.sql, /name = CASE WHEN \$5::boolean THEN \$6 ELSE name END/);
+  assert.equal(update.params[4], true, '本人のレコードなので氏名を更新する');
+  assert.equal(update.params[5], '山田 花子（訂正）');
+});
+
+test('初回の紐付けでは氏名を上書きしない（店舗の台帳を正とする）', async () => {
+  const { pool, slack, queries } = makeFakes({
+    byPhone: [{ id: 7, line_user_id: null }], // まだ誰とも紐付いていない台帳の行
+    byLine: [],
+  });
+  const service = createLinkService({ pool, slack });
+
+  await service.registerFromLiff({ ...baseInput });
+
+  const update = queries.find((q) => /SET line_user_id = \$2/.test(q.sql));
+  assert.equal(update.params[4], false, '氏名は上書きしない');
+});
+
 test('電話番号が既存顧客に一致したら新規作成せず既存レコードを更新する', async () => {
   const { pool, slack, queries } = makeFakes({
     byPhone: [{ id: 7, line_user_id: null }],

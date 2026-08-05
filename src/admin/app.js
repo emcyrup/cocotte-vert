@@ -53,19 +53,24 @@ async function loadReservations() {
   for (const r of reservations) {
     const tr = document.createElement('tr');
 
+    // data-label は狭い画面のカード表示で見出しとして使う。
+    // 日時と担当は折り返すと読みにくいので nowrap にする
     const cells = [
-      fmtJst(r.reserved_at),
-      r.customer_name,
-      r.menu ?? '-',
-      r.staff_name ?? '-',
+      { label: '日時', text: fmtJst(r.reserved_at), nowrap: true },
+      { label: '顧客', text: r.customer_name },
+      { label: 'メニュー', text: r.menu ?? '-' },
+      { label: '担当', text: r.staff_name ?? '-', nowrap: true },
     ];
-    for (const text of cells) {
+    for (const cell of cells) {
       const td = document.createElement('td');
-      td.textContent = text;
+      td.textContent = cell.text;
+      td.dataset.label = cell.label;
+      if (cell.nowrap) td.className = 'nowrap';
       tr.appendChild(td);
     }
 
     const statusTd = document.createElement('td');
+    statusTd.dataset.label = '状態';
     statusTd.className = `status-${r.status}`;
     statusTd.textContent = STATUS_LABELS[r.status] ?? r.status;
     if (r.status === 'confirmed' && r.confirmed_by_customer) {
@@ -77,21 +82,10 @@ async function loadReservations() {
     tr.appendChild(statusTd);
 
     const actionTd = document.createElement('td');
+    actionTd.dataset.label = '操作';
     actionTd.className = 'row-actions';
 
-    // 配信メッセージのテスト送信（宛先は常にテスト用アカウント）
-    for (const [type, label] of [
-      ['preReminder', '📩前々日'],
-      ['afterVisit', '📩フォロー'],
-    ]) {
-      const btn = document.createElement('button');
-      btn.textContent = label;
-      btn.className = 'ghost';
-      btn.title = 'テスト送信（テスト用アカウントに届きます）';
-      btn.onclick = () => testSend({ type, reservationId: r.id });
-      actionTd.appendChild(btn);
-    }
-
+    // 日常操作（来店/取消/無断）を先に、テスト送信を後ろに置く
     if (r.status === 'confirmed') {
       for (const [status, label, cls] of [
         ['visited', '来店', ''],
@@ -113,6 +107,19 @@ async function loadReservations() {
         };
         actionTd.appendChild(btn);
       }
+    }
+
+    // 配信メッセージのテスト送信（宛先は常にテスト用アカウント）
+    for (const [type, label] of [
+      ['preReminder', '📩前々日'],
+      ['afterVisit', '📩フォロー'],
+    ]) {
+      const btn = document.createElement('button');
+      btn.textContent = label;
+      btn.className = 'ghost';
+      btn.title = 'テスト送信（テスト用アカウントに届きます）';
+      btn.onclick = () => testSend({ type, reservationId: r.id });
+      actionTd.appendChild(btn);
     }
     tr.appendChild(actionTd);
     tbody.appendChild(tr);

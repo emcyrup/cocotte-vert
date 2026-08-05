@@ -154,13 +154,33 @@ git push で自動再デプロイ。Free プランはスリープして Webhook 
 
 ### 1. VM にデプロイ用 SSH 鍵を用意
 
-ローカル（または VM 上）で鍵ペアを作り、公開鍵を VM に登録する:
+VM 上で鍵ペアを作る:
 
 ```bash
-ssh-keygen -t ed25519 -f deploy_key -N "" -C "github-actions-deploy"
-# 公開鍵を VM の authorized_keys へ追加
-cat deploy_key.pub >> ~/.ssh/authorized_keys   # VM 上で実行する場合
+ssh-keygen -t ed25519 -f ~/.ssh/deploy_key -N "" -C "github-actions-deploy"
+echo "$(whoami):$(cat ~/.ssh/deploy_key.pub) $(whoami)"   # ← この1行を控える
 ```
+
+> **GCP では `authorized_keys` に直接追記してはいけない。**
+> ゲストエージェントがインスタンスのメタデータを正として `authorized_keys` を定期的に
+> 書き直すため、手で追記した鍵は**数十分後に予告なく消える**。
+> 消えた後のデプロイは `Permission denied (publickey)` で失敗し、
+> 「昨日まで動いていたのに」という形で表面化する。
+
+公開鍵は **メタデータ** に登録する（Cloud Console: 該当インスタンス → 編集 → SSH 認証鍵 → 項目を追加 →
+上で控えた行を貼り付け → 保存）。gcloud なら:
+
+```bash
+echo "$(whoami):$(cat ~/.ssh/deploy_key.pub) $(whoami)" > /tmp/ssh-key.txt
+gcloud compute instances add-metadata <インスタンス名> \
+  --zone=<ゾーン> --metadata-from-file=ssh-keys=/tmp/ssh-key.txt
+```
+
+`add-metadata` は既存の `ssh-keys` を**置き換える**。他に登録済みの鍵がある場合は、
+先に `gcloud compute instances describe <インスタンス名> --format="value(metadata.items.ssh-keys)"` で
+取得し、追記した内容を渡すこと。
+
+EC2 / 一般の VPS では、従来どおり `cat deploy_key.pub >> ~/.ssh/authorized_keys` で構わない。
 
 ### 2. GitHub リポジトリに登録
 
@@ -186,10 +206,26 @@ docker compose --profile standalone up -d --build
 
 ### 動作
 
-- 全ブランチのプッシュ / PR → `npm test`（98件）
+- 全ブランチのプッシュ / PR → `npm test`
 - main へのプッシュ（PR マージ含む）→ テスト成功後、SSH で VM に入り
   `git pull` + `docker compose up -d --build` + ヘルスチェックまで実行
+  （マイグレーションはコンテナ起動時に自動適用される）
 - 失敗時は GitHub の Actions タブに赤で表示される
+
+### デプロイが失敗したとき
+
+| 症状 | 原因 |
+|---|---|
+| `Permission denied (publickey)` | VM の `authorized_keys` から公開鍵が消えている（GCP なら上記のメタデータ登録漏れ）。`cat ~/.ssh/authorized_keys` に `# Added by Google` の一時鍵しか無ければこれ |
+| `VM_SSH_KEY が秘密鍵として読めません` | Secret に公開鍵（`.pub`）を貼っている、または `-----BEGIN/END-----` 行が欠けている |
+| 接続がタイムアウトする | VM の外部 IP が変わった（静的 IP にする）、またはファイアウォールで 22 番が塞がっている |
+
+デプロイを待たずに反映したい場合は、VM 上で手動実行しても同じ結果になる:
+
+```bash
+cd cocotte-vert && git pull --ff-only origin main
+docker compose --profile standalone up -d --build
+```
 
 ## どの構成でも守ること
 

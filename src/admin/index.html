@@ -11,24 +11,65 @@
     main { max-width: 900px; margin: 0 auto; padding: 16px; }
     section { background: #fff; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
     h2 { font-size: 1rem; margin: 0 0 12px; border-left: 4px solid #06c755; padding-left: 8px; }
-    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-    th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eee; }
+    .note { font-size: 0.8rem; color: #666; margin: -4px 0 12px; line-height: 1.6; }
+
+    /* 横に長い表は枠を広げず、この中でスクロールさせる */
+    .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    table { width: 100%; min-width: 560px; border-collapse: collapse; font-size: 0.85rem; }
+    /* keep-all で日本語が語中で改行されるのを防ぐ。
+       単独で入りきらない長い語だけ break-word で折る */
+    th, td { text-align: left; padding: 8px; border-bottom: 1px solid #eee; vertical-align: top;
+             word-break: keep-all; overflow-wrap: break-word; }
     th { color: #666; font-weight: 600; white-space: nowrap; }
-    input, select, button { font-size: 0.9rem; padding: 7px 10px; border: 1px solid #ccc; border-radius: 6px; }
-    button { background: #06c755; color: #fff; border: none; cursor: pointer; }
+    td.nowrap { white-space: nowrap; }
+
+    input, select, button { font: inherit; font-size: 0.9rem; padding: 7px 10px; border: 1px solid #ccc; border-radius: 6px; }
+    /* min-width:0 がないと flex 内で入力欄が縮まず、枠からはみ出す */
+    input, select { min-width: 0; max-width: 100%; }
+    button { background: #06c755; color: #fff; border: none; cursor: pointer; white-space: nowrap; }
     button.sub { background: #6b7280; }
     button.warn { background: #dc2626; }
     button.ghost { background: #fff; color: #333; border: 1px solid #ccc; }
+
     form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    form input[type="text"], form input[type="tel"], form select { flex: 1 1 190px; }
+    form input[type="date"], form input[type="datetime-local"] { flex: 0 1 auto; }
+    form button { flex: 0 0 auto; }
+
     .status-confirmed { color: #059669; }
     .status-visited { color: #2563eb; }
     .status-cancelled, .status-no_show { color: #9ca3af; }
-    .badge { font-size: 0.7rem; background: #e5e7eb; border-radius: 4px; padding: 2px 6px; margin-left: 4px; }
+    .badge { display: inline-block; font-size: 0.7rem; background: #e5e7eb; border-radius: 4px; padding: 2px 6px; margin-left: 4px; }
     .badge.ok { background: #d1fae5; color: #065f46; }
+
     #msg { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
-           background: #1f2937; color: #fff; padding: 10px 20px; border-radius: 8px; display: none; }
-    .row-actions { display: flex; gap: 4px; }
+           background: #1f2937; color: #fff; padding: 10px 16px; border-radius: 8px; display: none;
+           width: max-content; max-width: calc(100vw - 32px); line-height: 1.5; z-index: 10;
+           box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2); }
+
+    /* 操作ボタンは折り返して縦に積む（列を無限に広げない） */
+    .row-actions { display: flex; flex-wrap: wrap; gap: 4px; max-width: 200px; }
     .row-actions button { padding: 4px 8px; font-size: 0.75rem; }
+
+    @media (max-width: 640px) {
+      main, section { padding: 12px; }
+      /* 狭い画面では入力欄を1行ずつ縦積みにする */
+      form > input, form > select, form > button { flex: 1 1 100%; }
+
+      /* 表は横スクロールさせず、1予約=1カードに組み替える
+         （操作ボタンが画面外に隠れるのを防ぐため） */
+      .table-wrap { overflow-x: visible; }
+      table { min-width: 0; }
+      thead { display: none; }
+      table, tbody, tr, td { display: block; }
+      tr { border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
+      td { border: none; padding: 2px 0; white-space: normal; }
+      td::before { content: attr(data-label) "： "; color: #888; font-size: 0.75rem; }
+      td[data-label="日時"] { font-weight: 700; font-size: 0.95rem; margin-bottom: 4px; }
+      td[data-label="日時"]::before, td[data-label="操作"]::before { content: none; }
+      .row-actions { max-width: none; margin-top: 8px; }
+      .row-actions button { flex: 1 1 auto; padding: 8px; font-size: 0.8rem; }
+    }
   </style>
 </head>
 <body>
@@ -42,12 +83,14 @@
         <input type="date" id="list-to" />
         <button type="submit" class="ghost">表示</button>
       </form>
-      <table>
-        <thead>
-          <tr><th>日時</th><th>顧客</th><th>メニュー</th><th>担当</th><th>状態</th><th>操作</th></tr>
-        </thead>
-        <tbody id="reservations"></tbody>
-      </table>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>日時</th><th>顧客</th><th>メニュー</th><th>担当</th><th>状態</th><th>操作</th></tr>
+          </thead>
+          <tbody id="reservations"></tbody>
+        </table>
+      </div>
     </section>
 
     <section>
@@ -65,7 +108,7 @@
 
     <section>
       <h2>配信メッセージのテスト送信</h2>
-      <p style="font-size:0.8rem;color:#666;margin-top:0;">
+      <p class="note">
         日付条件を待たずに実物のメッセージを確認できます。宛先は常にテスト用アカウント（顧客には届きません）。
         予約に紐づく「前々日確認」「来店フォロー」は上の予約一覧の📩ボタンから送れます。
       </p>

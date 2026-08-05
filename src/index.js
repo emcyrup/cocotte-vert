@@ -76,6 +76,40 @@ const verifyIdToken = config.liffChannelId
   ? createIdTokenVerifier({ channelId: config.liffChannelId })
   : null;
 
+// 登録済みの顧客が「お客様情報」を開いたときに、現在の内容を出して変更できるようにする
+app.post('/liff/profile', async (req, res) => {
+  if (!verifyIdToken) return res.status(503).json({ error: 'liff_not_configured' });
+  try {
+    let payload;
+    try {
+      payload = await verifyIdToken(req.body?.idToken);
+    } catch {
+      return res.status(401).json({ error: 'invalid_token' });
+    }
+    const { rows } = await pool.query(
+      `SELECT name, phone_norm, birthday, opt_out
+       FROM customers
+       WHERE line_user_id = $1 AND is_blocked = false`,
+      [payload.sub]
+    );
+    // 電話番号が未登録なら本登録前（follow 時の仮レコード）とみなす
+    if (rows.length === 0 || !rows[0].phone_norm) return res.json({ registered: false });
+
+    const c = rows[0];
+    return res.json({
+      registered: true,
+      name: c.name,
+      phone: c.phone_norm,
+      // DATE 型は JST 前提。ISO 変換で日付がずれないよう文字列のまま返す
+      birthday: c.birthday ? new Date(c.birthday).toLocaleDateString('sv-SE') : null,
+      consent: !c.opt_out,
+    });
+  } catch (err) {
+    console.error(`[liff/profile] 失敗: ${err.message}`);
+    return res.status(500).json({ error: 'internal' });
+  }
+});
+
 app.post('/liff/register', async (req, res) => {
   if (!verifyIdToken) return res.status(503).json({ ok: false, error: 'liff_not_configured' });
   try {

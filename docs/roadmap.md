@@ -2,6 +2,10 @@
 
 フェーズ順に進める。各フェーズの「完了条件」を満たすまで次に進まない。
 
+> **進捗（2026-08 時点）: Phase 0〜6 は実装・実機確認とも完了。Phase 7 は未着手（任意）。**
+> 検証環境（GCP VM + Docker Compose）で稼働中。送信モードは `test` のため顧客には配信されない。
+> 実店舗投入までに必要な作業は「本番投入前チェックリスト」を参照。
+
 ---
 
 ## Phase 0 — アカウントとチャネルの準備（手作業）
@@ -23,7 +27,8 @@ Claude Code の作業ではなく、事前に人手で済ませておく項目�
 ## Phase 1 — 基盤
 
 - Express 起動、`config.js` で環境変数を検証
-- PostgreSQL 接続、`docs/schema.sql` を初期マイグレーションとして適用
+- PostgreSQL 接続、`src/db/migrations/` を `npm run migrate` で適用
+  （スキーマの正はマイグレーション。`docs/schema.sql` は全体像の参照用）
 - `line/client.js` に `SEND_MODE`（dry_run / test / live）の3段階ガードを実装
 - Webhook 署名検証、`follow` / `unfollow` イベント処理
 - `notify/slack.js`
@@ -84,34 +89,47 @@ Claude Code の作業ではなく、事前に人手で済ませておく項目�
 
 ---
 
-## Phase 6 — 予約データの取り込み
+## Phase 6 — 予約データの取り込み（完了）
 
-現時点で予約管理をどうするかが未確定のため、`reservations` への書き込みは**アダプタ層で吸収する設計**にしておく。
+`reservations` への書き込みは `src/reservations/service.js` のアダプタ層に集約し、
+**3つの入口すべてを実装済み**。上流が変わってもここから下は作り直さない。
 
-想定される3パターン、いずれになっても上流以外は作り直さずに済むようにする。
+1. **自作の予約フォーム（LIFF）** — 顧客がリッチメニューから希望日時をリクエスト。
+   店舗の承認（`requested` → `confirmed`）で確定する
+2. **外部予約 SaaS 連携** — `POST /api/import/reservations` に `external_id` で冪等 upsert。
+   EPARK など CSV しかない場合は `scripts/import-csv.js` で変換して投入
+3. **スタッフ手入力** — 管理画面（`/admin/`）から登録
 
-1. **自作の予約フォーム（LIFF）** — そのまま `reservations` に INSERT
-2. **外部予約 SaaS 連携** — Webhook または定期ポーリングで取得し、`external_id` で冪等に upsert
-3. **スタッフ手入力** — 簡易管理画面（Vanilla JS）
+来店実績は、管理画面の「来店」ボタンまたは取り込み API の `status: "visited"` で更新し、
+`customers.last_visit_at` へ自動反映される（Phase 4・5 のジョブはこれを起点に動く）。
 
-来店実績（`status = 'visited'` と `last_visit_at`）の更新経路も同時に決める必要がある。ここが埋まらないと Phase 4・5 が動かない。
+詳細は [import-api.md](import-api.md) を参照。
 
 ---
 
-## Phase 7 — マルチテナント化（任意）
+## 本番投入前チェックリスト
 
-他店舗へ横展開する場合。既存の AWS EC2 マルチテナント構成（Nginx リバースプロキシ + ユーザー分離 + PostgreSQL 権限分離）に乗せる。
+コードは揃っているため、残るは設定と運用判断のみ。
+
+- [ ] 本番用 LINE 公式アカウントの作成と `.env` 切り替え
+      （LIFF・顧客の紐付けを引き継ぐため、既存と**同一プロバイダー**を推奨）
+- [ ] 既存顧客台帳（氏名・電話番号・誕生日）の初期投入。LIFF 登録時の突合率に直結する
+- [ ] メニューの登録（管理画面）。デモ投入は `node scripts/seed-menus.js`
+- [ ] リッチメニュー画像（2500×843px）の用意と `scripts/setup-richmenu.js` の実行
+- [ ] 誕生日クーポンの作成と `BIRTHDAY_COUPON_URL` の設定
+- [ ] `SEND_MODE=dry_run` で数日運用し、毎朝のジョブ実行サマリを確認
+- [ ] **休眠フォローの初回対象件数を dry-run で確認**（一斉送信で通数を使い切らないため必須）
+- [ ] `SEND_MODE=live` へ切り替え（`.env` に書かず実行時に渡す）
+- [ ] DB の日次バックアップ自動化
+
+---
+
+## Phase 7 — マルチテナント化（任意・未着手）
+
+他店舗へ横展開する場合。
 
 - `tenants` テーブルと全テーブルへの `tenant_id` 付与
 - テナントごとの LINE チャネル資格情報の保管
 - 文面テンプレートのテナント別カスタマイズ
 
----
-
-## Claude Code への最初の指示（例）
-
-```
-docs/spec.md と docs/roadmap.md、CLAUDE.md を読んでから、Phase 1 だけを実装してください。
-Phase 2 以降には手を付けないこと。
-実装前に、ファイル構成と各ファイルの責務を箇条書きで提示して確認を取ってください。
-```
+現状は1店舗構成のため未着手。横展開が決まった時点で着手する。

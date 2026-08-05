@@ -19,6 +19,10 @@ LIFF 側は `liff.getProfile()` で `userId` を取得し、フォーム内容�
 
 **注意**: LIFF から送られてきた `userId` を無条件で信用しない。`liff.getIDToken()` を送らせ、サーバ側で LINE の検証エンドポイントに投げて `sub` を取り出す。なりすまし防止のため必須。
 
+登録済みの顧客が再度 LIFF を開いた場合は、現在の登録内容を表示して**変更フォーム**として使える。
+氏名は初回の紐付け時のみ台帳側を正として上書きしないが、既に本人と紐付いたレコードでは
+本人による訂正として反映する。
+
 ### 補助経路：あいさつメッセージからのテキスト応答
 
 LIFF 未対応端末や離脱者向けに、「電話番号を送信してください」と案内し、`message` イベントで電話番号らしき文字列を受け取ったら突合する。ヒットしなければスタッフへ Slack 通知して手動対応に回す。
@@ -139,6 +143,34 @@ WHERE c.line_user_id IS NOT NULL
 
 ---
 
+## 2-5. 予約リクエスト（LIFF 予約フォーム）
+
+顧客はリッチメニューの「ご予約」から予約フォームを開き、希望日時をリクエストできる。
+
+**承認制**: 顧客が送信した予約は `requested`（承認待ち）で作られ、店舗が承認して初めて
+`confirmed` になる。配信ジョブは `confirmed` のみを対象にしているため、未承認の予約に
+前々日確認が飛ぶことはない。
+
+| 項目 | 内容 |
+|---|---|
+| 顧客の特定 | LINE の ID トークンをサーバー側で検証。未登録なら登録フォームへ誘導し、リクエストは受け付けない |
+| 日時 | 自由入力。過去・半年より先は拒否 |
+| メニュー | 管理画面で登録した `menus` から選択。予約側には名称をコピーして保存する |
+| 担当 | 任意。指名なしも可 |
+| ご要望 | 任意（500文字まで）。`reservations.note` に保存 |
+| 連投防止 | 承認待ちが3件たまっている顧客は追加リクエスト不可 |
+
+**通知**
+
+- 送信時: 顧客へ「まだ確定ではない」旨を応答（通数無料）、スタッフへ要対応通知
+- 承認時: 顧客へ確定通知を Push（`dedupe_key` = `reservation_confirmed:res:{id}`、`job_type` = `reservation_confirmed`）
+- 見送り時: 顧客へ調整の連絡を Push
+
+**スタッフの操作**: 管理画面の予約一覧で「承認」または「見送り」。承認待ちは対応漏れを防ぐため、
+期間指定に関わらず常に一覧の先頭に表示する。
+
+---
+
 ## 3. Webhook イベント設計
 
 | イベント | 処理 |
@@ -154,7 +186,7 @@ WHERE c.line_user_id IS NOT NULL
 
 ---
 
-## 4. スタッフ通知（Slack）
+## 4. スタッフ通知
 
 通知先は Slack Incoming Webhook、またはスタッフ用 LINE グループ（`STAFF_NOTIFY_CHANNEL` で選択。両方も可）。
 **LINE グループへの Push は1件につき通数を1消費する**（グループ宛は人数に関わらず1通）点に留意し、
@@ -163,31 +195,60 @@ WHERE c.line_user_id IS NOT NULL
 | トリガー | 内容 |
 |---|---|
 | 新規予約 | 顧客名・日時・メニュー・担当 |
+| 予約リクエスト（LIFF） | 顧客名・希望日時・メニュー・ご要望。**要対応**として強調 |
 | 予約変更希望（postback） | 顧客名・現予約日時。**要対応**として強調 |
 | フォロー回答が concern | 顧客名・回答本文・前回来店日 |
 | 突合失敗 | 受信した電話番号・LINE表示名 |
-| ジョブ実行結果 | 毎日のサマリ（対象件数・成功・失敗） |
+| ジョブ実行結果 | 毎日のサマリ（対象件数・成功・失敗）を**1メッセージに集約**して送る |
+| 月間通数の残数警告 | 残数が閾値を下回った場合のみ、ジョブ実行結果に追記 |
 | ジョブ異常終了 | エラー内容とスタックトレース |
+
+日時は全て `YYYY年M月D日(曜) HH:MM` 形式（JST）に整形する。ISO 文字列のまま出さない。
+
+### 4-1. LINE グループ ID の自動設定
+
+グループ ID は管理画面にも LINE アプリにも表示されないため、**Bot をグループに招待した時点で
+`join` イベントから取得し、`app_settings` に保存する**。`.env` を手で編集する運用にしない。
+
+乗っ取り防止のため、挙動は以下に限定する。
+
+- 未設定のとき招待された → そのグループを通知先として設定し、グループへ設定完了を返信する
+- 既に設定済みで**別の**グループに招待された → 切り替えず、招待されたグループへ「既に別のグループが設定済み」と返信
+- 設定済みのグループから退出させられた（`leave`）→ 設定を削除する
+
+環境変数 `STAFF_LINE_GROUP_ID` は手動上書き用。DB の値が優先される。
 
 ---
 
 ## 5. 環境変数
 
-```
-DATABASE_URL=postgres://...
-LINE_CHANNEL_ACCESS_TOKEN=
-LINE_CHANNEL_SECRET=
-LIFF_ID=
-SLACK_WEBHOOK_URL=
-ANTHROPIC_API_KEY=
-SEND_MODE=dry_run          # dry_run | test | live
-TEST_LINE_USER_ID=         # SEND_MODE=test のときの送信先
-DORMANT_DAILY_LIMIT=50
-TZ=Asia/Tokyo
-PORT=3000
-```
+実際に設定する値と説明は [.env.example](../.env.example) を正とする。ここでは役割ごとの整理のみ。
 
-`config.js` で起動時に必須変数の存在を検証し、欠けていたら即座に落とす。
+| 変数 | 必須 | 役割 |
+|---|---|---|
+| `DATABASE_URL` | ○ | PostgreSQL 接続文字列 |
+| `LINE_CHANNEL_ACCESS_TOKEN` | ○ | Messaging API チャネルの長期アクセストークン |
+| `LINE_CHANNEL_SECRET` | ○ | Webhook 署名検証用（32文字。LINE Login チャネルの値ではない） |
+| `LIFF_ID` | LIFF を使うなら | 登録フォーム・予約フォームの LIFF アプリ ID |
+| `LIFF_CHANNEL_ID` | 通常不要 | ID トークン検証用チャネル ID。既定では `LIFF_ID` の先頭部分から導出する |
+| `SEND_MODE` | | `dry_run`（既定）/ `test` / `live`。`live` は env ファイルに書かず実行時に渡す |
+| `TEST_LINE_USER_ID` | `test` 時 | 宛先の差し替え先 |
+| `STAFF_NOTIFY_CHANNEL` | | `slack`（既定）/ `line` / `both` |
+| `STAFF_LINE_GROUP_ID` | 通常不要 | Bot をグループに招待すると自動設定される（4-1 参照）。固定したい場合のみ |
+| `SLACK_WEBHOOK_URL` | slack を含む場合 | Incoming Webhook |
+| `ANTHROPIC_API_KEY` | | フォロー回答の分類（Haiku）に使用。未設定なら分類せず `concern` 扱い |
+| `DORMANT_DAILY_LIMIT` | | 休眠フォローの日次上限（既定 50） |
+| `BIRTHDAY_COUPON_URL` | | 誕生日クーポンの URL。空なら文面のみ |
+| `QUOTA_WARN_RATIO` | | 月間通数の残数警告の閾値（既定 0.1 = 上限の10%）。割合判定のためプラン変更時も設定変更不要 |
+| `QUOTA_WARN_REMAINING` | | 通数で固定したい場合のみ。設定するとこちらが優先 |
+| `ADMIN_USER` / `ADMIN_PASSWORD` | 管理画面を使うなら | Basic 認証。未設定なら `/admin` は無効 |
+| `INGEST_API_TOKEN` | 外部連携するなら | 取り込み API の Bearer トークン。未設定なら API は無効 |
+| `TZ` | ○ | `Asia/Tokyo` 固定 |
+| `PORT` | | 既定 3000 |
+
+`config.js` で起動時に必須変数（`DATABASE_URL` / `LINE_CHANNEL_ACCESS_TOKEN` / `LINE_CHANNEL_SECRET`）の
+存在を検証し、欠けていたら即座に落とす。`STAFF_NOTIFY_CHANNEL` に応じた依存変数
+（slack なら `SLACK_WEBHOOK_URL`）も同時に検証する。
 
 ---
 

@@ -17,10 +17,12 @@ export function createDormantJob({ pool, lineClient, dailyLimit = 50 }) {
          AND c.is_blocked = false
          AND c.last_visit_at IS NOT NULL
          AND c.last_visit_at <= (now() AT TIME ZONE 'Asia/Tokyo')::date - INTERVAL '90 day'
-         -- 未来の確定予約がある顧客は除外
+         -- 未来の予約（確定・承認待ち）がある顧客は除外
          AND NOT EXISTS (
            SELECT 1 FROM reservations r
-           WHERE r.customer_id = c.id AND r.status = 'confirmed' AND r.reserved_at > now()
+           WHERE r.customer_id = c.id
+             AND r.status IN ('confirmed', 'requested')
+             AND r.reserved_at > now()
          )
          -- 直近90日以内に休眠フォローを送っていない（送信は90日に1回まで）
          AND NOT EXISTS (

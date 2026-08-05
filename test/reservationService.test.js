@@ -104,8 +104,17 @@ test('setStatus: visited で last_visit_at が更新される', async () => {
   const client = {
     query: async (sql, params) => {
       queries.push({ sql, params });
-      if (/UPDATE reservations SET status/.test(sql)) {
-        return { rows: [{ customer_id: 7, reserved_at: new Date('2026-07-20T05:00:00Z') }] };
+      // 顧客通知の要否を判断するため、更新前の予約を読んでから UPDATE する
+      if (/SELECT r\.id, r\.status/.test(sql)) {
+        return {
+          rows: [
+            {
+              id: 55, status: 'confirmed', customer_id: 7,
+              reserved_at: new Date('2026-07-20T05:00:00Z'),
+              customer_name: '山田', line_user_id: 'U1', menu: null, staff_name: null,
+            },
+          ],
+        };
       }
       return { rows: [] };
     },

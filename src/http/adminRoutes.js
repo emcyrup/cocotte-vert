@@ -35,6 +35,54 @@ export function createAdminRouter({ pool, reservationService, lineClient, config
     }
   });
 
+  // ---- メニュー（LIFF 予約フォームの選択肢）----
+  router.get('/menus', async (_req, res, next) => {
+    try {
+      const { rows } = await pool.query(
+        `SELECT id, name, duration_minutes, active FROM menus ORDER BY sort_order, id`
+      );
+      res.json({ menus: rows });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.post('/menus', async (req, res, next) => {
+    try {
+      const name = req.body?.name?.trim();
+      if (!name) return res.status(400).json({ error: 'invalid_name' });
+      const duration = req.body?.durationMinutes ? Number(req.body.durationMinutes) : null;
+      if (duration !== null && (!Number.isInteger(duration) || duration <= 0)) {
+        return res.status(400).json({ error: 'invalid_duration' });
+      }
+      const { rows } = await pool.query(
+        `INSERT INTO menus (name, duration_minutes, sort_order)
+         VALUES ($1, $2, COALESCE((SELECT max(sort_order) + 1 FROM menus), 0))
+         RETURNING id, name, duration_minutes, active`,
+        [name, duration]
+      );
+      res.json({ ok: true, menu: rows[0] });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // 過去の予約が参照している可能性があるため削除はせず、有効/無効の切り替えにする
+  router.patch('/menus/:id', async (req, res, next) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isInteger(id)) return res.status(400).json({ error: 'invalid_id' });
+      const { rows } = await pool.query(
+        `UPDATE menus SET active = $2 WHERE id = $1 RETURNING id`,
+        [id, Boolean(req.body?.active)]
+      );
+      if (rows.length === 0) return res.status(404).json({ error: 'not_found' });
+      res.json({ ok: true });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   // ---- 顧客 ----
   router.get('/customers', async (req, res, next) => {
     try {
@@ -88,7 +136,7 @@ export function createAdminRouter({ pool, reservationService, lineClient, config
       const from = req.query.from || null;
       const to = req.query.to || null;
       const { rows } = await pool.query(
-        `SELECT r.id, r.reserved_at, r.menu, r.status, r.confirmed_by_customer,
+        `SELECT r.id, r.reserved_at, r.menu, r.status, r.confirmed_by_customer, r.note,
                 c.id AS customer_id, c.name AS customer_name, s.name AS staff_name
          FROM reservations r
          JOIN customers c ON c.id = r.customer_id
@@ -96,7 +144,9 @@ export function createAdminRouter({ pool, reservationService, lineClient, config
          WHERE (r.reserved_at AT TIME ZONE 'Asia/Tokyo')::date
                BETWEEN COALESCE($1::date, (now() AT TIME ZONE 'Asia/Tokyo')::date)
                    AND COALESCE($2::date, (now() AT TIME ZONE 'Asia/Tokyo')::date + INTERVAL '14 day')
-         ORDER BY r.reserved_at`,
+            -- 承認待ちは期間外でも必ず表示する（対応漏れを防ぐため）
+            OR (r.status = 'requested' AND r.reserved_at > now())
+         ORDER BY (r.status = 'requested') DESC, r.reserved_at`,
         [from, to]
       );
       res.json({ reservations: rows });

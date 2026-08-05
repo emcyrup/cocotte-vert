@@ -1,6 +1,7 @@
 // リッチメニューを作成し、全ユーザーのデフォルトに設定する。
 // 使い方: node --env-file-if-missing=.env scripts/setup-richmenu.js --image=path/to/menu.png
 // 画像は 2500x843 px（PNG/JPEG、1MB 以下）を用意すること。
+// 左右2分割で「ご予約」「お客様情報」の導線を置く（画像もこの割付に合わせる）。
 import { readFile } from 'node:fs/promises';
 import { messagingApi } from '@line/bot-sdk';
 import { loadConfig } from '../src/config.js';
@@ -30,13 +31,16 @@ async function main() {
   const { richMenuId } = await client.createRichMenu({
     size: { width: 2500, height: 843 },
     selected: true,
-    name: `liff-register-${Date.now()}`,
+    name: `main-${Date.now()}`,
     chatBarText: 'メニュー',
     areas: [
       {
-        // 全面タップで LIFF 登録フォームを開く（Phase 2 時点では導線1つに絞る）
-        bounds: { x: 0, y: 0, width: 2500, height: 843 },
-        action: { type: 'uri', label: 'お客様情報の登録', uri: config.liffUrl },
+        bounds: { x: 0, y: 0, width: 1250, height: 843 },
+        action: { type: 'uri', label: 'ご予約', uri: config.liffReserveUrl },
+      },
+      {
+        bounds: { x: 1250, y: 0, width: 1250, height: 843 },
+        action: { type: 'uri', label: 'お客様情報', uri: config.liffUrl },
       },
     ],
   });

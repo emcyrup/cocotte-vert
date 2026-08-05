@@ -104,7 +104,63 @@ app.post('/liff/register', async (req, res) => {
 });
 
 // ---- 予約データの取り込み（Phase 6）----
-const reservationService = createReservationService({ pool, slack });
+const reservationService = createReservationService({ pool, slack, lineClient });
+
+// LIFF 予約フォーム。顧客の特定は ID トークン検証で得た sub のみを信用する
+app.post('/liff/reserve/options', async (req, res) => {
+  if (!verifyIdToken) return res.status(503).json({ error: 'liff_not_configured' });
+  try {
+    let payload;
+    try {
+      payload = await verifyIdToken(req.body?.idToken);
+    } catch {
+      return res.status(401).json({ error: 'invalid_token' });
+    }
+    const { rows: customers } = await pool.query(
+      `SELECT name FROM customers WHERE line_user_id = $1 AND is_blocked = false`,
+      [payload.sub]
+    );
+    if (customers.length === 0) return res.json({ registered: false });
+
+    const { rows: menus } = await pool.query(
+      `SELECT id, name, duration_minutes FROM menus WHERE active = true ORDER BY sort_order, id`
+    );
+    const { rows: staff } = await pool.query(
+      `SELECT id, name FROM staff WHERE active = true ORDER BY id`
+    );
+    return res.json({ registered: true, customerName: customers[0].name, menus, staff });
+  } catch (err) {
+    console.error(`[liff/reserve/options] 失敗: ${err.message}`);
+    return res.status(500).json({ error: 'internal' });
+  }
+});
+
+app.post('/liff/reserve', async (req, res) => {
+  if (!verifyIdToken) return res.status(503).json({ ok: false, error: 'liff_not_configured' });
+  try {
+    const { idToken, menuId, staffId, reservedAt, note } = req.body ?? {};
+    let payload;
+    try {
+      payload = await verifyIdToken(idToken);
+    } catch {
+      return res.status(401).json({ ok: false, error: 'invalid_token' });
+    }
+    const result = await reservationService.createRequest({
+      lineUserId: payload.sub,
+      menuId: menuId ? Number(menuId) : null,
+      staffId: staffId ? Number(staffId) : null,
+      reservedAt,
+      note,
+    });
+    if (!result.ok) return res.status(400).json(result);
+    // 予約 ID など内部情報は返さない
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error(`[liff/reserve] 失敗: ${err.message}`);
+    await slack.notifyError('LIFF 予約リクエスト処理失敗', err);
+    return res.status(500).json({ ok: false, error: 'internal' });
+  }
+});
 
 // 管理画面（Basic 認証。ADMIN_USER / ADMIN_PASSWORD 未設定なら無効）
 const adminGuard = basicAuth({ user: config.adminUser, password: config.adminPassword });

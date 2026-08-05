@@ -76,24 +76,6 @@
   <header>予約管理</header>
   <main>
     <section>
-      <h2>予約一覧</h2>
-      <form id="list-form">
-        <input type="date" id="list-from" />
-        <span>〜</span>
-        <input type="date" id="list-to" />
-        <button type="submit" class="ghost">表示</button>
-      </form>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr><th>日時</th><th>顧客</th><th>メニュー</th><th>担当</th><th>状態</th><th>操作</th></tr>
-          </thead>
-          <tbody id="reservations"></tbody>
-        </table>
-      </div>
-    </section>
-
-    <section>
       <h2>新規予約</h2>
       <form id="new-reservation">
         <input type="text" id="cust-search" placeholder="顧客名 or 電話番号で検索" />
@@ -110,7 +92,7 @@
       <h2>配信メッセージのテスト送信</h2>
       <p class="note">
         日付条件を待たずに実物のメッセージを確認できます。宛先は常にテスト用アカウント（顧客には届きません）。
-        予約に紐づく「前々日確認」「来店フォロー」は上の予約一覧の📩ボタンから送れます。
+        予約に紐づく「前々日確認」「来店フォロー」は最下部の予約一覧の📩ボタンから送れます。
       </p>
       <form id="test-send">
         <input type="text" id="test-cust-search" placeholder="顧客名 or 電話番号で検索" />
@@ -137,6 +119,24 @@
         <input type="text" id="staff-name" placeholder="スタッフ名" required />
         <button type="submit">追加</button>
       </form>
+    </section>
+
+    <section>
+      <h2>予約一覧</h2>
+      <form id="list-form">
+        <input type="date" id="list-from" />
+        <span>〜</span>
+        <input type="date" id="list-to" />
+        <button type="submit" class="ghost">表示</button>
+      </form>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>日時</th><th>顧客</th><th>メニュー</th><th>担当</th><th>状態</th><th>操作</th></tr>
+          </thead>
+          <tbody id="reservations"></tbody>
+        </table>
+      </div>
     </section>
   </main>
   <div id="msg"></div>

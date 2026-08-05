@@ -2,8 +2,17 @@
 // 必ずここを経由して reservations に入れる。上流を差し替えてもここから下は作り直さない。
 import { normalizePhone } from '../customers/phone.js';
 import { formatJstDateTime } from '../util/jst.js';
+import {
+  buildConfirmedMessage,
+  buildDeclinedMessage,
+} from '../line/messages/reservationStatus.js';
 
-export function createReservationService({ pool, slack }) {
+// 顧客が同時に抱えられる承認待ちリクエストの上限（連投の抑止）
+const MAX_PENDING_REQUESTS = 3;
+// これより先の日時は受け付けない
+const MAX_DAYS_AHEAD = 180;
+
+export function createReservationService({ pool, slack, lineClient = null }) {
   async function findOrCreateStaff(client, staffName) {
     if (!staffName) return null;
     const { rows } = await client.query(
@@ -154,36 +163,159 @@ export function createReservationService({ pool, slack }) {
     return { ok: true, reservationId: rows[0].id };
   }
 
+  /**
+   * LIFF 予約フォームからのリクエスト。承認待ち（requested）で作成する。
+   * 顧客は LINE の userId で特定するため、未登録の場合は受け付けない。
+   */
+  async function createRequest({ lineUserId, menuId, staffId, reservedAt, note }) {
+    if (!reservedAt || Number.isNaN(Date.parse(reservedAt))) {
+      return { ok: false, error: 'invalid_reserved_at' };
+    }
+    const when = new Date(reservedAt);
+    if (when.getTime() <= Date.now()) return { ok: false, error: 'past_datetime' };
+    if (when.getTime() > Date.now() + MAX_DAYS_AHEAD * 86400000) {
+      return { ok: false, error: 'too_far_ahead' };
+    }
+    if (note && note.length > 500) return { ok: false, error: 'note_too_long' };
+
+    const { rows: customers } = await pool.query(
+      `SELECT id, name FROM customers WHERE line_user_id = $1 AND is_blocked = false`,
+      [lineUserId]
+    );
+    const customer = customers[0];
+    if (!customer) return { ok: false, error: 'not_registered' };
+
+    // 承認待ちを溜めすぎないようにする
+    const { rows: pending } = await pool.query(
+      `SELECT count(*)::int AS n FROM reservations
+       WHERE customer_id = $1 AND status = 'requested'`,
+      [customer.id]
+    );
+    if (pending[0].n >= MAX_PENDING_REQUESTS) return { ok: false, error: 'too_many_pending' };
+
+    // メニュー名は予約側にコピーする（後でメニューを改名しても過去の予約は変わらない）
+    let menuName = null;
+    if (menuId) {
+      const { rows } = await pool.query(
+        `SELECT name FROM menus WHERE id = $1 AND active = true`,
+        [menuId]
+      );
+      if (rows.length === 0) return { ok: false, error: 'invalid_menu' };
+      menuName = rows[0].name;
+    }
+
+    let staffName = null;
+    if (staffId) {
+      const { rows } = await pool.query(
+        `SELECT name FROM staff WHERE id = $1 AND active = true`,
+        [staffId]
+      );
+      if (rows.length === 0) return { ok: false, error: 'invalid_staff' };
+      staffName = rows[0].name;
+    }
+
+    const { rows } = await pool.query(
+      `INSERT INTO reservations (customer_id, staff_id, menu, reserved_at, status, note)
+       VALUES ($1, $2, $3, $4, 'requested', $5)
+       RETURNING id`,
+      [customer.id, staffId || null, menuName, reservedAt, note || null]
+    );
+
+    await slack.notify(
+      `:bell: *【要対応】LINEから予約リクエスト*\n` +
+        `顧客: ${customer.name}（customer=${customer.id}）\n` +
+        `希望日時: ${formatJstDateTime(when)}\n` +
+        `メニュー: ${menuName ?? '未選択'}\n担当: ${staffName ?? '指定なし'}\n` +
+        (note ? `ご要望: ${note}\n` : '') +
+        `管理画面で承認または見送りの操作をお願いします。`
+    );
+
+    return {
+      ok: true,
+      reservationId: rows[0].id,
+      customerName: customer.name,
+      menu: menuName,
+      staffName,
+    };
+  }
+
+  /**
+   * 承認待ちの予約が確定・見送りになったことを顧客へ知らせる（Push・通数を消費）。
+   * 通知の失敗でステータス更新を巻き戻さない。
+   */
+  async function notifyCustomerDecision(reservation, status) {
+    if (!lineClient || !reservation.line_user_id) return;
+    const payload = {
+      customerName: reservation.customer_name,
+      reservedAt: reservation.reserved_at,
+      menu: reservation.menu,
+      staffName: reservation.staff_name,
+    };
+    const message =
+      status === 'confirmed' ? buildConfirmedMessage(payload) : buildDeclinedMessage(payload);
+    try {
+      await lineClient.deliver({
+        customerId: reservation.customer_id,
+        lineUserId: reservation.line_user_id,
+        jobType: 'reservation_confirmed',
+        dedupeKey: `reservation_${status}:res:${reservation.id}`,
+        reservationId: reservation.id,
+        messages: [message],
+      });
+    } catch (err) {
+      console.error(`[reservation] 顧客への結果通知に失敗: ${err.message}`);
+    }
+  }
+
   /** 予約ステータスの更新。visited は last_visit_at にも反映する */
   async function setStatus(reservationId, status) {
     const allowed = ['confirmed', 'cancelled', 'visited', 'no_show'];
     if (!allowed.includes(status)) return { ok: false, error: 'invalid_status' };
 
     const client = await pool.connect();
+    let reservation;
+    let wasRequested = false;
     try {
       await client.query('BEGIN');
-      const { rows } = await client.query(
-        `UPDATE reservations SET status = $2, updated_at = now()
-         WHERE id = $1
-         RETURNING customer_id, reserved_at`,
-        [reservationId, status]
+      // 承認待ちからの遷移かどうかで顧客通知の要否が変わるため、変更前の状態を見る
+      const { rows: before } = await client.query(
+        `SELECT r.id, r.status, r.customer_id, r.reserved_at, r.menu,
+                c.name AS customer_name, c.line_user_id, s.name AS staff_name
+         FROM reservations r
+         JOIN customers c ON c.id = r.customer_id
+         LEFT JOIN staff s ON s.id = r.staff_id
+         WHERE r.id = $1
+         FOR UPDATE OF r`,
+        [reservationId]
       );
-      if (rows.length === 0) {
+      if (before.length === 0) {
         await client.query('ROLLBACK');
         return { ok: false, error: 'not_found' };
       }
+      reservation = before[0];
+      wasRequested = reservation.status === 'requested';
+
+      await client.query(
+        `UPDATE reservations SET status = $2, updated_at = now() WHERE id = $1`,
+        [reservationId, status]
+      );
       if (status === 'visited') {
-        await touchLastVisit(client, rows[0].customer_id, rows[0].reserved_at);
+        await touchLastVisit(client, reservation.customer_id, reservation.reserved_at);
       }
       await client.query('COMMIT');
-      return { ok: true };
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;
     } finally {
       client.release();
     }
+
+    // 顧客が送ったリクエストへの回答は、確定・見送りとも本人に伝える
+    if (wasRequested && (status === 'confirmed' || status === 'cancelled')) {
+      await notifyCustomerDecision(reservation, status);
+    }
+    return { ok: true, notifiedCustomer: wasRequested };
   }
 
-  return { upsertExternal, createManual, setStatus };
+  return { upsertExternal, createManual, createRequest, setStatus };
 }

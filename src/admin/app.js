@@ -26,6 +26,7 @@ function toJstIso(datetimeLocal) {
 }
 
 const STATUS_LABELS = {
+  requested: '承認待ち',
   confirmed: '確定',
   visited: '来店済',
   cancelled: 'キャンセル',
@@ -52,6 +53,8 @@ async function loadReservations() {
   tbody.innerHTML = '';
   for (const r of reservations) {
     const tr = document.createElement('tr');
+
+    if (r.status === 'requested') tr.className = 'requested';
 
     // data-label は狭い画面のカード表示で見出しとして使う。
     // 日時と担当は折り返すと読みにくいので nowrap にする
@@ -81,12 +84,50 @@ async function loadReservations() {
     }
     tr.appendChild(statusTd);
 
+    // 顧客がLIFFから書いたご要望
+    const noteTd = document.createElement('td');
+    noteTd.dataset.label = 'ご要望';
+    noteTd.textContent = r.note ?? '';
+    if (!r.note) noteTd.className = 'empty';
+    tr.appendChild(noteTd);
+
     const actionTd = document.createElement('td');
     actionTd.dataset.label = '操作';
     actionTd.className = 'row-actions';
 
-    // 日常操作（来店/取消/無断）を先に、テスト送信を後ろに置く
-    if (r.status === 'confirmed') {
+    const changeStatus = (status, confirmText) => async () => {
+      if (!confirm(confirmText)) return;
+      try {
+        const { notifiedCustomer } = await api(`/reservations/${r.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ status }),
+        });
+        showMsg(notifiedCustomer ? '更新し、お客様へLINEで通知しました' : '更新しました');
+        loadReservations();
+      } catch (err) {
+        showMsg(`エラー: ${err.message}`);
+      }
+    };
+
+    // 承認待ちは「承認／見送り」、確定済みは日常操作（来店/取消/無断）
+    if (r.status === 'requested') {
+      const approve = document.createElement('button');
+      approve.textContent = '承認';
+      approve.onclick = changeStatus(
+        'confirmed',
+        `「${r.customer_name}」の予約を確定し、お客様へ確定通知を送りますか？`
+      );
+      actionTd.appendChild(approve);
+
+      const decline = document.createElement('button');
+      decline.textContent = '見送り';
+      decline.className = 'sub';
+      decline.onclick = changeStatus(
+        'cancelled',
+        `「${r.customer_name}」の予約リクエストを見送り、お客様へその旨を送りますか？`
+      );
+      actionTd.appendChild(decline);
+    } else if (r.status === 'confirmed') {
       for (const [status, label, cls] of [
         ['visited', '来店', ''],
         ['cancelled', '取消', 'sub'],
@@ -95,16 +136,10 @@ async function loadReservations() {
         const btn = document.createElement('button');
         btn.textContent = label;
         if (cls) btn.className = cls;
-        btn.onclick = async () => {
-          if (!confirm(`「${r.customer_name}」の予約を「${STATUS_LABELS[status]}」にしますか？`)) return;
-          try {
-            await api(`/reservations/${r.id}`, { method: 'PATCH', body: JSON.stringify({ status }) });
-            showMsg('更新しました');
-            loadReservations();
-          } catch (err) {
-            showMsg(`エラー: ${err.message}`);
-          }
-        };
+        btn.onclick = changeStatus(
+          status,
+          `「${r.customer_name}」の予約を「${STATUS_LABELS[status]}」にしますか？`
+        );
         actionTd.appendChild(btn);
       }
     }
@@ -270,6 +305,61 @@ document.getElementById('new-staff').addEventListener('submit', async (e) => {
   }
 });
 
+// ---- メニュー管理 ----
+async function loadMenus() {
+  const { menus } = await api('/menus');
+  const ul = document.getElementById('menus');
+  ul.innerHTML = '';
+  if (menus.length === 0) {
+    const li = document.createElement('li');
+    li.className = 'off';
+    li.textContent = 'メニュー未登録（予約フォームに選択肢が出ません）';
+    ul.appendChild(li);
+    return;
+  }
+  for (const m of menus) {
+    const li = document.createElement('li');
+    if (!m.active) li.className = 'off';
+
+    const label = document.createElement('span');
+    label.textContent = m.duration_minutes ? `${m.name}（${m.duration_minutes}分）` : m.name;
+    li.appendChild(label);
+
+    const btn = document.createElement('button');
+    btn.textContent = m.active ? '停止' : '再開';
+    btn.className = m.active ? 'sub' : 'ghost';
+    btn.onclick = async () => {
+      try {
+        await api(`/menus/${m.id}`, { method: 'PATCH', body: JSON.stringify({ active: !m.active }) });
+        loadMenus();
+      } catch (err) {
+        showMsg(`エラー: ${err.message}`);
+      }
+    };
+    li.appendChild(btn);
+    ul.appendChild(li);
+  }
+}
+
+document.getElementById('new-menu').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  try {
+    await api('/menus', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: document.getElementById('menu-name').value,
+        durationMinutes: document.getElementById('menu-duration').value || null,
+      }),
+    });
+    showMsg('メニューを追加しました');
+    e.target.reset();
+    loadMenus();
+  } catch (err) {
+    showMsg(`エラー: ${err.message}`);
+  }
+});
+
 // 初期表示
 loadStaff().catch(() => showMsg('スタッフの取得に失敗しました'));
+loadMenus().catch(() => showMsg('メニューの取得に失敗しました'));
 loadReservations().catch((err) => showMsg(`エラー: ${err.message}`));

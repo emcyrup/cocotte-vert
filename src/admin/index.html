@@ -36,6 +36,10 @@
     form input[type="date"], form input[type="datetime-local"] { flex: 0 1 auto; }
     form button { flex: 0 0 auto; }
 
+    /* 承認待ちは見落とすと顧客を待たせるので、行ごと目立たせる */
+    tr.requested { background: #fffbeb; }
+    tr.requested td { border-bottom-color: #fde68a; }
+    .status-requested { color: #b45309; font-weight: 700; }
     .status-confirmed { color: #059669; }
     .status-visited { color: #2563eb; }
     .status-cancelled, .status-no_show { color: #9ca3af; }
@@ -47,8 +51,16 @@
            width: max-content; max-width: calc(100vw - 32px); line-height: 1.5; z-index: 10;
            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2); }
 
+    td.empty::after { content: "—"; color: #ccc; }
+
+    .chip-list { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; padding: 0; margin: 12px 0 0; }
+    .chip-list li { display: flex; align-items: center; gap: 6px; font-size: 0.85rem;
+                    border: 1px solid #ddd; border-radius: 999px; padding: 4px 6px 4px 12px; }
+    .chip-list li.off { color: #9ca3af; background: #fafafa; }
+    .chip-list button { padding: 3px 10px; font-size: 0.75rem; border-radius: 999px; }
+
     /* 操作ボタンは折り返して縦に積む（列を無限に広げない） */
-    .row-actions { display: flex; flex-wrap: wrap; gap: 4px; max-width: 200px; }
+    .row-actions { display: flex; flex-wrap: wrap; gap: 4px; max-width: 240px; }
     .row-actions button { padding: 4px 8px; font-size: 0.75rem; }
 
     @media (max-width: 640px) {
@@ -122,6 +134,20 @@
     </section>
 
     <section>
+      <h2>メニュー管理</h2>
+      <p class="note">
+        ここで登録したメニューが、LINEの予約フォームの選択肢になります。
+        過去の予約に残るため削除はできません。使わなくなったメニューは「停止」してください。
+      </p>
+      <form id="new-menu">
+        <input type="text" id="menu-name" placeholder="メニュー名（例：カット）" required />
+        <input type="number" id="menu-duration" placeholder="所要分（任意）" min="1" step="5" />
+        <button type="submit">追加</button>
+      </form>
+      <ul id="menus" class="chip-list"></ul>
+    </section>
+
+    <section>
       <h2>予約一覧</h2>
       <form id="list-form">
         <input type="date" id="list-from" />
@@ -132,7 +158,7 @@
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>日時</th><th>顧客</th><th>メニュー</th><th>担当</th><th>状態</th><th>操作</th></tr>
+            <tr><th>日時</th><th>顧客</th><th>メニュー</th><th>担当</th><th>状態</th><th>ご要望</th><th>操作</th></tr>
           </thead>
           <tbody id="reservations"></tbody>
         </table>

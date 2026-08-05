@@ -55,6 +55,8 @@ export function loadConfig(env = process.env) {
     // 通常は導出で足りるが、異なる構成の場合は LIFF_CHANNEL_ID で明示できる
     liffChannelId: env.LIFF_CHANNEL_ID || (liffId ? liffId.split('-')[0] : null),
     liffUrl: liffId ? `https://liff.line.me/${liffId}` : null,
+    // LIFF は URL 末尾にパスを足すとエンドポイント配下の別ページを開ける
+    liffReserveUrl: liffId ? `https://liff.line.me/${liffId}/reserve.html` : null,
     slackWebhookUrl: env.SLACK_WEBHOOK_URL || null,
     staffNotifyChannel,
     staffLineGroupId: env.STAFF_LINE_GROUP_ID || null,

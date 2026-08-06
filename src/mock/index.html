@@ -398,6 +398,36 @@ button.trow2:focus-visible{outline:2px solid var(--accent); outline-offset:-2px}
 .btn:focus-visible{outline:2px solid var(--honey); outline-offset:2px}
 textarea{width:100%; border:1px solid var(--line); border-radius:8px; background:var(--surface); color:var(--ink); font:inherit; font-size:13px; padding:10px; resize:vertical}
 
+/* ---------- 予約管理 ---------- */
+.frow{display:flex; flex-wrap:wrap; gap:8px; align-items:center}
+.frow input,.frow select{border:1px solid var(--line); border-radius:8px; background:var(--surface);
+  color:var(--ink); font:inherit; font-size:13px; padding:8px 10px; min-width:0}
+.frow input[type="text"],.frow input[type="tel"]{flex:1 1 190px}
+.frow select{flex:1 1 190px}
+.frow input:focus-visible,.frow select:focus-visible{outline:2px solid var(--accent); outline-offset:-1px}
+.hint{font-size:12px; color:var(--muted); margin:0 0 12px}
+/* .ghost はドラッグ中のゴースト（position:fixed）用なので、ボタンには使えない */
+.btn.sub{background:var(--surface2); color:var(--ink)}
+.rvname{white-space:nowrap}
+.rvat{white-space:nowrap}
+.rvnote{font-size:12px; color:var(--muted)}
+/* 承認待ちは見落とすと顧客を待たせるため、行ごと強調する */
+tr.await td{background:var(--warn-soft)}
+.rowacts{display:flex; flex-wrap:wrap; gap:5px}
+.sbtn{border:1px solid var(--line); background:var(--surface); color:var(--ink); font:inherit;
+  font-size:11.5px; font-weight:700; border-radius:7px; padding:4px 9px; cursor:pointer; white-space:nowrap}
+.sbtn:hover{background:var(--surface2)}
+.sbtn:focus-visible{outline:2px solid var(--accent); outline-offset:1px}
+.sbtn.pri{border-color:var(--accent); background:var(--accent); color:var(--accent-ink)}
+.sbtn.warn{border-color:var(--warn); color:var(--warn)}
+.sbtn.mut{color:var(--muted)}
+.chips{list-style:none; margin:12px 0 0; padding:0; display:flex; flex-wrap:wrap; gap:8px}
+.chips li{display:flex; align-items:center; gap:8px; background:var(--surface2); border:1px solid var(--line);
+  border-radius:99px; padding:5px 6px 5px 12px; font-size:12.5px}
+.chips li.off{opacity:.55}
+.chips .dur{color:var(--muted); font-size:11.5px}
+.resv2{grid-template-columns:1fr 1fr; margin-top:16px}
+
 @media (max-width:860px){
   .app{flex-direction:column}
   .side{width:100%; padding:10px 12px}
@@ -411,7 +441,7 @@ textarea{width:100%; border:1px solid var(--line); border-radius:8px; background
   .qbtn .qi{width:32px; height:32px; font-size:16px}
   .qbtn .qt{font-size:12.5px}
   .kpis{grid-template-columns:repeat(2,1fr)}
-  .dash2,.cust2,.snswrap,.shift2{grid-template-columns:1fr}
+  .dash2,.cust2,.snswrap,.shift2,.resv2{grid-template-columns:1fr}
   .card .bd{overflow-x:auto}          /* 幅を超える表はカード内でスクロール */
   .follow3{grid-template-columns:1fr}
   .main{padding:16px}
@@ -424,6 +454,22 @@ textarea{width:100%; border:1px solid var(--line); border-radius:8px; background
   .mline span{display:none}          /* 狭い画面では色ドットと件数のみ */
   .mline b{margin-left:0}
   .mcell .closed{font-size:10px; letter-spacing:0}
+}
+@media (max-width:640px){
+  /* 7列の表は潰れて読めないため、1予約=1カードに組み替える（管理画面と同じ方針） */
+  #s-resv .card .bd{overflow-x:visible}
+  #s-resv table,#s-resv tbody,#s-resv tr,#s-resv td{display:block}
+  #s-resv thead{display:none}
+  #s-resv tr{border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:10px}
+  #s-resv tr.await{background:var(--warn-soft)}
+  #s-resv tr.await td{background:none}
+  #s-resv td{border:0; padding:2px 0; white-space:normal}
+  #s-resv td::before{content:attr(data-label)"： "; color:var(--muted); font-size:11px}
+  #s-resv td.rvat{font-weight:700; font-size:14px; margin-bottom:2px}
+  #s-resv td.rvat::before,#s-resv td.rowacts::before{content:none}
+  #s-resv .rowacts{margin-top:8px}
+  #s-resv .sbtn{flex:1 1 auto; padding:7px 10px}
+  .frow input,.frow select,.frow .btn{flex:1 1 100%}
 }
 @media (prefers-reduced-motion: reduce){ *{transition:none !important} }
 </style>
@@ -441,6 +487,7 @@ textarea{width:100%; border:1px solid var(--line); border-radius:8px; background
     <div class="nav-label">メニュー</div>
     <button class="on" data-s="dash"><span class="ic">&#9632;</span>ダッシュボード</button>
     <button data-s="cal"><span class="ic">&#9633;</span>予約カレンダー</button>
+    <button data-s="resv"><span class="ic">&#9633;</span>予約管理</button>
     <button data-s="list"><span class="ic">&#9633;</span>顧客一覧</button>
     <button data-s="cust"><span class="ic">&#9633;</span>顧客カルテ</button>
     <button data-s="rem"><span class="ic">&#9633;</span>リマインド</button>
@@ -466,6 +513,7 @@ textarea{width:100%; border:1px solid var(--line); border-radius:8px; background
 
   <div class="quick" id="quick">
     <button class="qbtn" data-s="cal"><span class="qi">&#128197;</span><span class="qt">予約カレンダー<span class="qd">本日 12件・シフト反映</span></span></button>
+    <button class="qbtn" data-s="resv"><span class="qi">&#128221;</span><span class="qt">予約管理<span class="qd">承認待ち 2件</span></span></button>
     <button class="qbtn" data-s="list"><span class="qi">&#128100;</span><span class="qt">顧客一覧<span class="qd">10ご家族 / 14名</span></span></button>
     <button class="qbtn" data-s="cust"><span class="qi">&#128203;</span><span class="qt">顧客カルテ<span class="qd">来店履歴・パッチテスト</span></span></button>
     <button class="qbtn" data-s="rem"><span class="qi">&#128276;</span><span class="qt">リマインド<span class="qd">本日 12件 送信予定</span></span></button>
@@ -574,6 +622,122 @@ textarea{width:100%; border:1px solid var(--line); border-radius:8px; background
         <span><i style="background:var(--accent);position:relative;overflow:hidden"><i style="position:absolute;inset:0;background:repeating-linear-gradient(-45deg,rgba(255,255,255,.5) 0 3px,transparent 3px 6px);margin:0"></i></i>新規 +30分枠</span>
         <span><i style="background:repeating-linear-gradient(-45deg,var(--surface2) 0 4px,transparent 4px 8px)"></i>シフト休・定休</span>
         <span>&#11088; 新人スタッフ</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 予約管理 ================= -->
+<section class="screen" id="s-resv">
+  <div class="crumb">予約管理</div>
+  <h1>予約管理</h1>
+  <p class="sub">日々の予約操作をこの1画面で行います。LINEの予約フォームから届いたリクエストは
+  <b>承認するまで確定しません</b>。承認・見送りのどちらでもお客様へ自動でお知らせします。</p>
+
+  <div class="card">
+    <div class="hd"><h2>予約一覧</h2><span class="pill warn" id="awaitcnt">承認待ち 2件</span></div>
+    <div class="bd">
+      <div class="frow" style="margin-bottom:12px">
+        <input type="date" id="rv-from" value="2026-07-24" aria-label="開始日">
+        <span style="font-size:13px;color:var(--muted)">〜</span>
+        <input type="date" id="rv-to" value="2026-07-31" aria-label="終了日">
+        <button class="btn sub" id="rv-reload" type="button">表示</button>
+      </div>
+      <p class="hint">承認待ちは対応漏れを防ぐため、期間の指定に関わらず常に先頭へ表示します。
+      📩ボタンはテスト送信で、宛先はテスト用アカウントに固定されます（お客様には届きません）。</p>
+      <table>
+        <thead>
+          <tr><th>日時</th><th>お客様</th><th>メニュー</th><th>担当</th><th>状態</th><th>ご要望</th><th>操作</th></tr>
+        </thead>
+        <tbody id="rvrows"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="grid resv2">
+    <div class="card">
+      <div class="hd"><h2>新規予約</h2><span class="pill mut">スタッフ入力</span></div>
+      <div class="bd">
+        <p class="hint">電話や来店時のご予約をここで登録します。この経路で入れた予約は承認不要で確定します。</p>
+        <div class="frow" style="margin-bottom:8px">
+          <input type="text" id="nr-q" placeholder="お客様名 or 電話番号で検索">
+          <button class="btn sub" id="nr-search" type="button">検索</button>
+        </div>
+        <div class="frow" style="margin-bottom:8px">
+          <select id="nr-cust"><option value="">お客様を選択</option></select>
+        </div>
+        <div class="frow" style="margin-bottom:8px">
+          <input type="datetime-local" id="nr-at" value="2026-07-28T10:00" aria-label="日時">
+          <select id="nr-menu"><option value="">メニューを選択</option></select>
+        </div>
+        <div class="frow">
+          <select id="nr-staff">
+            <option value="">担当（任意）</option>
+            <option>佐藤</option><option>高橋</option><option>伊藤</option><option>中村</option><option>山本</option>
+          </select>
+          <button class="btn" id="nr-submit" type="button">予約を登録</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="hd"><h2>配信メッセージのテスト送信</h2><span class="pill good">誤爆しません</span></div>
+      <div class="bd">
+        <p class="hint">日付の条件を待たずに実物のメッセージを確認できます。宛先は常にテスト用アカウントで、
+        配信ログにも残らないため本番の配信には影響しません。予約に紐づく「前々日確認」「来店フォロー」は
+        一覧の📩ボタンから送れます。</p>
+        <div class="frow" style="margin-bottom:8px">
+          <input type="text" id="ts-q" placeholder="お客様名 or 電話番号で検索">
+          <button class="btn sub" id="ts-search" type="button">検索</button>
+        </div>
+        <div class="frow" style="margin-bottom:8px">
+          <select id="ts-cust"><option value="">お客様を選択</option></select>
+        </div>
+        <div class="frow">
+          <button class="btn sub" data-test="休眠フォロー" type="button">&#128233; 休眠フォロー</button>
+          <button class="btn sub" data-test="誕生日" type="button">&#128233; 誕生日</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid resv2">
+    <div class="card">
+      <div class="hd"><h2>メニュー管理</h2></div>
+      <div class="bd">
+        <p class="hint">ここで登録したメニューが、LINEの予約フォームの選択肢になります。
+        過去の予約に名前が残るため削除はできません。使わなくなったものは「停止」してください。</p>
+        <div class="frow">
+          <input type="text" id="mn-name" placeholder="メニュー名（例：カット）">
+          <input type="number" id="mn-min" placeholder="所要分" min="5" step="5" style="flex:0 0 110px">
+          <button class="btn" id="mn-add" type="button">追加</button>
+        </div>
+        <ul class="chips" id="mnlist"></ul>
+      </div>
+    </div>
+
+    <div style="display:grid; gap:16px; align-content:start">
+      <div class="card">
+        <div class="hd"><h2>お客様の登録</h2><span class="pill mut">LINE未連携</span></div>
+        <div class="bd">
+          <p class="hint">電話予約などLINEと連携していないお客様を登録します。
+          あとからLINEでご登録いただくと、電話番号が一致した時点で自動的に同じお客様として紐づきます。</p>
+          <div class="frow">
+            <input type="text" id="nc-name" placeholder="お名前">
+            <input type="tel" id="nc-tel" placeholder="電話番号">
+            <input type="date" id="nc-bd" aria-label="誕生日（任意）" style="flex:0 0 150px">
+            <button class="btn" id="nc-add" type="button">登録</button>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="hd"><h2>スタッフ追加</h2></div>
+        <div class="bd">
+          <div class="frow">
+            <input type="text" id="ns-name" placeholder="スタッフ名">
+            <button class="btn" id="ns-add" type="button">追加</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -1579,6 +1743,190 @@ function photo(i, no){
 }
 const p1 = document.getElementById('post1'), p2 = document.getElementById('post2');
 for (let i = 0; i < 14; i++) (i < 10 ? p1 : p2).appendChild(photo(i, i < 10 ? i + 1 : i - 9));
+
+// ================= 予約管理 =================
+// 管理画面（/admin/）と同じ操作をモックでも試せるようにしたもの。
+// 実データには一切つながらないため、承認や来店登録を押しても本番には影響しない。
+const RESV = [
+  { id:101, at:'7/26(日) 11:00', name:'佐伯 蓮',   menu:'カット',                 staff:'',     status:'requested', note:'はじめてなので、似合う長さを相談したいです。' },
+  { id:102, at:'7/29(水) 14:30', name:'岡田 美穂', menu:'カット＋カラー',         staff:'伊藤', status:'requested', note:'' },
+  { id:103, at:'7/24(金) 09:00', name:'田中 里奈', menu:'カット＋カラー',         staff:'佐藤', status:'confirmed', note:'', ok:true },
+  { id:104, at:'7/24(金) 17:00', name:'森田 陽菜', menu:'カット',                 staff:'佐藤', status:'confirmed', note:'子ども用のイスをお願いします。' },
+  { id:105, at:'7/25(土) 10:00', name:'田中 結菜', menu:'カット',                 staff:'佐藤', status:'confirmed', note:'', ok:true },
+  { id:106, at:'7/25(土) 11:30', name:'中島 悠真', menu:'カット＋カラー',         staff:'高橋', status:'confirmed', note:'' },
+  { id:107, at:'7/28(火) 13:00', name:'大西 亮',   menu:'カット＋ヘッドスパ',     staff:'佐藤', status:'confirmed', note:'' },
+  { id:108, at:'7/22(火) 10:00', name:'田中 里奈', menu:'シャンプー・ブロー（定額）', staff:'高橋', status:'visited',  note:'' },
+  { id:109, at:'7/21(月) 13:00', name:'藤本 恵子', menu:'カット',                 staff:'中村', status:'visited',  note:'' },
+  { id:110, at:'7/20(月) 15:00', name:'西村 大輔', menu:'シャンプー・ブロー（定額）', staff:'山本', status:'cancelled', note:'' },
+];
+const RV_STATUS = {
+  requested: ['承認待ち', 'warn'],
+  confirmed: ['確定',     'acc'],
+  visited:   ['来店済',   'good'],
+  cancelled: ['キャンセル','mut'],
+  no_show:   ['無断キャンセル','crit'],
+};
+const rvrows = document.getElementById('rvrows');
+const awaitcnt = document.getElementById('awaitcnt');
+
+function rvSetStatus(r, status, msg){
+  const before = r.status;
+  r.status = status;
+  renderResv();
+  showUndoToast(msg, () => { r.status = before; renderResv(); });
+}
+function renderResv(){
+  // 承認待ちは対応漏れを防ぐため、期間の指定に関わらず常に先頭へ出す
+  const list = [...RESV].sort((a, b) => (a.status === 'requested' ? 0 : 1) - (b.status === 'requested' ? 0 : 1));
+  rvrows.innerHTML = '';
+  list.forEach(r => {
+    const [label, cls] = RV_STATUS[r.status];
+    const tr = document.createElement('tr');
+    if (r.status === 'requested') tr.className = 'await';
+    tr.innerHTML = '<td class="num rvat" data-label="日時">' + r.at + '</td>'
+      + '<td class="rvname" data-label="お客様">' + r.name + ' 様</td>'
+      + '<td data-label="メニュー">' + r.menu + '</td>'
+      + '<td class="rvname" data-label="担当">' + (r.staff || '指名なし') + '</td>'
+      + '<td data-label="状態"><span class="pill ' + cls + '">' + label + '</span>'
+      + (r.status === 'confirmed' && r.ok ? ' <span class="pill good">本人確認済</span>' : '') + '</td>'
+      + '<td class="rvnote" data-label="ご要望">' + (r.note || '—') + '</td>';
+    const td = document.createElement('td');
+    td.className = 'rowacts';
+    td.dataset.label = '操作';
+    const mk = (label2, cls2, fn) => {
+      const b = document.createElement('button');
+      b.className = 'sbtn' + (cls2 ? ' ' + cls2 : '');
+      b.innerHTML = label2;
+      b.addEventListener('click', fn);
+      td.appendChild(b);
+    };
+    if (r.status === 'requested') {
+      mk('承認', 'pri', () => rvSetStatus(r, 'confirmed', r.name + ' 様の予約を確定し、LINEで確定通知を送りました'));
+      mk('見送り', 'mut', () => rvSetStatus(r, 'cancelled', r.name + ' 様へ、今回は見送る旨をLINEで送りました'));
+    } else if (r.status === 'confirmed') {
+      mk('来店', '', () => rvSetStatus(r, 'visited', r.name + ' 様を来店済にしました（最終来店日も更新）'));
+      mk('取消', 'mut', () => rvSetStatus(r, 'cancelled', r.name + ' 様の予約をキャンセルにしました'));
+      mk('無断', 'warn', () => rvSetStatus(r, 'no_show', r.name + ' 様の予約を無断キャンセルにしました'));
+    }
+    if (r.status === 'confirmed' || r.status === 'visited') {
+      mk('&#128233;前々日', 'mut', () => showToast('前々日確認のメッセージをテスト用アカウントへ送りました'));
+      mk('&#128233;フォロー', 'mut', () => showToast('来店7日後フォローのメッセージをテスト用アカウントへ送りました'));
+    }
+    tr.appendChild(td);
+    rvrows.appendChild(tr);
+  });
+  const waiting = RESV.filter(r => r.status === 'requested').length;
+  awaitcnt.textContent = waiting ? '承認待ち ' + waiting + '件' : '承認待ちなし';
+  awaitcnt.className = 'pill ' + (waiting ? 'warn' : 'mut');
+}
+renderResv();
+document.getElementById('rv-reload').addEventListener('click', () => {
+  const from = document.getElementById('rv-from').value, to = document.getElementById('rv-to').value;
+  showToast(from + ' 〜 ' + to + ' の予約を表示しました（モックのため一覧は変わりません）');
+});
+
+// ---- メニュー管理 ----
+const MENUS = [
+  { name:'カット', min:60, active:true },
+  { name:'前髪カット', min:15, active:true },
+  { name:'カット＋シャンプー・ブロー', min:75, active:true },
+  { name:'カラー', min:90, active:true },
+  { name:'カット＋カラー', min:120, active:true },
+  { name:'パーマ', min:120, active:true },
+  { name:'トリートメント', min:30, active:true },
+  { name:'ヘッドスパ', min:45, active:true },
+  { name:'夏季限定トリートメント', min:40, active:false },
+];
+const mnlist = document.getElementById('mnlist');
+function renderMenus(){
+  mnlist.innerHTML = '';
+  MENUS.forEach(m => {
+    const li = document.createElement('li');
+    if (!m.active) li.className = 'off';
+    li.innerHTML = '<span>' + m.name + (m.min ? ' <span class="dur num">' + m.min + '分</span>' : '') + '</span>';
+    const b = document.createElement('button');
+    b.className = 'sbtn' + (m.active ? ' mut' : ' pri');
+    b.textContent = m.active ? '停止' : '再開';
+    b.addEventListener('click', () => {
+      m.active = !m.active;
+      renderMenus(); fillMenuSelect();
+      showToast('「' + m.name + '」を' + (m.active ? '再開' : '停止') + 'しました');
+    });
+    li.appendChild(b);
+    mnlist.appendChild(li);
+  });
+}
+function fillMenuSelect(){
+  const sel = document.getElementById('nr-menu');
+  sel.innerHTML = '<option value="">メニューを選択</option>';
+  MENUS.filter(m => m.active).forEach(m => {
+    const o = document.createElement('option'); o.textContent = m.name; sel.appendChild(o);
+  });
+}
+renderMenus(); fillMenuSelect();
+document.getElementById('mn-add').addEventListener('click', () => {
+  const name = document.getElementById('mn-name').value.trim();
+  if (!name) { showToast('メニュー名を入力してください'); return; }
+  const min = Number(document.getElementById('mn-min').value) || null;
+  MENUS.push({ name, min, active:true });
+  document.getElementById('mn-name').value = ''; document.getElementById('mn-min').value = '';
+  renderMenus(); fillMenuSelect();
+  showToast('「' + name + '」を追加しました（予約フォームの選択肢に入ります）');
+});
+
+// ---- お客様検索（新規予約・テスト送信で共通） ----
+function fillCustomers(query, selectId){
+  const k = query.trim().toLowerCase();
+  const sel = document.getElementById(selectId);
+  sel.innerHTML = '<option value="">お客様を選択</option>';
+  let n = 0;
+  FAMILIES.forEach(o => o.members.forEach(d => {
+    if (k && !(o.name + d.n + o.tel).toLowerCase().includes(k)) return;
+    const opt = document.createElement('option');
+    opt.textContent = o.name + ' 様 / ' + d.n + '（' + o.tel + (o.line ? ' / LINE連携済' : ' / LINE未連携') + '）';
+    sel.appendChild(opt); n++;
+  }));
+  showToast(n ? n + ' 件見つかりました' : '該当するお客様が見つかりません');
+}
+document.getElementById('nr-search').addEventListener('click', () => fillCustomers(document.getElementById('nr-q').value, 'nr-cust'));
+document.getElementById('ts-search').addEventListener('click', () => fillCustomers(document.getElementById('ts-q').value, 'ts-cust'));
+
+document.getElementById('nr-submit').addEventListener('click', () => {
+  const cust = document.getElementById('nr-cust').value || document.getElementById('nr-cust').selectedOptions[0]?.textContent;
+  const at = document.getElementById('nr-at').value;
+  const menu = document.getElementById('nr-menu').value || document.getElementById('nr-menu').selectedOptions[0]?.textContent;
+  if (!cust || !at || !menu) { showToast('お客様・日時・メニューを指定してください'); return; }
+  const name = cust.split(' 様')[0];
+  const [date, time] = at.split('T');
+  const [, mo, da] = date.split('-');
+  const w = '日月火水木金土'[new Date(date + 'T00:00:00+09:00').getDay()];
+  RESV.unshift({ id: Date.now(), at: Number(mo) + '/' + Number(da) + '(' + w + ') ' + time,
+    name, menu, staff: document.getElementById('nr-staff').value, status:'confirmed', note:'' });
+  renderResv();
+  showToast(name + ' 様の予約を登録しました（スタッフ入力のため承認は不要です）');
+});
+
+document.querySelectorAll('[data-test]').forEach(b => {
+  b.addEventListener('click', () => {
+    const sel = document.getElementById('ts-cust');
+    if (!sel.selectedIndex) { showToast('先にお客様を選択してください'); return; }
+    showToast(b.dataset.test + 'のメッセージをテスト用アカウントへ送りました（お客様には届きません）');
+  });
+});
+
+document.getElementById('nc-add').addEventListener('click', () => {
+  const name = document.getElementById('nc-name').value.trim();
+  const tel = document.getElementById('nc-tel').value.trim();
+  if (!name || !tel) { showToast('お名前と電話番号を入力してください'); return; }
+  document.getElementById('nc-name').value = ''; document.getElementById('nc-tel').value = '';
+  showToast(name + ' 様を登録しました（LINE未連携のため配信対象外です）');
+});
+document.getElementById('ns-add').addEventListener('click', () => {
+  const name = document.getElementById('ns-name').value.trim();
+  if (!name) { showToast('スタッフ名を入力してください'); return; }
+  document.getElementById('ns-name').value = '';
+  showToast(name + ' さんを追加しました');
+});
 </script>
 </body>
 </html>

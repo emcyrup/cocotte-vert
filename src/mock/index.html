@@ -723,14 +723,27 @@ tr.await td{background:var(--warn-soft)}
         <div class="hd"><h2>料金表</h2><span class="pill mut">公式サイト掲載分</span></div>
         <div class="bd">
           <p class="hint">トリミングは犬種ごとに料金が変わるため、予約フォームには金額を出さず
-          ご来店時にご案内する想定です。以下は公式サイトに掲載されている分の抜粋（税込）。</p>
-          <table>
-            <tr><th>犬種</th><th class="r">シャンプー</th><th class="r">シャンプー＆カット</th></tr>
-            <tr><td>チワワ</td><td class="r num">3,850円</td><td class="r num">5,500円</td></tr>
-            <tr><td>M.ダックス</td><td class="r num">4,400円</td><td class="r num">6,050円</td></tr>
-            <tr><td>M.ピンシャー</td><td class="r num">3,630円</td><td class="r num">—</td></tr>
-            <tr><td colspan="3" style="color:var(--muted);font-size:12px">ヨークシャテリア／パピヨン／ポメラニアン ほかは公式サイトを参照</td></tr>
-          </table>
+          ご来店時にご案内する想定です（税込）。「—」は取り扱いなし。</p>
+          <div style="max-height:320px;overflow-y:auto">
+            <table>
+              <tr><th>犬種</th><th class="r">シャンプー</th><th class="r">シャンプー＆カット</th></tr>
+              <tr><td>チワワ</td><td class="r num">3,850円</td><td class="r num">5,500円</td></tr>
+              <tr><td>M.ダックス</td><td class="r num">4,400円</td><td class="r num">6,050円</td></tr>
+              <tr><td>M.ピンシャー</td><td class="r num">3,630円</td><td class="r num">—</td></tr>
+              <tr><td>ヨークシャテリア</td><td class="r num">4,400円</td><td class="r num">7,150円</td></tr>
+              <tr><td>パピヨン</td><td class="r num">4,400円</td><td class="r num">6,050円</td></tr>
+              <tr><td>ポメラニアン</td><td class="r num">5,500円</td><td class="r num">7,150円</td></tr>
+              <tr><td>マルチーズ</td><td class="r num">4,400円</td><td class="r num">7,700円</td></tr>
+              <tr><td>ペキニーズ</td><td class="r num">5,500円</td><td class="r num">7,150円</td></tr>
+              <tr><td>ウェスティ</td><td class="r num">5,500円</td><td class="r num">9,130円</td></tr>
+              <tr><td>M.シュナウザー</td><td class="r num">5,500円</td><td class="r num">9,130円</td></tr>
+              <tr><td>ワイヤーF、スコッチ</td><td class="r num">6,050円</td><td class="r num">9,350円</td></tr>
+              <tr><td>パグ</td><td class="r num">4,400円</td><td class="r num">6,050円</td></tr>
+              <tr><td>イタリアングレーハウンド</td><td class="r num">4,180円</td><td class="r num">—</td></tr>
+              <tr><td>ボストン</td><td class="r num">4,400円</td><td class="r num">—</td></tr>
+              <tr><td>フレンチブルドッグ</td><td class="r num">4,400円</td><td class="r num">—</td></tr>
+            </table>
+          </div>
           <table style="margin-top:12px">
             <tr><th>お預かり</th><th class="r">料金</th></tr>
             <tr><td>宿泊 レギュラーコース<span style="display:block;font-size:11.5px;color:var(--muted)">2頭同室 5,225円</span></td><td class="r num">1泊2日 3,850円</td></tr>
@@ -739,6 +752,17 @@ tr.await td{background:var(--warn-soft)}
             <tr><td>ワンず写真日記<span style="display:block;font-size:11.5px;color:var(--muted)">写真or動画はおまかせ</span></td><td class="r num">1日2通 330円</td></tr>
           </table>
           <p class="hint" style="margin:10px 0 0">4泊目以降は10%OFF。2頭同室をご希望の場合は2頭目が半額（中型ゲージのみ）。</p>
+        </div>
+      </div>
+      <div class="card">
+        <div class="hd"><h2>店舗情報</h2></div>
+        <div class="bd">
+          <dl class="kv">
+            <dt>住所</dt><dd>〒540-0025 大阪市中央区徳井町2丁目2-5</dd>
+            <dt>電話</dt><dd>06-6947-8211<span class="pill mut">ご予約優先</span></dd>
+            <dt>営業時間</dt><dd>10:00〜19:00</dd>
+            <dt>定休日</dt><dd>木曜日（祝日の場合は営業）</dd>
+          </dl>
         </div>
       </div>
       <div class="card">
@@ -843,12 +867,12 @@ tr.await td{background:var(--warn-soft)}
   <div class="card">
     <div class="bd" style="overflow-x:auto">
       <table class="sh" style="min-width:640px">
-        <tr><th style="width:90px">7/27週</th><th>月 27</th><th>火 28</th><th>水 29<br><span style="font-weight:600">定休</span></th><th>木 30</th><th>金 31</th><th>土 1</th><th>日 2</th></tr>
-        <tr><td style="white-space:nowrap">佐藤<button class="star" data-star="佐藤" aria-label="佐藤の新人マーク">&#9734;</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell koukyu">公休</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell am">AM半休</button></td></tr>
-        <tr><td style="white-space:nowrap">高橋<button class="star" data-star="高橋" aria-label="高橋の新人マーク">&#9734;</button></td><td><button class="shcell am">AM半休</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell koukyu">公休</button></td><td><button class="shcell yukyu">有休</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell koukyu">公休</button></td></tr>
-        <tr><td style="white-space:nowrap">伊藤<button class="star" data-star="伊藤" aria-label="伊藤の新人マーク">&#9734;</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell jikan">時間休<br>14-16</button></td><td><button class="shcell koukyu">公休</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell koukyu">公休</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell work">出勤</button></td></tr>
-        <tr><td style="white-space:nowrap">中村<button class="star" data-star="中村" aria-label="中村の新人マーク">&#9734;</button></td><td><button class="shcell koukyu">公休</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell koukyu">公休</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell pm">PM半休</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell work">出勤</button></td></tr>
-        <tr><td style="white-space:nowrap">山本<button class="star" data-star="山本" aria-label="山本の新人マーク">&#9734;</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell koukyu">公休</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell koukyu">公休</button></td><td><button class="shcell work">出勤</button></td></tr>
+        <tr><th style="width:90px">7/27週</th><th>月 27</th><th>火 28</th><th>水 29</th><th>木 30<br><span style="font-weight:600">定休</span></th><th>金 31</th><th>土 1</th><th>日 2</th></tr>
+        <tr><td style="white-space:nowrap">佐藤<button class="star" data-star="佐藤" aria-label="佐藤の新人マーク">&#9734;</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell koukyu">公休</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell am">AM半休</button></td></tr>
+        <tr><td style="white-space:nowrap">高橋<button class="star" data-star="高橋" aria-label="高橋の新人マーク">&#9734;</button></td><td><button class="shcell am">AM半休</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell yukyu">有休</button></td><td><button class="shcell koukyu">公休</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell koukyu">公休</button></td></tr>
+        <tr><td style="white-space:nowrap">伊藤<button class="star" data-star="伊藤" aria-label="伊藤の新人マーク">&#9734;</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell jikan">時間休<br>14-16</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell koukyu">公休</button></td><td><button class="shcell koukyu">公休</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell work">出勤</button></td></tr>
+        <tr><td style="white-space:nowrap">中村<button class="star" data-star="中村" aria-label="中村の新人マーク">&#9734;</button></td><td><button class="shcell koukyu">公休</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell koukyu">公休</button></td><td><button class="shcell pm">PM半休</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell work">出勤</button></td></tr>
+        <tr><td style="white-space:nowrap">山本<button class="star" data-star="山本" aria-label="山本の新人マーク">&#9734;</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell koukyu">公休</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell koukyu">公休</button></td><td><button class="shcell work">出勤</button></td></tr>
       </table>
       <div class="legend" style="margin-top:12px">
         <span><i style="background:var(--accent-soft)"></i>出勤</span>
@@ -869,8 +893,8 @@ tr.await td{background:var(--warn-soft)}
           <div class="bub staff"><span class="who">高橋</span>8/1(土) 有休お願いします。子どもの行事のため</div>
           <div class="bub bot"><span class="who">ここっとベール bot</span>シフト変更を受け付けました。<br><b>高橋さん：8/1(土) 有休</b><br>店長の承認後にシフト表・予約カレンダーへ反映されます。</div>
           <span class="tstamp">今日 22:03</span>
-          <div class="bub staff"><span class="who">山本</span>7/30 10時から12時まで時間休もらえますか</div>
-          <div class="bub bot"><span class="who">ここっとベール bot</span>シフト変更を受け付けました。<br><b>山本さん：7/30(木) 時間休 10:00〜12:00</b><br>承認待ちです。</div>
+          <div class="bub staff"><span class="who">山本</span>7/31 10時から12時まで時間休もらえますか</div>
+          <div class="bub bot"><span class="who">ここっとベール bot</span>シフト変更を受け付けました。<br><b>山本さん：7/31(金) 時間休 10:00〜12:00</b><br>承認待ちです。</div>
         </div>
         <p style="font-size:12px;color:var(--muted);margin:10px 0 0">スタッフが普段の公式LINEにメッセージを送るだけで申請できます（スタッフのLINEアカウントは事前登録で識別。顧客には通常のメニューが表示されます）。</p>
       </div>
@@ -1330,12 +1354,12 @@ const WEEK = [
       {s:11,  dur:1.5, cls:'trial',  t:'ソラ 保育（体験）'},
       {s:14,  dur:1.5, cls:'trial',  t:'ハナ 保育（体験）'},
       {s:16.5,dur:0.5, cls:'',       t:'レオ 爪切り'}] },
-  { d:'7/22', w:'水', closed:true, evs:[] },
-  { d:'7/23', w:'木', evs:[
+  { d:'7/22', w:'水', evs:[
       {s:10,  dur:8,   cls:'school', t:'保育コース 4頭'},
       {s:10.5,dur:2,   cls:'',       t:'プリン シャンプー＆カット'},
       {s:14,  dur:1.5, cls:'',       t:'ムギ シャンプー'},
       {s:17,  dur:0.5, cls:'',       t:'ラテ 爪切り'}] },
+  { d:'7/23', w:'木', closed:true, evs:[] },
   { d:'7/24', w:'金', today:true, evs:[
       {s:10,  dur:8,   cls:'school', t:'保育コース 6頭'},
       {s:9,   dur:1.5, cls:'',       t:'ラテ シャンプー'},
@@ -1394,13 +1418,13 @@ WEEK.forEach(day => {
 
 // ================= 月表示 =================
 // [日, トリミング件数, 保育コース頭数, 初回のわんちゃん]（0 = 定休日）
-// 水曜定休（2026年7月は 1・8・15・22・29 日）。20〜26日は週表示の内容と一致
+// 木曜定休（2026年7月は 2・9・16・23・30 日）。20〜26日は週表示の内容と一致
 const MONTH = [
-  [1,0,0,0],[2,6,5,1],[3,8,6,0],[4,9,0,1],[5,5,3,0],[6,4,5,0],[7,6,6,1],
-  [8,0,0,0],[9,7,4,0],[10,8,6,1],[11,11,0,0],[12,4,3,0],[13,5,5,0],[14,6,6,2],
-  [15,0,0,0],[16,6,4,0],[17,9,6,1],[18,10,0,1],[19,3,3,0],[20,3,5,0],[21,1,6,2],
-  [22,0,0,0],[23,3,4,0],[24,4,6,1],[25,5,0,0],[26,2,3,0],[27,4,5,0],[28,6,6,1],
-  [29,0,0,0],[30,7,4,0],[31,8,6,0],
+  [1,6,5,1],[2,0,0,0],[3,8,6,0],[4,9,0,1],[5,5,3,0],[6,4,5,0],[7,6,6,1],
+  [8,7,4,0],[9,0,0,0],[10,8,6,1],[11,11,0,0],[12,4,3,0],[13,5,5,0],[14,6,6,2],
+  [15,6,4,0],[16,0,0,0],[17,9,6,1],[18,10,0,1],[19,3,3,0],[20,3,5,0],[21,1,6,2],
+  [22,3,4,0],[23,0,0,0],[24,6,6,1],[25,5,0,0],[26,2,3,0],[27,4,5,0],[28,6,6,1],
+  [29,7,4,0],[30,0,0,0],[31,8,6,0],
 ];
 const mgrid = document.getElementById('mgrid');
 ['月','火','水','木','金','土','日'].forEach((w, i) => {
@@ -1437,7 +1461,7 @@ for (let i = 0; i < 2; i++) {                       // 7/31 は金曜 → 土・
 }
 const mt = MONTH.reduce((a, x) => [a[0] + x[1], a[1] + x[2], a[2] + x[3]], [0, 0, 0]);
 document.getElementById('msum').innerHTML =
-  '7月合計　トリミング <b>' + mt[0] + ' 件</b>　保育コース延べ <b>' + mt[1] + ' 頭</b>　初回 <b>' + mt[2] + ' 件</b>　営業 <b>' + MONTH.filter(x => x[1]).length + ' 日</b>（水曜定休）';
+  '7月合計　トリミング <b>' + mt[0] + ' 件</b>　保育コース延べ <b>' + mt[1] + ' 頭</b>　初回 <b>' + mt[2] + ' 件</b>　営業 <b>' + MONTH.filter(x => x[1]).length + ' 日</b>（木曜定休）';
 
 // ---- 表示切替 ----
 const VIEWS = {
@@ -1480,7 +1504,7 @@ updateStars();
 // ---- LINE botからのシフト変更申請 ----
 const SHIFT_REQS = [
   { name:'高橋', day:'8/1(土)',  col:6, kind:'yukyu', cell:'有休',             short:'有休', note:'子どもの行事のため' },
-  { name:'山本', day:'7/30(木)', col:4, kind:'jikan', cell:'時間休<br>10-12', short:'時間休 10:00〜12:00', note:'' },
+  { name:'山本', day:'7/31(金)', col:5, kind:'jikan', cell:'時間休<br>10-12', short:'時間休 10:00〜12:00', note:'' },
 ];
 const reqsEl = document.getElementById('reqs'), reqcnt = document.getElementById('reqcnt');
 let pendingReqs = SHIFT_REQS.length;

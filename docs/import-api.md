@@ -28,7 +28,7 @@ Content-Type: application/json
       "customer_name": "山田 花子",
       "phone": "090-1234-5678",
       "birthday": "1990-04-01",
-      "menu": "カット＋カラー",
+      "menu": "シャンプー＆カットコース",
       "staff_name": "佐藤",
       "reserved_at": "2026-08-01T14:00:00+09:00",
       "status": "confirmed"

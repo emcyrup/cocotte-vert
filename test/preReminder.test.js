@@ -15,7 +15,7 @@ test('Flex Message に顧客名・日時・メニュー・担当・postback が�
   const msg = buildPreReminderMessage({
     customerName: '山田',
     reservedAt: new Date('2026-08-03T05:00:00Z'),
-    menu: 'カット＋カラー',
+    menu: 'シャンプー＆カットコース',
     staffName: '佐藤',
     reservationId: 42,
   });
@@ -23,7 +23,7 @@ test('Flex Message に顧客名・日時・メニュー・担当・postback が�
   assert.equal(msg.type, 'flex');
   assert.match(json, /山田様/);
   assert.match(json, /8月3日\(月\) 14:00/);
-  assert.match(json, /カット＋カラー/);
+  assert.match(json, /シャンプー＆カットコース/);
   assert.match(json, /佐藤/);
   assert.match(json, /action=confirm&res=42&v=ok/);
   assert.match(json, /action=confirm&res=42&v=change/);
@@ -48,7 +48,7 @@ function makeRow(id, overrides = {}) {
   return {
     id,
     reserved_at: new Date('2026-08-03T05:00:00Z'),
-    menu: 'カット',
+    menu: 'シャンプーコース',
     customer_id: id * 10,
     line_user_id: `U${id}`,
     customer_name: `顧客${id}`,

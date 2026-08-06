@@ -1,18 +1,19 @@
 // デモ用メニューの投入。予約フォームの動作確認をすぐ始められるようにする。
+// 料金は犬種によって変わるため、メニューには持たせずご来店時にご案内する想定。
 // 使い方: docker compose exec app node scripts/seed-menus.js
 //
 // 同名のメニューが既にあれば飛ばすため、何度実行しても重複しない。
 // 本番のメニューは管理画面から登録・編集する想定。
 
 export const DEMO_MENUS = [
-  { name: 'カット', durationMinutes: 60 },
-  { name: '前髪カット', durationMinutes: 15 },
-  { name: 'カット＋シャンプー・ブロー', durationMinutes: 75 },
-  { name: 'カラー', durationMinutes: 90 },
-  { name: 'カット＋カラー', durationMinutes: 120 },
-  { name: 'パーマ', durationMinutes: 120 },
-  { name: 'トリートメント', durationMinutes: 30 },
-  { name: 'ヘッドスパ', durationMinutes: 45 },
+  { name: 'シャンプーコース', durationMinutes: 60 },
+  { name: 'シャンプー＆カットコース', durationMinutes: 120 },
+  { name: '部分カット（顔・足まわり）', durationMinutes: 30 },
+  { name: '爪切り・耳掃除', durationMinutes: 15 },
+  { name: '保育コース', durationMinutes: 480 },
+  { name: '一時預かり', durationMinutes: 60 },
+  { name: '宿泊（レギュラーコース）', durationMinutes: null },
+  { name: '宿泊（保育コース）', durationMinutes: null },
 ];
 
 export async function seedMenus(pool, menus = DEMO_MENUS) {

@@ -65,6 +65,12 @@ npm test
 取り込み API とスタッフ向け管理画面（`/admin/`。メニュー登録・予約の承認・来店登録）の使い方は
 [docs/import-api.md](docs/import-api.md) を参照。
 
+## 画面モック
+
+提案・要件確認用の画面モック（予約カレンダー・顧客カルテ・シフト・SNS投稿）を
+`/mock/` に置いている（管理画面と同じ Basic 認証の内側）。**サンプルデータのみで実データには
+つながらない。** 何が実装済みで何が構想かは [src/mock/README.md](src/mock/README.md) を参照。
+
 ## デプロイ（インターネット公開）
 
 VPS / EC2 / GCP Compute Engine + Docker Compose、または Render での公開手順を

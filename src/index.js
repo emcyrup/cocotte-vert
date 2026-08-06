@@ -202,6 +202,11 @@ const adminDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'admin'
 app.use('/admin', adminGuard, express.static(adminDir));
 app.use('/api/admin', adminGuard, createAdminRouter({ pool, reservationService, lineClient, config }));
 
+// 提案・要件確認用の画面モック（サンプルデータのみ。実データには一切つながらない）。
+// 実在の顧客データと混同されないよう、管理画面と同じ Basic 認証の内側に置く
+const mockDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'mock');
+app.use('/mock', adminGuard, express.static(mockDir));
+
 // 外部予約システムからの取り込み（Bearer トークン。INGEST_API_TOKEN 未設定なら無効）
 app.use(
   '/api/import',

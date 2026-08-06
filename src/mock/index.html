@@ -1,0 +1,1584 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="format-detection" content="telephone=no">
+<meta name="robots" content="noindex, nofollow">
+<title>ここっとベール 管理システム モック</title>
+<style>
+button{font:inherit; color:inherit}
+:root{
+  --bg:#F7F4EE; --surface:#FFFFFF; --surface2:#F1EDE4;
+  --ink:#2B2723; --muted:#8A8177; --line:#E5DFD5;
+  --accent:#33695B; --accent-ink:#FFFFFF; --accent-soft:#E3EDE8;
+  --honey:#C1922F; --honey-soft:#F5EBD4;
+  --good:#3A7D52; --good-soft:#E2EFE6;
+  --warn:#B4741F; --warn-soft:#F6EBD6;
+  --crit:#B4453C; --crit-soft:#F7E3E1;
+  --side:#24443B; --side-ink:#D8E5DF; --side-active:#3A7263;
+  --early:#3E6FA8; --late:#7B58A8;
+  --shadow:0 1px 3px rgba(43,39,35,.08);
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#191714; --surface:#221F1B; --surface2:#2A261F;
+    --ink:#EDE8E0; --muted:#9A9186; --line:#37322B;
+    --accent:#6FA893; --accent-ink:#14231E; --accent-soft:#2A3B34;
+    --honey:#D3A94E; --honey-soft:#3A3220;
+    --good:#7CB08D; --good-soft:#26382C;
+    --warn:#D3A050; --warn-soft:#3C321C;
+    --crit:#D08078; --crit-soft:#40251F;
+    --side:#141F1B; --side-ink:#A9BDB4; --side-active:#2A4A40;
+    --early:#7FA6D2; --late:#A98BD6;
+    --shadow:0 1px 3px rgba(0,0,0,.4);
+  }
+}
+:root[data-theme="light"]{
+  --bg:#F7F4EE; --surface:#FFFFFF; --surface2:#F1EDE4;
+  --ink:#2B2723; --muted:#8A8177; --line:#E5DFD5;
+  --accent:#33695B; --accent-ink:#FFFFFF; --accent-soft:#E3EDE8;
+  --honey:#C1922F; --honey-soft:#F5EBD4;
+  --good:#3A7D52; --good-soft:#E2EFE6;
+  --warn:#B4741F; --warn-soft:#F6EBD6;
+  --crit:#B4453C; --crit-soft:#F7E3E1;
+  --side:#24443B; --side-ink:#D8E5DF; --side-active:#3A7263;
+  --early:#3E6FA8; --late:#7B58A8;
+  --shadow:0 1px 3px rgba(43,39,35,.08);
+}
+:root[data-theme="dark"]{
+  --bg:#191714; --surface:#221F1B; --surface2:#2A261F;
+  --ink:#EDE8E0; --muted:#9A9186; --line:#37322B;
+  --accent:#6FA893; --accent-ink:#14231E; --accent-soft:#2A3B34;
+  --honey:#D3A94E; --honey-soft:#3A3220;
+  --good:#7CB08D; --good-soft:#26382C;
+  --warn:#D3A050; --warn-soft:#3C321C;
+  --crit:#D08078; --crit-soft:#40251F;
+  --side:#141F1B; --side-ink:#A9BDB4; --side-active:#2A4A40;
+  --early:#7FA6D2; --late:#A98BD6;
+  --shadow:0 1px 3px rgba(0,0,0,.4);
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:"Hiragino Kaku Gothic ProN","Hiragino Sans","Yu Gothic UI","Yu Gothic",Meiryo,sans-serif;
+  font-size:14px; line-height:1.6;
+}
+.app{display:flex; min-height:100vh}
+
+/* ---------- sidebar ---------- */
+.side{
+  width:212px; flex:none; background:var(--side); color:var(--side-ink);
+  display:flex; flex-direction:column; padding:18px 10px; gap:2px;
+}
+.brand{padding:4px 12px 16px; color:#fff}
+/* 店名が長いのでサイドバー幅で折り返さないよう字送りを詰める */
+.brand .logo{font-size:19px; font-weight:700; letter-spacing:0; white-space:nowrap}
+.brand .store{font-size:11.5px; opacity:.75; margin-top:2px}
+.brand .mark{color:var(--honey); margin-right:6px}
+.nav-label{font-size:10.5px; letter-spacing:.14em; opacity:.55; padding:12px 12px 4px}
+.nav{display:flex; flex-direction:column; gap:2px}
+.nav button{
+  display:flex; align-items:center; gap:10px; width:100%;
+  background:none; border:0; color:inherit; font:inherit; font-size:13px; text-align:left;
+  padding:9px 12px; border-radius:8px; cursor:pointer;
+}
+.nav button:hover{background:rgba(255,255,255,.08)}
+.nav button:focus-visible{outline:2px solid var(--honey); outline-offset:-2px}
+.nav button.on{background:var(--side-active); color:#fff; font-weight:700}
+.nav .ic{width:16px; text-align:center; flex:none; font-size:11px; opacity:.85}
+.side .foot{margin-top:auto; padding:12px; font-size:11px; opacity:.5}
+.mocktag{
+  margin:0 12px 8px; padding:6px 10px; border:1px dashed rgba(255,255,255,.3);
+  border-radius:8px; font-size:11px; opacity:.8;
+}
+
+/* ---------- dashboard quick links ---------- */
+.quick{display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:24px}
+.qbtn{
+  display:flex; align-items:center; gap:12px; text-align:left; cursor:pointer;
+  background:var(--surface); border:1px solid var(--line); border-radius:12px;
+  box-shadow:var(--shadow); padding:14px 16px; font:inherit; color:inherit;
+}
+.qbtn:hover{border-color:var(--accent); background:var(--accent-soft)}
+.qbtn:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+.qbtn .qi{
+  width:38px; height:38px; border-radius:10px; flex:none; display:flex;
+  align-items:center; justify-content:center; font-size:19px;
+  background:var(--accent-soft); color:var(--accent);
+}
+.qbtn .qt{font-size:14px; font-weight:700; line-height:1.35}
+.qbtn .qd{display:block; font-size:11.5px; color:var(--muted); font-weight:600}
+
+/* ---------- main ---------- */
+.main{flex:1; min-width:0; padding:24px 28px 48px}
+.screen{display:none; max-width:1160px}
+.screen.on{display:block}
+.crumb{font-size:12px; color:var(--muted); margin-bottom:2px}
+h1{font-size:20px; margin:0 0 4px; font-weight:700}
+.sub{color:var(--muted); font-size:13px; margin:0 0 20px}
+h2{font-size:14.5px; margin:0 0 10px; font-weight:700}
+
+.card{background:var(--surface); border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow)}
+.card .hd{padding:12px 16px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:8px}
+.card .hd h2{margin:0}
+.card .bd{padding:16px}
+.grid{display:grid; gap:16px}
+.num{font-variant-numeric:tabular-nums}
+
+.pill{display:inline-block; padding:1px 9px; border-radius:99px; font-size:11.5px; font-weight:600; white-space:nowrap}
+.pill.good{background:var(--good-soft); color:var(--good)}
+.pill.warn{background:var(--warn-soft); color:var(--warn)}
+.pill.crit{background:var(--crit-soft); color:var(--crit)}
+.pill.acc{background:var(--accent-soft); color:var(--accent)}
+.pill.hny{background:var(--honey-soft); color:var(--honey)}
+.pill.mut{background:var(--surface2); color:var(--muted)}
+
+.src{display:inline-block; font-size:10.5px; font-weight:700; padding:0 6px; border-radius:4px; letter-spacing:.02em}
+.src.epark{background:var(--honey-soft); color:var(--honey)}
+.src.tel{background:var(--surface2); color:var(--muted)}
+.src.line{background:var(--good-soft); color:var(--good)}
+.src.walkin{background:var(--accent-soft); color:var(--accent)}
+
+table{border-collapse:collapse; width:100%; font-size:13px}
+th{font-size:11.5px; color:var(--muted); font-weight:600; text-align:left; letter-spacing:.05em}
+th,td{padding:8px 10px; border-bottom:1px solid var(--line)}
+tr:last-child td{border-bottom:0}
+td.r,th.r{text-align:right}
+
+/* ---------- dashboard ---------- */
+.kpis{grid-template-columns:repeat(4,1fr)}
+.kpi{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:14px 16px; box-shadow:var(--shadow)}
+button.kpi{font:inherit; color:inherit; text-align:left; width:100%; cursor:pointer}
+button.kpi:hover{border-color:var(--accent); background:var(--accent-soft)}
+button.kpi:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+.mback{position:fixed; inset:0; z-index:80; background:rgba(20,18,15,.45); display:flex; align-items:center; justify-content:center; padding:20px}
+.mwin{background:var(--surface); border:1px solid var(--line); border-radius:14px; box-shadow:0 18px 48px rgba(0,0,0,.3);
+  width:540px; max-width:100%; max-height:80vh; display:flex; flex-direction:column}
+.mwin .mhd{display:flex; align-items:center; gap:10px; padding:14px 18px; border-bottom:1px solid var(--line)}
+.mwin .mhd h2{margin:0; font-size:15px}
+.mwin .mx{margin-left:auto; background:none; border:0; font-size:16px; color:var(--muted); cursor:pointer; padding:4px}
+.mwin .mx:focus-visible{outline:2px solid var(--accent); border-radius:4px}
+.tri-rows{overflow:auto}
+.trow2{display:grid; grid-template-columns:52px 1fr auto; gap:12px; align-items:center;
+  width:100%; padding:11px 18px; border:0; border-bottom:1px solid var(--line);
+  background:none; font:inherit; color:inherit; text-align:left}
+.trow2:last-child{border-bottom:0}
+button.trow2{cursor:pointer}
+button.trow2:hover{background:var(--accent-soft)}
+button.trow2:focus-visible{outline:2px solid var(--accent); outline-offset:-2px}
+.trow2 .td2{font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums}
+.trow2 .tn b{font-size:13.5px; margin-right:6px}
+.trow2 .tn span{font-size:11.5px; color:var(--muted)}
+.trow2 .tn .ow{display:block}
+.mwin .mft{padding:10px 18px; border-top:1px solid var(--line); font-size:11.5px; color:var(--muted)}
+.kpi .k{font-size:11.5px; color:var(--muted); letter-spacing:.06em}
+.kpi .v{font-size:28px; font-weight:700; line-height:1.2; margin-top:2px}
+.kpi .v small{font-size:13px; font-weight:600; color:var(--muted)}
+.kpi .d{font-size:11.5px; margin-top:2px}
+.kpi .d.up{color:var(--good)} .kpi .d.dn{color:var(--crit)}
+.dash2{grid-template-columns:1.2fr .8fr; margin-top:16px}
+.bar{display:grid; grid-template-columns:88px 1fr 34px; align-items:center; gap:10px; margin:7px 0}
+.bar .lb{font-size:12px; color:var(--muted)}
+.bar .tr{background:var(--surface2); border-radius:99px; height:10px; overflow:hidden}
+.bar .fl{display:block; height:100%; border-radius:99px; background:var(--accent)}
+.bar.b2 .fl{background:var(--honey)}
+.bar .n{font-size:12px; text-align:right}
+
+/* ---------- calendar (横タイムライン / レストランボード型) ---------- */
+.calwrap{overflow-x:auto}
+.tgrid{min-width:1100px; user-select:none}
+.thead{display:flex; border-bottom:2px solid var(--line)}
+.thead .rlab{border-bottom:0}
+.tax{flex:1; position:relative; height:34px}
+.tax span{position:absolute; top:8px; transform:translateX(-4px); font-size:11.5px; color:var(--muted); font-weight:600}
+.trow{display:flex; border-bottom:1px solid var(--line)}
+.trow:last-child{border-bottom:0}
+.rlab{width:132px; flex:none; padding:8px 12px; border-right:1px solid var(--line); font-size:13px; font-weight:700; display:flex; flex-direction:column; justify-content:center; gap:2px}
+.rlab .role{font-size:11px; color:var(--muted); font-weight:600}
+.rbody{position:relative; flex:1; height:60px; touch-action:pan-x;
+  background-image:
+    linear-gradient(to right, var(--line) 1px, transparent 1px),
+    linear-gradient(to right, color-mix(in srgb, var(--line) 55%, transparent) 1px, transparent 1px);
+  background-size:calc(100%/15) 100%, calc(100%/30) 100%;
+}
+.rbody.drop{background-color:var(--accent-soft)}
+.tev{position:absolute; top:8px; height:44px; border-radius:8px; background:var(--accent); color:#fff;
+  padding:5px 10px 5px 12px; font-size:11.5px; line-height:1.3; overflow:hidden; white-space:nowrap;
+  box-shadow:var(--shadow); cursor:grab; touch-action:none}
+.tev b{display:block; font-size:12.5px}
+.tev .rz{position:absolute; right:5px; top:50%; transform:translateY(-50%); font-size:12px; opacity:.75}
+.hz{position:absolute; top:0; bottom:0; width:14px; cursor:ew-resize; touch-action:none}
+.hz.l{left:0; border-radius:8px 0 0 8px}
+.hz.r{right:0; border-radius:0 8px 8px 0}
+.hz::after{content:""; position:absolute; top:50%; transform:translateY(-50%); width:3px; height:16px; border-radius:2px; background:rgba(255,255,255,.55); opacity:0; transition:.12s}
+.hz.l::after{left:4px} .hz.r::after{right:4px}
+.tev:hover .hz::after, .tev.rsz .hz::after{opacity:1}
+.tev.rsz{outline:2px solid rgba(255,255,255,.6); outline-offset:-2px; cursor:ew-resize}
+.tbadge{position:absolute; top:-12px; z-index:10; background:var(--ink); color:var(--bg); font-size:11px; font-weight:700; padding:2px 8px; border-radius:6px; white-space:nowrap; pointer-events:none; box-shadow:var(--shadow)}
+.tev.school{background:var(--honey)}
+.tev.trial{background:var(--good)}
+.tev.pickup{background:color-mix(in srgb, var(--accent) 55%, var(--muted))}
+.tev.early{background:var(--early)}
+.tev.late{background:var(--late)}
+.tev.both{background:linear-gradient(100deg, var(--early) 30%, var(--late) 70%)}
+.ncx{position:absolute; top:0; bottom:0; right:0; display:flex; align-items:center; justify-content:center;
+  background:repeating-linear-gradient(-45deg, rgba(255,255,255,.4) 0 4px, transparent 4px 8px);
+  border-left:2px dashed rgba(255,255,255,.85); font-size:9px; font-weight:700; color:#fff; letter-spacing:.02em}
+/* ---------- LINE bot シフト変更 ---------- */
+.shift2{grid-template-columns:1fr 1.1fr; margin-top:16px}
+.chat{background:#88A8CE; border-radius:10px; padding:14px; display:flex; flex-direction:column; gap:8px}
+:root[data-theme="dark"] .chat{background:#3A4A5E}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .chat{background:#3A4A5E} }
+.bub{max-width:85%; border-radius:14px; padding:8px 12px; font-size:12.5px; line-height:1.55; box-shadow:0 1px 2px rgba(0,0,0,.15)}
+.bub.staff{align-self:flex-end; background:#06C755; color:#fff; border-bottom-right-radius:4px}
+.bub.bot{align-self:flex-start; background:#fff; color:#2B2723; border-bottom-left-radius:4px}
+.bub .who{display:block; font-size:10.5px; opacity:.75; margin-bottom:2px}
+.chat .tstamp{font-size:10px; color:rgba(255,255,255,.85); text-align:center}
+.sreq{display:grid; grid-template-columns:1fr auto; gap:6px 12px; align-items:center; padding:11px 16px; border-bottom:1px solid var(--line)}
+.sreq:last-child{border-bottom:0}
+.sreq .sn{font-weight:700; font-size:13px}
+.sreq .sd{font-size:12px; color:var(--muted)}
+.sreq .acts2{display:flex; gap:6px}
+.abtn{border:1px solid var(--accent); background:var(--accent); color:var(--accent-ink); font:inherit; font-size:12px; font-weight:700; border-radius:7px; padding:5px 12px; cursor:pointer}
+.abtn.ng{background:none; border-color:var(--line); color:var(--muted)}
+.abtn:focus-visible{outline:2px solid var(--honey); outline-offset:1px}
+.star{background:none; border:0; cursor:pointer; font:inherit; font-size:13px; opacity:.4; padding:0 2px; line-height:1}
+.star.on{opacity:1}
+.star:focus-visible{outline:2px solid var(--accent); outline-offset:1px; border-radius:4px}
+.tev.lift{opacity:.35}
+.tev .src{background:rgba(255,255,255,.25); color:#fff; margin-left:4px}
+.ghost{position:fixed; z-index:50; pointer-events:none; opacity:.9; box-shadow:0 10px 24px rgba(0,0,0,.3); transform:scale(1.02); cursor:grabbing}
+.hatch{position:absolute; top:0; bottom:0; background:repeating-linear-gradient(-45deg,var(--surface2) 0 6px,transparent 6px 12px); color:var(--muted); font-size:11px; display:flex; align-items:center; justify-content:center; letter-spacing:.1em; pointer-events:none}
+/* ---------- view switcher / week / month ---------- */
+.vbar{display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap}
+.seg{display:inline-flex; background:var(--surface2); border:1px solid var(--line); border-radius:9px; padding:2px; gap:2px}
+.seg button{border:0; background:none; font:inherit; font-size:12.5px; font-weight:700; color:var(--muted); padding:6px 16px; border-radius:7px; cursor:pointer}
+.seg button.on{background:var(--surface); color:var(--accent); box-shadow:var(--shadow)}
+.seg button:focus-visible{outline:2px solid var(--accent); outline-offset:1px}
+.vrange{font-size:13px; font-weight:700}
+.vhint{font-size:12px; color:var(--muted)}
+.wk .rlab{width:96px; cursor:pointer}
+.wk .rlab:hover{background:var(--accent-soft)}
+.wk .rlab.sat{color:#3E6FA8} .wk .rlab.sun{color:var(--crit)}
+.wk .rbody{height:64px}
+.wk .tev{font-size:11px; cursor:default}
+.wk .tev b{font-size:11.5px}
+.wk .tev.laneA{top:5px; height:18px; padding:1px 8px; line-height:16px}
+.wk .tev.laneA b{display:inline; font-size:11px}
+.wk .tev.laneB{top:27px; height:32px; padding:3px 8px}
+.mgrid{display:grid; grid-template-columns:repeat(7,1fr); border:1px solid var(--line); border-radius:12px; overflow:hidden; background:var(--surface)}
+.mgrid .dow{background:var(--surface2); font-size:11.5px; font-weight:700; text-align:center; padding:7px 0; color:var(--muted); border-bottom:1px solid var(--line)}
+.mgrid .dow.sat{color:#3E6FA8} .mgrid .dow.sun{color:var(--crit)}
+.mcell{min-height:96px; border-right:1px solid var(--line); border-bottom:1px solid var(--line); padding:6px 8px; display:flex; flex-direction:column; gap:4px; background:none; border-top:0; border-left:0; font:inherit; text-align:left; cursor:pointer; color:inherit}
+.mcell:nth-child(7n+7){border-right:0}
+.mcell:hover{background:var(--accent-soft)}
+.mcell:focus-visible{outline:2px solid var(--accent); outline-offset:-2px}
+.mcell.out{background:var(--surface2); color:var(--muted); cursor:default}
+.mcell.out:hover{background:var(--surface2)}
+.mcell.today{box-shadow:inset 0 0 0 2px var(--accent)}
+.mcell .dnum{font-size:12.5px; font-weight:700; font-variant-numeric:tabular-nums}
+.mcell .dnum.sat{color:#3E6FA8} .mcell .dnum.sun{color:var(--crit)}
+.mcell .closed{font-size:11px; color:var(--muted); letter-spacing:.08em}
+.mline{display:flex; align-items:center; gap:5px; font-size:11px}
+.mline i{width:7px; height:7px; border-radius:2px; flex:none}
+.mline span{color:var(--muted)}
+.mline b{margin-left:auto; font-variant-numeric:tabular-nums}
+.msum{display:flex; gap:14px; flex-wrap:wrap; margin-top:12px; font-size:12.5px; color:var(--muted)}
+.msum b{color:var(--ink); font-variant-numeric:tabular-nums}
+.toast{position:fixed; left:50%; bottom:28px; transform:translateX(-50%) translateY(8px); background:var(--ink); color:var(--bg); padding:9px 18px; border-radius:99px; font-size:12.5px; font-weight:600; opacity:0; transition:.2s; pointer-events:none; z-index:60; display:flex; align-items:center; gap:12px}
+.toast.on{opacity:1; transform:translateX(-50%); pointer-events:auto}
+.toast button{background:none; border:0; color:var(--honey); font:inherit; font-weight:700; cursor:pointer; padding:0}
+.toast button:focus-visible{outline:2px solid var(--honey); outline-offset:2px}
+.popback{position:fixed; inset:0; z-index:65}
+.pop{position:fixed; z-index:70; width:264px; background:var(--surface); border:1px solid var(--line); border-radius:12px; box-shadow:0 12px 32px rgba(0,0,0,.28); padding:14px 16px}
+.pop h3{margin:0 0 2px; font-size:14.5px}
+.pop .meta{font-size:12px; color:var(--muted); margin-bottom:4px}
+.pop .meta b{color:var(--ink)}
+.pop .acts{display:grid; gap:7px; margin-top:12px}
+.pbtn{border:1px solid var(--line); background:var(--surface); color:var(--ink); font:inherit; font-size:12.5px; font-weight:600; border-radius:8px; padding:8px 10px; cursor:pointer; text-align:center}
+.pbtn:hover{background:var(--surface2)}
+.pbtn:focus-visible{outline:2px solid var(--accent); outline-offset:1px}
+.pbtn.cancel{border-color:var(--warn); color:var(--warn)}
+.pbtn.del{border-color:transparent; background:none; color:var(--crit); font-size:12px}
+.legend{display:flex; flex-wrap:wrap; gap:14px; font-size:12px; color:var(--muted); margin-top:10px}
+.legend i{display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:5px; vertical-align:-1px}
+
+/* ---------- customer ---------- */
+.cust-hd{display:flex; align-items:center; gap:16px; margin-bottom:16px}
+.avatar{width:56px; height:56px; border-radius:50%; background:var(--accent); color:var(--accent-ink); display:flex; align-items:center; justify-content:center; font-size:22px; font-weight:700; flex:none}
+.cust2{grid-template-columns:340px 1fr}
+.kv{display:grid; grid-template-columns:96px 1fr; gap:4px 10px; font-size:13px}
+.kv dt{color:var(--muted)} .kv dd{margin:0}
+.meter{background:var(--surface2); border-radius:99px; height:8px; overflow:hidden; margin:6px 0 2px}
+.meter i{display:block; height:100%; background:var(--accent); border-radius:99px}
+.tl{list-style:none; margin:0; padding:0}
+.tl li{display:grid; grid-template-columns:78px 1fr; gap:12px; padding:10px 0; border-bottom:1px solid var(--line)}
+.tl li:last-child{border-bottom:0}
+.tl .dt{font-size:12px; color:var(--muted); padding-top:2px}
+.tl .tt b{margin-right:6px}
+.tl .memo{font-size:12px; color:var(--muted); margin-top:2px}
+
+/* ---------- customer list ---------- */
+.search{display:flex; gap:8px; align-items:center; margin-bottom:14px}
+.search input{flex:1; max-width:340px; border:1px solid var(--line); border-radius:9px; background:var(--surface); color:var(--ink); font:inherit; font-size:13px; padding:9px 12px}
+.search input:focus-visible{outline:2px solid var(--accent); outline-offset:-1px}
+.search .cnt{font-size:12.5px; color:var(--muted)}
+.owners{display:grid; grid-template-columns:1fr; gap:10px}
+.ocard{background:var(--surface); border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow);
+  padding:12px 16px; display:flex; align-items:center; gap:20px}
+.oinfo{width:232px; flex:none}
+.ocard .oh{display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; margin-bottom:2px}
+.ocard .on{font-size:14.5px; font-weight:700}
+.ocard .om{font-size:11.5px; color:var(--muted)}
+.dogs{display:flex; flex-wrap:wrap; gap:8px; flex:1; min-width:0}
+.dogbtn{display:flex; align-items:center; flex-wrap:wrap; gap:6px 9px; flex:1 1 300px; max-width:420px; text-align:left; background:var(--surface2); border:1px solid transparent; border-radius:9px; font:inherit; padding:7px 10px; cursor:pointer}
+.dogbtn .dname{flex:1 1 auto; min-width:0}
+.dogbtn:hover{border-color:var(--accent); background:var(--accent-soft)}
+.dogbtn:focus-visible{outline:2px solid var(--accent); outline-offset:1px}
+.dogbtn .dav{width:30px; height:30px; border-radius:50%; background:var(--accent); color:var(--accent-ink); display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; flex:none}
+.dogbtn .dn{font-size:13px; font-weight:700; line-height:1.3}
+.dogbtn .db{display:block; font-size:11px; color:var(--muted); font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.dogbtn .dtags{margin-left:auto; display:flex; gap:4px; flex-wrap:wrap; justify-content:flex-end; flex:0 0 auto}
+.cres{display:none; gap:8px; flex-wrap:wrap; background:var(--surface); border:1px solid var(--line);
+  border-radius:12px; box-shadow:var(--shadow); padding:12px 14px; margin-bottom:18px}
+.cres.on{display:flex}
+.dsearch input{max-width:440px; font-size:14px; padding:11px 14px}
+.cres .dogbtn{flex:1 1 280px; max-width:360px}
+.cres .none{font-size:12.5px; color:var(--muted); margin:0}
+.cres .owner{display:block; font-size:11px; color:var(--muted); font-weight:600}
+
+/* ---------- reminders ---------- */
+.rem{display:grid; grid-template-columns:1fr; gap:0}
+.rem .row{display:grid; grid-template-columns:44px 1fr auto auto; gap:12px; align-items:center; padding:11px 16px; border-bottom:1px solid var(--line)}
+.rem .row:last-child{border-bottom:0}
+.rid{font-size:11px; font-weight:700; color:var(--accent); background:var(--accent-soft); border-radius:6px; text-align:center; padding:2px 0}
+.rem .nm{font-weight:600}
+.rem .cond{font-size:12px; color:var(--muted)}
+.sw{position:relative; width:38px; height:22px; border-radius:99px; background:var(--surface2); border:1px solid var(--line); cursor:pointer; flex:none; padding:0}
+.sw i{position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%; background:var(--muted); transition:.15s}
+.sw[aria-checked="true"]{background:var(--accent); border-color:var(--accent)}
+.sw[aria-checked="true"] i{left:18px; background:#fff}
+.sw:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+.follow3{grid-template-columns:repeat(3,1fr)}
+.fcol .fh{font-size:12px; font-weight:700; padding:8px 12px; border-radius:8px 8px 0 0}
+.fcol .fh small{font-weight:600; opacity:.8}
+.fcol.p1 .fh{background:var(--good-soft); color:var(--good)}
+.fcol.p2 .fh{background:var(--warn-soft); color:var(--warn)}
+.fcol.p3 .fh{background:var(--crit-soft); color:var(--crit)}
+.fcard{border:1px solid var(--line); border-top:0; border-radius:0 0 8px 8px; background:var(--surface)}
+.fcard .fi{padding:9px 12px; border-bottom:1px solid var(--line); font-size:12.5px}
+.fcard .fi:last-child{border-bottom:0}
+.fcard .fi .s{display:block; font-size:11.5px; color:var(--muted)}
+
+/* ---------- shift ---------- */
+.shift-note{font-size:12.5px; color:var(--muted); margin:0 0 12px}
+.sh td{padding:5px 4px}
+.shcell{width:100%; border:1px solid var(--line); background:var(--surface2); border-radius:7px; font:inherit; font-size:11.5px; font-weight:600; padding:7px 2px; cursor:pointer; color:var(--muted)}
+.shcell:focus-visible{outline:2px solid var(--accent); outline-offset:1px}
+.shcell.work{background:var(--accent-soft); color:var(--accent); border-color:transparent}
+.shcell.am{background:var(--honey-soft); color:var(--honey); border-color:transparent}
+.shcell.pm{background:var(--honey-soft); color:var(--honey); border-color:transparent}
+.shcell.koukyu{background:var(--surface2); color:var(--muted)}
+.shcell.yukyu{background:var(--good-soft); color:var(--good); border-color:transparent}
+.shcell.jikan{background:var(--crit-soft); color:var(--crit); border-color:transparent}
+
+/* ---------- sns ---------- */
+.snswrap{grid-template-columns:1fr 320px}
+.photos{display:grid; grid-template-columns:repeat(7,1fr); gap:8px}
+.ph{aspect-ratio:1; border-radius:8px; display:flex; align-items:flex-end; padding:5px 7px; font-size:10.5px; font-weight:700; color:#fff; text-shadow:0 1px 2px rgba(0,0,0,.4); position:relative}
+.ph .no{position:absolute; top:4px; right:6px; font-size:10px; opacity:.9}
+.splitlb{font-size:12px; font-weight:700; margin:14px 0 8px; display:flex; align-items:center; gap:8px}
+.splitlb:first-child{margin-top:0}
+.reel{border:1px dashed var(--line); border-radius:10px; padding:18px 14px; text-align:center; color:var(--muted); font-size:12.5px; background:var(--surface2)}
+.reelbd{display:grid; gap:10px}
+.btn.block{display:block; width:100%}
+.btn{display:inline-block; background:var(--accent); color:var(--accent-ink); border:0; border-radius:8px; font:inherit; font-weight:700; font-size:13px; padding:9px 18px; cursor:pointer}
+.btn.ghost{background:var(--surface2); color:var(--ink)}
+.btn:focus-visible{outline:2px solid var(--honey); outline-offset:2px}
+textarea{width:100%; border:1px solid var(--line); border-radius:8px; background:var(--surface); color:var(--ink); font:inherit; font-size:13px; padding:10px; resize:vertical}
+
+@media (max-width:860px){
+  .app{flex-direction:column}
+  .side{width:100%; padding:10px 12px}
+  .brand{padding:2px 4px 8px}
+  .nav-label,.side .foot,.mocktag{display:none}
+  .nav{flex-direction:row; overflow-x:auto; flex-wrap:nowrap; gap:2px; padding-bottom:2px}
+  .nav button{width:auto; padding:7px 11px; font-size:12.5px; white-space:nowrap}
+  .nav .ic{display:none}
+  .quick{grid-template-columns:repeat(2,1fr); gap:8px}
+  .qbtn{padding:10px 12px; gap:9px}
+  .qbtn .qi{width:32px; height:32px; font-size:16px}
+  .qbtn .qt{font-size:12.5px}
+  .kpis{grid-template-columns:repeat(2,1fr)}
+  .dash2,.cust2,.snswrap,.shift2{grid-template-columns:1fr}
+  .card .bd{overflow-x:auto}          /* 幅を超える表はカード内でスクロール */
+  .follow3{grid-template-columns:1fr}
+  .main{padding:16px}
+  .photos{grid-template-columns:repeat(4,1fr)}
+  .ocard{flex-direction:column; align-items:stretch; gap:10px}
+  .oinfo{width:auto}
+  .dogbtn,.cres .dogbtn{flex:1 1 100%; max-width:none}
+  .mcell{min-height:72px; padding:5px 4px; gap:3px}
+  .mline{font-size:10.5px; gap:4px}
+  .mline span{display:none}          /* 狭い画面では色ドットと件数のみ */
+  .mline b{margin-left:0}
+  .mcell .closed{font-size:10px; letter-spacing:0}
+}
+@media (prefers-reduced-motion: reduce){ *{transition:none !important} }
+</style>
+</head>
+<body>
+
+<div class="app">
+<aside class="side">
+  <div class="brand">
+    <div class="logo"><span class="mark">&#127807;</span>ここっとベール</div>
+    <div class="store">ヘアサロン｜予約・顧客・自動配信</div>
+  </div>
+  <div class="mocktag">画面モック（サンプルデータ）</div>
+  <nav class="nav" id="nav">
+    <div class="nav-label">メニュー</div>
+    <button class="on" data-s="dash"><span class="ic">&#9632;</span>ダッシュボード</button>
+    <button data-s="cal"><span class="ic">&#9633;</span>予約カレンダー</button>
+    <button data-s="list"><span class="ic">&#9633;</span>顧客一覧</button>
+    <button data-s="cust"><span class="ic">&#9633;</span>顧客カルテ</button>
+    <button data-s="rem"><span class="ic">&#9633;</span>リマインド</button>
+    <button data-s="shift"><span class="ic">&#9633;</span>シフト入力</button>
+    <button data-s="sns"><span class="ic">&#9633;</span>SNS投稿</button>
+  </nav>
+  <div class="foot">ここっとベール 管理システム<br>モック <b>v1.0</b>（更新 2026-08-06）<br>サンプルデータのみ・実データ未接続</div>
+</aside>
+
+<main class="main">
+
+<!-- ================= ダッシュボード ================= -->
+<section class="screen on" id="s-dash">
+  <div class="crumb">2026年7月24日（金）</div>
+  <h1>ダッシュボード</h1>
+  <p class="sub">よく使う機能へのショートカット。当月の新規・来店状況とスタイリスト実績もこの画面で確認できます。</p>
+
+  <div class="search dsearch">
+    <input id="dq" type="search" placeholder="お客様名・ご家族名・メニューで検索してカルテを開く" aria-label="お客様を検索">
+    <span class="cnt" id="dcnt"></span>
+  </div>
+  <div id="dres" class="cres"></div>
+
+  <div class="quick" id="quick">
+    <button class="qbtn" data-s="cal"><span class="qi">&#128197;</span><span class="qt">予約カレンダー<span class="qd">本日 12件・シフト反映</span></span></button>
+    <button class="qbtn" data-s="list"><span class="qi">&#128100;</span><span class="qt">顧客一覧<span class="qd">10ご家族 / 14名</span></span></button>
+    <button class="qbtn" data-s="cust"><span class="qi">&#128203;</span><span class="qt">顧客カルテ<span class="qd">来店履歴・パッチテスト</span></span></button>
+    <button class="qbtn" data-s="rem"><span class="qi">&#128276;</span><span class="qt">リマインド<span class="qd">本日 12件 送信予定</span></span></button>
+    <button class="qbtn" data-s="shift"><span class="qi">&#128337;</span><span class="qt">シフト入力<span class="qd">来週分 未確定</span></span></button>
+    <button class="qbtn" data-s="sns"><span class="qi">&#128247;</span><span class="qt">SNS投稿<span class="qd">写真14枚 未投稿</span></span></button>
+  </div>
+
+  <div class="grid kpis">
+    <div class="kpi"><div class="k">当月の新規顧客</div><div class="v num">6<small> 名</small></div><div class="d up">先月 +2</div></div>
+    <button class="kpi" id="kpiTrial"><div class="k">初回ご来店</div><div class="v num">9<small> 名</small></div><div class="d up">再来率 67%・タップで一覧</div></button>
+    <div class="kpi"><div class="k">当月の来店数</div><div class="v num">182<small> 件</small></div><div class="d up">先月同日比 +11</div></div>
+    <div class="kpi"><div class="k">失効した回数券</div><div class="v num">3<small> 回</small></div><div class="d dn">7月失効・対象 2名（顧客別に記録）</div></div>
+  </div>
+
+  <div class="grid dash2">
+    <div class="card">
+      <div class="hd"><h2>スタイリスト実績（7月）</h2><span class="pill mut">スタイリストのみ表示</span></div>
+      <div class="bd" style="padding-top:6px">
+        <table>
+          <tr><th>担当</th><th class="r">施術数</th><th class="r">新規</th><th class="r">既存</th><th class="r">貢献売上</th></tr>
+          <tr><td>佐藤</td><td class="r num">58</td><td class="r num">9</td><td class="r num">49</td><td class="r num">¥412,300</td></tr>
+          <tr><td>高橋</td><td class="r num">51</td><td class="r num">6</td><td class="r num">45</td><td class="r num">¥365,800</td></tr>
+          <tr><td>伊藤</td><td class="r num">44</td><td class="r num">11</td><td class="r num">33</td><td class="r num">¥318,500</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <div class="hd"><h2>来店経路（7月）</h2></div>
+      <div class="bd">
+        <div class="bar"><span class="lb">EPARK</span><span class="tr"><i class="fl" style="width:56%"></i></span><span class="n num">96</span></div>
+        <div class="bar"><span class="lb">公式LINE</span><span class="tr"><i class="fl" style="width:24%"></i></span><span class="n num">41</span></div>
+        <div class="bar"><span class="lb">電話</span><span class="tr"><i class="fl" style="width:13%"></i></span><span class="n num">22</span></div>
+        <div class="bar"><span class="lb">EPARK TEL</span><span class="tr"><i class="fl" style="width:8%"></i></span><span class="n num">14</span></div>
+        <div class="bar b2"><span class="lb">紹介・他</span><span class="tr"><i class="fl" style="width:5%"></i></span><span class="n num">9</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div class="hd"><h2>本日の自動リマインド</h2><span class="pill acc">12件 送信予定</span></div>
+    <div class="bd" style="padding-top:6px">
+      <table>
+        <tr><th>種別</th><th>対象</th><th>チャネル</th><th>時刻</th><th></th></tr>
+        <tr><td><span class="pill acc">前々日確認</span></td><td>7/26 ご予約の 5名</td><td><span class="src line">LINE</span></td><td class="num">10:00</td><td><span class="pill good">実装済</span></td></tr>
+        <tr><td><span class="pill good">来店7日後フォロー</span></td><td>7/17 ご来店の 2名</td><td><span class="src line">LINE</span></td><td class="num">10:00</td><td><span class="pill good">実装済</span></td></tr>
+        <tr><td><span class="pill acc">休眠フォロー</span></td><td>最終来店から90日の 3名</td><td><span class="src line">LINE</span></td><td class="num">10:00</td><td><span class="pill good">実装済</span></td></tr>
+        <tr><td><span class="pill hny">誕生日メッセージ</span></td><td>本日お誕生日の 1名</td><td><span class="src line">LINE</span></td><td class="num">10:00</td><td><span class="pill good">実装済</span></td></tr>
+        <tr><td><span class="pill warn">パッチテスト更新</span></td><td>カラーご予約の 1名（スタッフにも通知）</td><td><span class="src line">LINE</span></td><td class="num">15:00</td><td><span class="pill mut">構想</span></td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 予約カレンダー ================= -->
+<section class="screen" id="s-cal">
+  <div class="crumb">予約管理</div>
+  <h1>予約カレンダー</h1>
+  <p class="sub" id="calsub"></p>
+
+  <div class="vbar">
+    <div class="seg" id="vseg">
+      <button data-v="day" class="on">日</button>
+      <button data-v="week">週</button>
+      <button data-v="month">月</button>
+    </div>
+    <span class="vrange" id="vrange"></span>
+  </div>
+
+  <div class="card">
+    <div class="bd calwrap">
+      <!-- 日表示 -->
+      <div id="v-day">
+        <div class="tgrid">
+          <div class="thead">
+            <div class="rlab"></div>
+            <div class="tax" id="tax"></div>
+          </div>
+          <div id="tl"></div>
+        </div>
+      </div>
+
+      <!-- 週表示 -->
+      <div id="v-week" style="display:none">
+        <div class="tgrid wk">
+          <div class="thead">
+            <div class="rlab"></div>
+            <div class="tax" id="wtax"></div>
+          </div>
+          <div id="wtl"></div>
+        </div>
+      </div>
+
+      <!-- 月表示 -->
+      <div id="v-month" style="display:none">
+        <div class="mgrid" id="mgrid"></div>
+        <div class="msum" id="msum"></div>
+      </div>
+
+      <div class="legend">
+        <span><i style="background:var(--accent)"></i>通常施術</span>
+        <span><i style="background:var(--honey)"></i>定額プラン枠</span>
+        <span><i style="background:var(--good)"></i>初回のお客様</span>
+        <span><i style="background:var(--early)"></i>9:00以前</span>
+        <span><i style="background:var(--late)"></i>18:00以降</span>
+        <span><i style="background:linear-gradient(100deg,var(--early),var(--late))"></i>両方にまたがる</span>
+        <span><i style="background:var(--accent);position:relative;overflow:hidden"><i style="position:absolute;inset:0;background:repeating-linear-gradient(-45deg,rgba(255,255,255,.5) 0 3px,transparent 3px 6px);margin:0"></i></i>新規 +30分枠</span>
+        <span><i style="background:repeating-linear-gradient(-45deg,var(--surface2) 0 4px,transparent 4px 8px)"></i>シフト休・定休</span>
+        <span>&#11088; 新人スタッフ</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 顧客一覧 ================= -->
+<section class="screen" id="s-list">
+  <div class="crumb">顧客管理</div>
+  <h1>顧客一覧</h1>
+  <p class="sub">ご家族単位でまとめて管理します（ご一緒に通われるご家族はここに並びます）。名前をタップするとカルテが開きます。</p>
+  <div class="search">
+    <input id="q" type="search" placeholder="ご家族名・お客様名・メニューで検索" aria-label="顧客を検索">
+    <span class="cnt" id="cnt"></span>
+  </div>
+  <div class="owners" id="owners"></div>
+</section>
+
+<!-- ================= 顧客カルテ ================= -->
+<section class="screen" id="s-cust">
+  <div class="search">
+    <input id="cq" type="search" placeholder="別のお客様を検索（名前・ご家族・メニュー）" aria-label="カルテを検索">
+    <span class="cnt" id="ccnt"></span>
+  </div>
+  <div id="cres" class="cres"></div>
+  <div id="custbody"></div>
+</section>
+
+<!-- ================= リマインド ================= -->
+<section class="screen" id="s-rem">
+  <div class="crumb">自動化</div>
+  <h1>リマインド設定</h1>
+  <p class="sub">こちらは<b>店舗全体の設定</b>です。条件を満たすと自動で送信されます。<b>お客様ごとのON/OFFは各カルテの「このお客様へのリマインド設定」</b>で個別に変更できます。
+  <span class="pill good">実装済</span> は現行システムで既に動いている配信、<span class="pill mut">構想</span> は今後の候補です。</p>
+
+  <div class="card">
+    <div class="rem" id="remrows">
+      <div class="row"><span class="rid">R1</span><div><div class="nm">前々日確認 <span class="pill good">実装済</span></div><div class="cond">ご予約の2日前 10:00｜「伺います / 変更したい」のボタン付き</div></div><span class="src line">LINE</span><button class="sw" aria-checked="true" role="switch" aria-label="R1 有効"><i></i></button></div>
+      <div class="row"><span class="rid">R2</span><div><div class="nm">来店7日後フォロー <span class="pill good">実装済</span></div><div class="cond">ご来店の7日後 10:00｜自由入力の返信は自動で内容を判定しスタッフへ通知</div></div><span class="src line">LINE</span><button class="sw" aria-checked="true" role="switch" aria-label="R2 有効"><i></i></button></div>
+      <div class="row"><span class="rid">R3</span><div><div class="nm">休眠フォロー <span class="pill good">実装済</span></div><div class="cond">最終来店から90日 10:00｜同じ方へは90日に1回まで・配信停止の導線つき</div></div><span class="src line">LINE</span><button class="sw" aria-checked="true" role="switch" aria-label="R3 有効"><i></i></button></div>
+      <div class="row"><span class="rid">R4</span><div><div class="nm">誕生日メッセージ <span class="pill good">実装済</span></div><div class="cond">お誕生日 当日 10:00｜クーポンを添付（2/29 生まれは平年 2/28）</div></div><span class="src line">LINE</span><button class="sw" aria-checked="true" role="switch" aria-label="R4 有効"><i></i></button></div>
+      <div class="row"><span class="rid">R5</span><div><div class="nm">初回ご来店後の追客 <span class="pill mut">構想</span></div><div class="cond">次回のご予約が未定の方のみ（下の3パターンで自動判定）</div></div><span class="src line">LINE</span><button class="sw" aria-checked="true" role="switch" aria-label="R5 有効"><i></i></button></div>
+      <div class="row"><span class="rid">R6</span><div><div class="nm">回数券 残回数のご案内 <span class="pill mut">構想</span></div><div class="cond">2週間ご来店なし＋残回数ありで通知</div></div><span class="src line">LINE</span><button class="sw" aria-checked="true" role="switch" aria-label="R6 有効"><i></i></button></div>
+      <div class="row"><span class="rid">R7</span><div><div class="nm">定額プラン 残回数のご案内 <span class="pill mut">構想</span></div><div class="cond">月4回・月8回プランの方が1週間ご来店なしで月内残回数を通知</div></div><span class="src line">LINE</span><button class="sw" aria-checked="true" role="switch" aria-label="R7 有効"><i></i></button></div>
+      <div class="row"><span class="rid">R8</span><div><div class="nm">パッチテスト更新のご案内 <span class="pill mut">構想</span></div><div class="cond">カラーのご予約前・前回実施から期限切れの方｜スタッフにも通知</div></div><span class="src line">LINE</span><button class="sw" aria-checked="true" role="switch" aria-label="R8 有効"><i></i></button></div>
+    </div>
+  </div>
+
+  <h2 style="margin:22px 0 10px">初回ご来店後のフォロー状況</h2>
+  <div class="grid follow3">
+    <div class="fcol p1">
+      <div class="fh">パターン1｜次回のご予約あり <small>フォローのみ</small></div>
+      <div class="fcard">
+        <div class="fi">山口 陽向（カット・21歳）<span class="s">7/21 初回 → 次回 7/29 ご予約済</span></div>
+        <div class="fi">中島 悠真（カット＋カラー・28歳）<span class="s">7/18 初回 → 次回 7/25 ご予約済</span></div>
+      </div>
+    </div>
+    <div class="fcol p2">
+      <div class="fh">パターン2｜再来意向あり・日程未定 <small>フォロー＋追客</small></div>
+      <div class="fcard">
+        <div class="fi">藤本 恵子（カット・34歳）<span class="s">7/21 初回｜7/27 追客予定</span></div>
+      </div>
+    </div>
+    <div class="fcol p3">
+      <div class="fh">パターン3｜再来の意向が未確認 <small>フォロー＋追客</small></div>
+      <div class="fcard">
+        <div class="fi">小林 湊（カット・12歳）<span class="s">7/19 初回｜7/25 追客予定（1回目）</span></div>
+        <div class="fi">佐々木 芽依（カット＋トリートメント・16歳）<span class="s">7/12 初回｜追客2回済・検討中</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= シフト入力 ================= -->
+<section class="screen" id="s-shift">
+  <div class="crumb">スタッフ管理</div>
+  <h1>シフト入力</h1>
+  <p class="shift-note">マスをクリックするだけで「出勤 → AM半休 → PM半休 → 公休 → 有休 → 時間休」の順に切り替わります（実際に触ってみてください）。入力したシフトはそのまま予約カレンダーに反映されます。名前の横の☆をタップすると<b>新人マーク&#11088;</b>を付与でき、カレンダーにも反映されます。</p>
+
+  <div class="card">
+    <div class="bd" style="overflow-x:auto">
+      <table class="sh" style="min-width:640px">
+        <tr><th style="width:90px">7/27週</th><th>月 27</th><th>火 28</th><th>水 29<br><span style="font-weight:600">定休</span></th><th>木 30</th><th>金 31</th><th>土 1</th><th>日 2</th></tr>
+        <tr><td style="white-space:nowrap">佐藤<button class="star" data-star="佐藤" aria-label="佐藤の新人マーク">&#9734;</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell koukyu">公休</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell am">AM半休</button></td></tr>
+        <tr><td style="white-space:nowrap">高橋<button class="star" data-star="高橋" aria-label="高橋の新人マーク">&#9734;</button></td><td><button class="shcell am">AM半休</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell koukyu">公休</button></td><td><button class="shcell yukyu">有休</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell koukyu">公休</button></td></tr>
+        <tr><td style="white-space:nowrap">伊藤<button class="star" data-star="伊藤" aria-label="伊藤の新人マーク">&#9734;</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell jikan">時間休<br>14-16</button></td><td><button class="shcell koukyu">公休</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell koukyu">公休</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell work">出勤</button></td></tr>
+        <tr><td style="white-space:nowrap">中村<button class="star" data-star="中村" aria-label="中村の新人マーク">&#9734;</button></td><td><button class="shcell koukyu">公休</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell koukyu">公休</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell pm">PM半休</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell work">出勤</button></td></tr>
+        <tr><td style="white-space:nowrap">山本<button class="star" data-star="山本" aria-label="山本の新人マーク">&#9734;</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell koukyu">公休</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell koukyu">公休</button></td><td><button class="shcell work">出勤</button></td></tr>
+      </table>
+      <div class="legend" style="margin-top:12px">
+        <span><i style="background:var(--accent-soft)"></i>出勤</span>
+        <span><i style="background:var(--honey-soft)"></i>AM/PM半休</span>
+        <span><i style="background:var(--surface2)"></i>公休</span>
+        <span><i style="background:var(--good-soft)"></i>有休</span>
+        <span><i style="background:var(--crit-soft)"></i>時間休（時間指定）</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid shift2">
+    <div class="card">
+      <div class="hd"><h2>公式LINE botからの申請</h2><span class="pill good">LINE連携</span></div>
+      <div class="bd">
+        <div class="chat">
+          <span class="tstamp">今日 21:47</span>
+          <div class="bub staff"><span class="who">高橋</span>8/1(土) 有休お願いします。子どもの行事のため</div>
+          <div class="bub bot"><span class="who">ここっとベール bot</span>シフト変更を受け付けました。<br><b>高橋さん：8/1(土) 有休</b><br>店長の承認後にシフト表・予約カレンダーへ反映されます。</div>
+          <span class="tstamp">今日 22:03</span>
+          <div class="bub staff"><span class="who">山本</span>7/30 10時から12時まで時間休もらえますか</div>
+          <div class="bub bot"><span class="who">ここっとベール bot</span>シフト変更を受け付けました。<br><b>山本さん：7/30(木) 時間休 10:00〜12:00</b><br>承認待ちです。</div>
+        </div>
+        <p style="font-size:12px;color:var(--muted);margin:10px 0 0">スタッフが普段の公式LINEにメッセージを送るだけで申請できます（スタッフのLINEアカウントは事前登録で識別。顧客には通常のメニューが表示されます）。</p>
+      </div>
+    </div>
+    <div class="card">
+      <div class="hd"><h2>承認待ちの申請</h2><span class="pill warn" id="reqcnt">2件</span></div>
+      <div id="reqs"></div>
+      <div class="bd" style="border-top:1px solid var(--line)">
+        <p style="font-size:12px;color:var(--muted);margin:0">「承認」すると上のシフト表と予約カレンダーに即時反映され、申請したスタッフへLINEで結果が自動通知されます（実際に承認を押して試せます）。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= SNS投稿 ================= -->
+<section class="screen" id="s-sns">
+  <div class="crumb">集客</div>
+  <h1>SNS投稿</h1>
+  <p class="sub">写真が11枚以上あるときは自動で2つの投稿に分割します（Instagramの1投稿10枚上限に対応）。リール動画の投稿にも対応。</p>
+
+  <div class="grid snswrap">
+    <div class="card">
+      <div class="hd"><h2>本日の写真 14枚</h2><span class="pill acc">自動で2投稿に分割</span></div>
+      <div class="bd">
+        <div class="splitlb"><span class="pill acc">投稿 1</span>10枚</div>
+        <div class="photos" id="post1"></div>
+        <div class="splitlb"><span class="pill hny">投稿 2</span>4枚</div>
+        <div class="photos" id="post2"></div>
+      </div>
+    </div>
+    <div style="display:grid;gap:16px;align-content:start">
+      <div class="card">
+        <div class="hd"><h2>キャプション</h2></div>
+        <div class="bd">
+          <textarea rows="6">本日のスタイル✂ 夏に向けたインナーカラーと、伸ばしかけの前髪アレンジ。担当は佐藤です。#ここっとベール #ヘアサロン #インナーカラー</textarea>
+          <p style="font-size:12px;color:var(--muted);margin:8px 0 12px">投稿2には「つづき（2/2）」が自動で追記されます。</p>
+          <button class="btn block">2件まとめて予約投稿</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="hd"><h2>リール動画</h2><span class="pill good">対応</span></div>
+        <div class="bd reelbd">
+          <div class="reel">動画をドラッグ＆ドロップ<br><span style="font-size:11px">縦型（9:16）・90秒まで推奨</span></div>
+          <textarea rows="3" placeholder="リールのキャプション（例: 今日のスタイル紹介✂ #ここっとベール）"></textarea>
+          <button class="btn block">リールを作成して予約投稿</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+<div class="toast" id="toast" role="status"></div>
+</div>
+
+<script>
+// ================= 顧客データ（ダミー） =================
+// 世帯（ご家族）→ メンバーの2階層。ご一緒に通われるご家族を1枚のカードにまとめる。
+const FAMILIES = [
+  { name:'田中 里奈', tel:'090-1234-5678', line:true, source:'EPARK', since:'2024/03', stylist:'佐藤', members:[
+    { n:'里奈', menu:'カット＋カラー', age:38, sex:'女性', bd:'1988/02/14', total:24, last:'7/22',
+      plan:{label:'定額プラン 月4回', quota:4, used:3, carry:1, carryLimit:'8月末まで'},
+      ticket:{left:3, exp:'8/20'},
+      patch:{ date:'2025/08/15', state:['warn','更新まで 22日'], allergy:'2026/04/03' },
+      lapsed:[['6/30','定額プラン 月4回','5月分の繰越',1],['4/30','定額プラン 月4回','3月分の繰越',2],['2/20','回数券','期限2ヶ月・購入 12/20',1]],
+      visits:[['7/22 火','シャンプー・ブロー（定額）','line','高橋','定額プランでのご利用。前髪のみ調整。'],
+              ['7/15 火','シャンプー・ブロー（定額）','line','高橋','スタイリング剤のご相談。軽めのバームをご提案。'],
+              ['7/12 土','カット＋カラー','epark','佐藤','根元のみリタッチ。8トーン。頭皮に赤みなし。'],
+              ['7/8 火','シャンプー・ブロー（定額）','line','高橋',''],
+              ['6/28 土','トリートメント（回数券）','tel','高橋','回数券 残3回に。次回期限 8/20。']] },
+    { n:'結菜', menu:'カット', age:12, sex:'女性', bd:'2014/05/03', total:7, last:'7/12',
+      plan:null, ticket:{left:5, exp:'9/12'},
+      patch:{ date:'2026/03/02', state:['good','有効'], allergy:'2026/04/03' },
+      lapsed:[],
+      visits:[['7/12 土','カット（回数券）','epark','佐藤','里奈様と同時来店。肩上のボブに。'],
+              ['6/14 土','カット（回数券）','epark','伊藤','前髪を眉上に。'],
+              ['5/17 土','カット＋トリートメント','tel','佐藤','夏に向けて軽く。']] }]},
+
+  { name:'山口 健太', tel:'080-2345-6789', line:true, source:'公式LINE', since:'2026/07', stylist:'中村', members:[
+    { n:'陽向', menu:'カット', age:21, sex:'男性', bd:'2005/06/20', total:2, last:'7/21', first:['次回 7/29 ご予約済','good'],
+      plan:{label:'定額プラン 月8回（8/1〜）', quota:8, used:0, carry:0},
+      ticket:null,
+      patch:{ date:'2026/05/10', state:['good','有効'], allergy:'2026/05/10' },
+      lapsed:[],
+      visits:[['7/21 月','カット（初回クーポン）','line','中村','ショートに。次回 7/29 ご予約。定額プランを8月からご利用予定。'],
+              ['7/14 月','カウンセリング','line','中村','スタイルのご相談のみ。']] }]},
+
+  { name:'佐々木 由美', tel:'090-3456-7890', line:true, source:'EPARK', since:'2023/11', stylist:'佐藤', members:[
+    { n:'由美', menu:'カット＋カラー', age:45, sex:'女性', bd:'1981/01/09', total:31, last:'7/24',
+      plan:null, ticket:{left:1, exp:'8/5'},
+      patch:{ date:'2025/09/01', state:['warn','更新まで 39日'], allergy:'2026/04/20' },
+      lapsed:[['5/10','回数券','期限2ヶ月・購入 3/10',2]],
+      visits:[['7/24 金','カラー','line','佐藤','白髪染め。頭皮がやや乾燥気味のため低刺激剤に変更。'],
+              ['6/20 金','トリートメント（回数券）','tel','高橋','残1回に。'],
+              ['5/23 金','カット＋カラー','epark','佐藤','顔まわりをレイヤーで軽く。']] },
+    { n:'芽依', menu:'カット＋トリートメント', age:16, sex:'女性', bd:'2010/08/30', total:3, last:'7/12', first:['追客2回済・検討中','crit'],
+      plan:null, ticket:null,
+      patch:{ date:'2026/02/14', state:['good','有効'], allergy:'2026/04/20' },
+      lapsed:[],
+      visits:[['7/12 土','カット＋トリートメント（初回クーポン）','epark','中村','部活で結びやすい長さをご希望。次回は未定。'],
+              ['6/20 金','カット','tel','伊藤','由美様と同時来店。']] }]},
+
+  { name:'中島 翔太', tel:'070-4567-8901', line:true, source:'EPARK TEL', since:'2025/02', stylist:'伊藤', members:[
+    { n:'悠真', menu:'カット＋カラー', age:28, sex:'男性', bd:'1998/03/18', total:12, last:'7/24', first:['再来店・次回 7/25','good'],
+      plan:{label:'定額プラン 月4回', quota:4, used:4, carry:0},
+      ticket:null,
+      patch:{ date:'2026/01/22', state:['good','有効'], allergy:'2026/03/15' },
+      lapsed:[['3/31','定額プラン 月4回','2月分の繰越',1]],
+      visits:[['7/24 金','前髪カット','tel','伊藤','あわせて襟足も整えました。'],
+              ['7/18 金','カット＋カラー（初回クーポン）','line','中村','次回 7/25 ご予約。'],
+              ['7/4 金','シャンプー・ブロー（定額）','line','山本','']] }]},
+
+  { name:'藤本 恵子', tel:'090-5678-9012', line:false, source:'紹介', since:'2024/09', stylist:'佐藤', members:[
+    { n:'恵子', menu:'カット', age:34, sex:'女性', bd:'1992/04/02', total:9, last:'7/21', first:['再来意向あり・日程未定（7/27 追客予定）','warn'],
+      plan:null, ticket:{left:4, exp:'9/1'},
+      patch:{ date:'2025/07/30', state:['crit','期限切れ 要確認'], allergy:'2026/04/01' },
+      lapsed:[],
+      visits:[['7/21 月','カット','tel','中村','次回の日程は調整中。カラーはパッチテスト後にご案内。'],
+              ['7/1 火','トリートメント（回数券）','tel','高橋','残4回。'],
+              ['6/3 火','カット','tel','佐藤','夏に向けて短めに。']] },
+    { n:'千尋', menu:'カット＋パーマ', age:66, sex:'女性', bd:'1960/11/11', total:15, last:'6/10',
+      plan:null, ticket:null,
+      patch:{ date:'2026/06/05', state:['good','有効'], allergy:'2026/04/01' },
+      lapsed:[['6/30','回数券','期限2ヶ月・購入 4/30',3]],
+      visits:[['6/10 水','カット','tel','伊藤','回数券の期限をご案内（結果的に3回失効）。'],
+              ['4/30 水','カット＋パーマ','tel','佐藤','回数券10回を購入。ゆるめのパーマ。']] }]},
+
+  { name:'大西 亮', tel:'080-6789-0123', line:true, source:'EPARK', since:'2022/06', stylist:'佐藤', members:[
+    { n:'亮', menu:'カット＋ヘッドスパ', age:52, sex:'男性', bd:'1974/02/28', total:42, last:'7/24',
+      plan:null, ticket:{left:6, exp:'9/24'},
+      patch:{ date:'2026/06/18', state:['good','有効'], allergy:'2026/05/02' },
+      lapsed:[],
+      visits:[['7/24 金','カット＋ヘッドスパ','tel','佐藤','肩こりがつらいとのことで長めに。'],
+              ['6/26 木','ヘッドスパ（回数券）','tel','高橋',''],
+              ['5/29 木','カット＋ヘッドスパ','epark','佐藤','サイド短め。']] }]},
+
+  { name:'小林 さやか', tel:'090-7890-1234', line:true, source:'公式LINE', since:'2026/07', stylist:'未指名', members:[
+    { n:'湊', menu:'カット', age:12, sex:'男性', bd:'2014/03/07', total:1, last:'7/19', first:['再来の意向が未確認（7/25 追客予定）','crit'],
+      plan:null, ticket:null,
+      patch:{ date:'2026/04/11', state:['good','有効'], allergy:'2026/04/11' },
+      lapsed:[],
+      visits:[['7/19 土','カット（初回クーポン）','line','中村','ご家族と一緒にご来店。次回は未定。']] }]},
+
+  { name:'森田 直樹', tel:'080-8901-2345', line:true, source:'EPARK', since:'2023/04', stylist:'高橋', members:[
+    { n:'直樹', menu:'カット', age:41, sex:'男性', bd:'1985/09/15', total:19, last:'7/24',
+      plan:null, ticket:{left:2, exp:'8/12'},
+      patch:{ date:'2026/02/26', state:['good','有効'], allergy:'2026/03/30' },
+      lapsed:[['1/31','回数券','期限2ヶ月・購入 11/30',1]],
+      visits:[['7/24 金','カット','epark','高橋','いつもどおり。写真の掲載OK。'],
+              ['6/28 土','カット（回数券）','epark','高橋','残2回。'],
+              ['5/30 金','カット＋トリートメント','epark','高橋','']] },
+    { n:'陽菜', menu:'カット', age:8, sex:'女性', bd:'2018/06/01', total:4, last:'7/24', first:['本日 初回（17:00〜）','warn'],
+      plan:null, ticket:null,
+      patch:{ date:'2026/05/20', state:['good','有効'], allergy:'2026/03/30' },
+      lapsed:[],
+      visits:[['7/24 金','カット（初回クーポン）','line','中村','お子様のはじめてのカット。キッズチェアをご用意。'],
+              ['6/14 土','前髪カット','epark','伊藤','直樹様と同時来店。']] }]},
+
+  { name:'岡田 美穂', tel:'090-9012-3456', line:false, source:'電話', since:'2021/10', stylist:'伊藤', members:[
+    { n:'美穂', menu:'カット＋カラー', age:58, sex:'女性', bd:'1968/05/22', total:53, last:'6/28',
+      plan:null, ticket:{left:2, exp:'8/1'},
+      patch:{ date:'2025/08/20', state:['warn','更新まで 27日'], allergy:'2026/04/12' },
+      lapsed:[['4/1','回数券','期限2ヶ月・購入 2/1',2]],
+      visits:[['6/28 土','カラー（回数券）','tel','伊藤','2週間以上ご来店なし → 来店促しのご案内を送信済。'],
+              ['5/31 土','カット＋カラー','tel','佐藤','明るめのブラウンに。']] }]},
+
+  { name:'西村 大輔', tel:'070-0123-4567', line:true, source:'EPARK', since:'2025/08', stylist:'山本', members:[
+    { n:'大輔', menu:'シャンプー・ブロー', age:33, sex:'男性', bd:'1993/07/07', total:11, last:'7/20',
+      plan:{label:'定額プラン 月8回', quota:8, used:5, carry:2, carryLimit:'8月末まで'},
+      ticket:null,
+      patch:{ date:'2026/01/15', state:['good','有効'], allergy:'2026/04/05' },
+      lapsed:[['5/31','定額プラン 月8回','4月分の繰越',2]],
+      visits:[['7/20 日','シャンプー・ブロー（定額）','line','山本','出張前のセット。'],
+              ['7/13 日','シャンプー・ブロー（定額）','line','山本',''],
+              ['7/6 日','シャンプー・ブロー（定額）','line','中村','']] }]},
+];
+// ---- 顧客一覧の描画 ----
+const ownersEl = document.getElementById('owners'), cntEl = document.getElementById('cnt'), qEl = document.getElementById('q');
+function memberTags(d){
+  const t = [];
+  if (d.plan) t.push('<span class="pill acc">' + d.plan.label.replace('スクール ', '') + '</span>');
+  if (d.ticket) t.push('<span class="pill hny">回数券 残' + d.ticket.left + '</span>');
+  if (d.patch.state[0] !== 'good') t.push('<span class="pill ' + d.patch.state[0] + '">パッチテスト</span>');
+  if (d.lapsed.length) t.push('<span class="pill crit">失効' + d.lapsed.reduce((a, x) => a + x[3], 0) + '</span>');
+  return t.join('');
+}
+function renderOwners(q = ''){
+  const k = q.trim().toLowerCase();
+  ownersEl.innerHTML = '';
+  let dogCount = 0, ownerCount = 0;
+  FAMILIES.forEach(o => {
+    const members = o.members.filter(d => !k || (o.name + d.n + d.menu).toLowerCase().includes(k));
+    if (!members.length) return;
+    ownerCount++; dogCount += members.length;
+    const c = document.createElement('div'); c.className = 'ocard';
+    c.innerHTML = '<div class="oinfo"><div class="oh"><span class="on">' + o.name + ' 様</span>'
+      + (o.members.length > 1 ? '<span class="pill mut">' + o.members.length + '名</span>' : '')
+      + (o.line ? '<span class="pill good">LINE</span>' : '<span class="pill mut">LINE未連携</span>') + '</div>'
+      + '<div class="om">' + o.tel + '<br>経路: ' + o.source + '｜初回 ' + o.since + '</div></div>';
+    const list = document.createElement('div'); list.className = 'dogs';
+    members.forEach(d => {
+      const b = document.createElement('button'); b.className = 'dogbtn';
+      b.innerHTML = '<span class="dav">' + d.n.charAt(0) + '</span>'
+        + '<span class="dname"><span class="dn">' + d.n + '</span><span class="db">' + d.menu + '・' + d.age + '歳・' + d.sex + '</span></span>'
+        + '<span class="dtags">' + memberTags(d) + '</span>';
+      b.addEventListener('click', () => openCarte(d, o));
+      list.appendChild(b);
+    });
+    c.appendChild(list); ownersEl.appendChild(c);
+  });
+  cntEl.textContent = ownerCount + ' ご家族 / ' + dogCount + ' 名';
+  if (!ownerCount) ownersEl.innerHTML = '<p class="sub">該当する顧客が見つかりません。</p>';
+}
+qEl.addEventListener('input', () => renderOwners(qEl.value));
+renderOwners();
+
+// ---- お客様の検索（ダッシュボードとカルテで共通） ----
+function bindSearch(inputId, resId, cntId){
+  const input = document.getElementById(inputId);
+  const res = document.getElementById(resId);
+  const cnt = document.getElementById(cntId);
+  const clear = () => { input.value = ''; res.classList.remove('on'); res.innerHTML = ''; cnt.textContent = ''; };
+  input.addEventListener('input', () => {
+    const k = input.value.trim().toLowerCase();
+    res.innerHTML = '';
+    if (!k) { res.classList.remove('on'); cnt.textContent = ''; return; }
+    const hits = [];
+    FAMILIES.forEach(o => o.members.forEach(d => {
+      if ((o.name + d.n + d.menu).toLowerCase().includes(k)) hits.push([d, o]);
+    }));
+    cnt.textContent = hits.length + ' 件';
+    res.classList.add('on');
+    if (!hits.length) { res.innerHTML = '<p class="none">該当するお客様が見つかりません。</p>'; return; }
+    hits.slice(0, 12).forEach(([d, o]) => {
+      const b = document.createElement('button'); b.className = 'dogbtn';
+      b.innerHTML = '<span class="dav">' + d.n.charAt(0) + '</span>'
+        + '<span class="dname"><span class="dn">' + d.n + '</span>'
+        + '<span class="db">' + d.menu + '・' + d.age + '歳・' + d.sex + '</span>'
+        + '<span class="owner">' + o.name + ' 様</span></span>'
+        + '<span class="dtags">' + memberTags(d) + '</span>';
+      b.addEventListener('click', () => { openCarte(d, o); clear(); });
+      res.appendChild(b);
+    });
+  });
+}
+bindSearch('dq', 'dres', 'dcnt');   // ダッシュボード
+bindSearch('cq', 'cres', 'ccnt');   // 顧客カルテ
+
+// ---- 顧客ごとのリマインド設定 ----
+// 現行システムで動いている4種（R1〜R4）と、今後の候補（R5〜R8）
+const REMINDERS = [
+  { id:'R1', n:'前々日確認',             c:'ご予約の2日前 10:00',       need:() => true },
+  { id:'R2', n:'来店7日後フォロー',      c:'ご来店の7日後 10:00',       need:() => true },
+  { id:'R3', n:'休眠フォロー',           c:'最終来店から90日',          need:() => true },
+  { id:'R4', n:'誕生日メッセージ',       c:'お誕生日 当日 10:00',       need:() => true },
+  { id:'R5', n:'初回ご来店後の追客',     c:'次回のご予約が未定の場合',  need:d => !!d.first },
+  { id:'R6', n:'回数券 残回数のご案内',  c:'2週間ご来店なし＋残回数',   need:d => !!d.ticket },
+  { id:'R7', n:'定額プラン 残回数案内',  c:'1週間ご来店なし',           need:d => !!d.plan },
+  { id:'R8', n:'繰越分の消化のご案内',   c:'翌月へ繰り越したとき',      need:d => !!(d.plan && d.plan.carry) },
+];
+const custRem = {};                       // お客様ごとの個別設定（未設定＝店舗設定に従う）
+custRem['千尋'] = { R4:false };            // 例: 誕生日メッセージを辞退
+custRem['美穂'] = { R6:false };            // 例: 回数券の来店促しを辞退
+function remCard(d, o){
+  const rows = REMINDERS.filter(r => r.need(d)).map(r => {
+    const ov = custRem[d.n] && custRem[d.n][r.id] !== undefined;
+    const on = ov ? custRem[d.n][r.id] : true;
+    return '<div class="row"><span class="rid">' + r.id + '</span>'
+      + '<div><div class="nm">' + r.n + (ov ? ' <span class="pill hny">個別設定</span>' : '') + '</div>'
+      + '<div class="cond">' + r.c + '</div></div>'
+      + '<span class="src ' + (o.line ? 'line' : 'tel') + '">' + (o.line ? 'LINE' : 'メール') + '</span>'
+      + '<button class="sw crem" data-member="' + d.n + '" data-id="' + r.id + '" role="switch" aria-checked="' + on + '" aria-label="' + r.n + '"><i></i></button></div>';
+  }).join('');
+  const off = REMINDERS.filter(r => !r.need(d)).map(r => r.n).join('・');
+  return '<div class="card"><div class="hd"><h2>このお客様へのリマインド設定</h2><span class="pill mut">店舗設定を引き継ぎ</span></div>'
+    + '<div class="rem">' + rows + '</div>'
+    + '<div class="bd" style="border-top:1px solid var(--line)"><p style="font-size:12px;color:var(--muted);margin:0">'
+    + '個別にOFFにすると、店舗全体の設定にかかわらずこの方だけ送信を止められます（配信停止のご要望などに使用）。'
+    + (off ? '<br>現在の対象外: ' + off + '（条件を満たすと自動で表示されます）' : '')
+    + '<br>送信先: ' + o.name + ' 様' + (o.line ? '（LINE連携済み）' : '（LINE未連携のため送信されません）')
+    + '</p></div></div>';
+}
+document.addEventListener('click', e => {
+  const sw = e.target.closest('.sw.crem');
+  if (!sw) return;
+  const on = sw.getAttribute('aria-checked') !== 'true';
+  sw.setAttribute('aria-checked', on);
+  const member = sw.dataset.member;
+  custRem[member] = custRem[member] || {};
+  custRem[member][sw.dataset.id] = on;
+  const nm = sw.closest('.row').querySelector('.nm');
+  if (!nm.querySelector('.pill')) nm.insertAdjacentHTML('beforeend', ' <span class="pill hny">個別設定</span>');
+  showToast(member + ' 様の「' + nm.textContent.replace('個別設定', '').trim() + '」を' + (on ? 'ON' : 'OFF') + 'にしました');
+});
+
+// ---- 顧客カルテの描画 ----
+const custbody = document.getElementById('custbody');
+function openCarte(d, o){
+  const lapsedTotal = d.lapsed.reduce((a, x) => a + x[3], 0);
+  const tags = [];
+  if (d.plan) tags.push('<span class="pill acc">' + d.plan.label + '</span>');
+  if (d.ticket) tags.push('<span class="pill hny">回数券 残' + d.ticket.left + '回（期限 ' + d.ticket.exp + '）</span>');
+  tags.push('<span class="pill ' + d.patch.state[0] + '">パッチテスト ' + d.patch.state[1] + '</span>');
+  if (lapsedTotal) tags.push('<span class="pill crit">失効 累計' + lapsedTotal + '回</span>');
+  if (d.first) tags.push('<span class="pill ' + d.first[1] + '">初回後: ' + d.first[0] + '</span>');
+
+  const school = d.plan ? '<div class="card"><div class="hd"><h2>定額プランの利用（7月）</h2></div><div class="bd">'
+    + '<div style="display:flex;justify-content:space-between;font-size:12.5px"><span>当月分（' + d.plan.label.replace('定額プラン ', '') + '）</span><b class="num">' + d.plan.used + ' / ' + d.plan.quota + ' 回</b></div>'
+    + '<div class="meter"><i style="width:' + (d.plan.used / d.plan.quota * 100) + '%"></i></div>'
+    + (d.plan.carry ? '<div style="display:flex;justify-content:space-between;font-size:12.5px;margin-top:8px"><span>先月からの繰越分</span><b class="num">' + d.plan.carry + ' 回（' + d.plan.carryLimit + '）</b></div><div class="meter"><i style="width:0%;background:var(--honey)"></i></div>' : '')
+    + '<p style="font-size:12px;color:var(--muted);margin:8px 0 0">当月分を優先消化 → その後に繰越分を消化。1週間ご来店がない場合は残回数をご案内します。</p></div></div>' : '';
+
+  const lapsed = '<div class="card"><div class="hd"><h2>失効した回数</h2><span class="pill ' + (lapsedTotal ? 'crit' : 'good') + ' num">累計 ' + lapsedTotal + ' 回</span></div><div class="bd">'
+    + (lapsedTotal
+      ? '<table style="table-layout:fixed"><tr><th style="width:78px">失効日</th><th>内訳</th><th class="r" style="width:56px;white-space:nowrap">回数</th></tr>'
+        + d.lapsed.map(x => '<tr><td class="num">' + x[0] + '</td><td>' + x[1] + '<span style="display:block;font-size:11.5px;color:var(--muted)">' + x[2] + '</span></td><td class="r num">' + x[3] + '</td></tr>').join('')
+        + '</table><p style="font-size:12px;color:var(--muted);margin:10px 0 0">当月分・繰越分ともに消化されずに期限を過ぎた回数を、お客様ごとに記録します。</p>'
+      : '<p style="font-size:12.5px;color:var(--muted);margin:0">失効した回数はありません。</p>')
+    + '</div></div>';
+
+  custbody.innerHTML =
+    '<div class="crumb"><a href="#" id="bklist" style="color:var(--accent)">顧客管理 / 顧客一覧</a> /</div>'
+    + '<div class="cust-hd"><div class="avatar">' + d.n.charAt(0) + '</div><div>'
+    + '<h1 style="margin-bottom:0">' + d.n + ' <span style="font-size:13px;color:var(--muted);font-weight:600">' + d.menu + '・' + d.age + '歳・' + d.sex + '</span></h1>'
+    + '<div style="font-size:12.5px;color:var(--muted)">ご家族: ' + o.name + ' 様｜初回来店: ' + o.since + '（経路: ' + o.source + '）'
+    + (o.members.length > 1 ? '｜ご一緒に: ' + o.members.filter(x => x !== d).map(x => x.n).join('・') : '') + '</div></div>'
+    + '<div style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;max-width:520px">' + tags.join('') + '</div></div>'
+    + '<div class="grid cust2"><div style="display:grid;gap:16px;align-content:start">'
+    + '<div class="card"><div class="hd"><h2>基本情報</h2></div><div class="bd"><dl class="kv">'
+    + '<dt>ご家族（代表）</dt><dd>' + o.name + ' 様</dd>'
+    + '<dt>連絡先</dt><dd>' + o.tel + '</dd>'
+    + '<dt>LINE</dt><dd>' + (o.line ? '<span class="pill good">連携済み</span>' : '<span class="pill mut">未連携（配信対象外）</span>') + '</dd>'
+    + '<dt>誕生日</dt><dd>' + d.bd + '<span class="pill mut">自動メッセージON</span></dd>'
+    + '<dt>来店経路</dt><dd>' + o.source + '</dd>'
+    + '<dt>指名スタッフ</dt><dd>' + o.stylist + '</dd>'
+    + '</dl></div></div>'
+    + '<div class="card"><div class="hd"><h2>パッチテスト・アレルギー</h2></div><div class="bd"><dl class="kv">'
+    + '<dt>パッチテスト</dt><dd>' + d.patch.date + ' 実施 <span class="pill ' + d.patch.state[0] + '">' + d.patch.state[1] + '</span></dd>'
+    + '<dt>問診の確認</dt><dd>' + d.patch.allergy + ' 実施 <span class="pill good">有効</span></dd></dl>'
+    + '<p style="font-size:12px;color:var(--muted);margin:8px 0 0">カラーのご予約前に期限切れが分かるよう、期限が近い方へ自動でご案内します（スタッフにも通知）。</p></div></div>'
+    + school + lapsed + '</div>'
+    + '<div style="display:grid;gap:16px;align-content:start">'
+    + remCard(d, o)
+    + '<div class="card"><div class="hd"><h2>来店履歴・施術メモ</h2><span class="pill mut">全 ' + d.total + ' 件</span></div>'
+    + '<div class="bd" style="padding-top:4px"><ul class="tl">'
+    + d.visits.map(v => '<li><span class="dt num">' + v[0] + '</span><div class="tt"><b>' + v[1] + '</b>'
+        + '<span class="src ' + v[2] + '">' + ({ line:'LINE', epark:'EPARK', tel:'電話' })[v[2]] + '</span>'
+        + (v[3] ? ' 担当: ' + v[3] : '')
+        + (v[4] ? '<div class="memo">' + v[4] + '</div>' : '') + '</div></li>').join('')
+    + '</ul></div></div></div></div>';
+
+  document.getElementById('bklist').addEventListener('click', e => { e.preventDefault(); go('list'); });
+  go('cust');
+}
+// ---- タブ切替 ----
+const nav = document.getElementById('nav');
+function go(s){
+  nav.querySelectorAll('button').forEach(x => { const on = x.dataset.s === s; x.classList.toggle('on', on); x.querySelector('.ic').innerHTML = on ? '&#9632;' : '&#9633;'; });
+  document.querySelectorAll('.screen').forEach(sec => sec.classList.toggle('on', sec.id === 's' + '-' + s));
+  window.scrollTo(0, 0);
+}
+nav.addEventListener('click', e => {
+  const b = e.target.closest('button[data-s]');
+  if (b) go(b.dataset.s);
+});
+document.getElementById('quick').addEventListener('click', e => {   // ダッシュボードのショートカット
+  const b = e.target.closest('button[data-s]');
+  if (b) go(b.dataset.s);
+});
+openCarte(FAMILIES[0].members[0], FAMILIES[0]);   // 初期表示用にカルテを組み立て
+go('dash');
+
+// ---- 予約カレンダー（横タイムライン 7:00-22:00） ----
+const DAY_START = 7, DAY_HOURS = 15;                // 7:00-22:00
+const CORE_OPEN = 9, CORE_CLOSE = 18;               // 通常営業時間
+function periodCls(s, e){                            // 時間帯による色分け
+  if (s < CORE_OPEN && e > CORE_CLOSE) return 'both';
+  if (s < CORE_OPEN) return 'early';
+  if (e > CORE_CLOSE) return 'late';
+  return '';
+}
+const tax = document.getElementById('tax');
+for (let h = 0; h <= DAY_HOURS; h++) {
+  const s = document.createElement('span');
+  s.style.left = (h / DAY_HOURS * 100) + '%';
+  if (h === DAY_HOURS) s.style.transform = 'translateX(-100%)';
+  s.textContent = (DAY_START + h) + ':00';
+  tax.appendChild(s);
+}
+const rows = [
+  {name:'受付',    role:'電話・LINE'},
+  {name:'佐藤',    role:'スタイリスト', st:true},
+  {name:'高橋',    role:'スタイリスト・AM半休', st:true, off:[7,13,'AM半休']},
+  {name:'中村',    role:'スタイリスト・公休',   st:true, off:[7,22,'公休']},
+  {name:'山本',    role:'アシスタント', st:true},
+  {name:'出張・撮影', role:'店外対応'},
+];
+const evs = [
+  {row:0, s:8,    d:1,   cls:'pickup', html:'<b>電話受付 3件</b>当日枠の空き確認'},
+  {row:0, s:17.5, d:1,   cls:'pickup', html:'<b>翌日の確認連絡</b>LINE 5件（自動）'},
+  {row:1, s:7.5,  d:1.5, cls:'',       html:'<b>美穂 早朝カラー</b><span class="src">電話</span>'},
+  {row:1, s:9,    d:1.5, cls:'',       html:'<b>里奈 カット＋カラー</b><span class="src">EPARK</span>'},
+  {row:1, s:11,   d:1,   cls:'',       html:'<b>由美 カラー</b><span class="src">LINE</span>'},
+  {row:1, s:12,   d:1.5, cls:'', nc:1, html:'<b>井上 楓 カット</b>新規 <span class="src">EPARK</span>'},
+  {row:1, s:14,   d:2,   cls:'',       html:'<b>亮 カット＋スパ</b><span class="src">電話</span>'},
+  {row:2, s:13,   d:1.5, cls:'',       html:'<b>直樹 カット</b><span class="src">EPARK</span>'},
+  {row:2, s:15.5, d:1,   cls:'',       html:'<b>悠真 前髪カット</b><span class="src">電話</span>'},
+  {row:2, s:18.5, d:1.5, cls:'',       html:'<b>大輔 ナイトセット</b><span class="src">LINE</span>'},
+  {row:4, s:9,    d:8,   cls:'school', html:'<b>定額プラン枠 6名</b>シャンプー・ブロー'},
+  {row:1, s:17,   d:1,   cls:'trial',  html:'<b>陽菜 初回カット</b><span class="src">LINE</span>'},
+  {row:5, s:8,    d:11,  cls:'',       html:'<b>出張ヘアメイク</b>8:00〜19:00 前撮り <span class="src">電話</span>'},
+];
+const tl = document.getElementById('tl');
+const bodies = [];
+rows.forEach(r => {
+  const tr = document.createElement('div'); tr.className = 'trow';
+  const lb = document.createElement('div'); lb.className = 'rlab';
+  lb.innerHTML = '<span style="display:flex;align-items:center;gap:2px">' + r.name
+    + (r.st ? '<button class="star" data-star="' + r.name + '" aria-label="' + r.name + 'の新人マーク">&#9734;</button>' : '')
+    + '</span><span class="role">' + r.role + '</span>';
+  const bd = document.createElement('div'); bd.className = 'rbody';
+  if (r.off) {
+    const h = document.createElement('div'); h.className = 'hatch';
+    h.style.left  = ((r.off[0] - DAY_START) / DAY_HOURS * 100) + '%';
+    h.style.width = ((r.off[1] - r.off[0]) / DAY_HOURS * 100) + '%';
+    h.textContent = r.off[2];
+    bd.appendChild(h);
+  }
+  tr.append(lb, bd); tl.appendChild(tr); bodies.push(bd);
+});
+function fmt(t){ const h = Math.floor(t), m = Math.round((t - h) * 60); return h + ':' + String(m).padStart(2, '0'); }
+function makeEv(e){
+  const d = document.createElement('div');
+  const pc = periodCls(e.s, e.s + e.d);
+  const ext = e.nc ? 0.5 : 0;                        // 新規顧客は+30分の準備枠
+  d.className = 'tev ' + e.cls + (pc ? ' ' + pc : '');
+  d.style.left  = ((e.s - DAY_START) / DAY_HOURS * 100) + '%';
+  d.style.width = ((e.d + ext) / DAY_HOURS * 100) + '%';
+  d.innerHTML = e.html
+    + (e.nc ? '<span class="ncx" style="width:' + (0.5 / (e.d + 0.5) * 100) + '%">＋30</span>' : '')
+    + '<span class="rz">&#8596;</span><span class="hz l"></span><span class="hz r"></span>';
+  if (e.nc) d.title = '新規のお客様のため +30分の枠を自動確保（' + fmt(e.s) + '〜' + fmt(e.s + e.d + 0.5) + '）';
+  d.dataset.s = e.s; d.dataset.d = e.d; d.dataset.cls = e.cls; d.dataset.html = e.html; d.dataset.nc = e.nc ? '1' : '0';
+  d.addEventListener('contextmenu', ev => ev.preventDefault());
+  bodies[e.row].appendChild(d);
+}
+evs.forEach(makeEv);
+
+// ================= 週表示 =================
+const WEEK = [
+  { d:'7/20', w:'月', evs:[
+      {s:9,   dur:8,   cls:'school', t:'定額プラン枠 5名'},
+      {s:10,  dur:1.5, cls:'',       t:'大輔 カット'},
+      {s:13,  dur:1,   cls:'',       t:'由美 カラー'},
+      {s:15,  dur:2,   cls:'',       t:'亮 カット＋スパ'}] },
+  { d:'7/21', w:'火', evs:[
+      {s:9,   dur:8,   cls:'school', t:'定額プラン枠 6名'},
+      {s:10,  dur:1.5, cls:'trial',  t:'陽向 初回カット'},
+      {s:13,  dur:1.5, cls:'trial',  t:'恵子 初回カット'},
+      {s:15.5,dur:1,   cls:'',       t:'悠真 前髪カット'}] },
+  { d:'7/22', w:'水', closed:true, evs:[] },
+  { d:'7/23', w:'木', evs:[
+      {s:9,   dur:8,   cls:'school', t:'定額プラン枠 4名'},
+      {s:9.5, dur:2,   cls:'',       t:'直樹 カット'},
+      {s:13,  dur:1.5, cls:'',       t:'結菜 カット'},
+      {s:16,  dur:1,   cls:'',       t:'美穂 前髪カット'}] },
+  { d:'7/24', w:'金', today:true, evs:[
+      {s:9,   dur:8,   cls:'school', t:'定額プラン枠 6名'},
+      {s:7.5, dur:1.5, cls:'',       t:'美穂 早朝カラー'},
+      {s:9,   dur:1.5, cls:'',       t:'里奈 カット＋カラー'},
+      {s:11,  dur:1,   cls:'',       t:'由美 カラー'},
+      {s:13,  dur:1.5, cls:'',       t:'直樹 カット'},
+      {s:14,  dur:2,   cls:'',       t:'亮 カット＋スパ'},
+      {s:17,  dur:1,   cls:'trial',  t:'陽菜 初回カット'},
+      {s:18.5,dur:1.5, cls:'',       t:'大輔 ナイトセット'}] },
+  { d:'7/25', w:'土', evs:[
+      {s:9,   dur:2,   cls:'',       t:'里奈 カット＋トリートメント'},
+      {s:10,  dur:1.5, cls:'',       t:'結菜 カット'},
+      {s:11.5,dur:2,   cls:'',       t:'悠真 カット＋カラー'},
+      {s:14,  dur:1.5, cls:'',       t:'芽依 カット'},
+      {s:16,  dur:1.5, cls:'',       t:'千尋 カット'}] },
+  { d:'7/26', w:'日', evs:[
+      {s:9,   dur:8,   cls:'school', t:'定額プラン枠 3名'},
+      {s:10,  dur:1.5, cls:'',       t:'大輔 カット'},
+      {s:13,  dur:2,   cls:'',       t:'美穂 カット＋カラー'}] },
+];
+const wtax = document.getElementById('wtax'), wtl = document.getElementById('wtl');
+for (let h = 0; h <= DAY_HOURS; h++) {
+  const s = document.createElement('span');
+  s.style.left = (h / DAY_HOURS * 100) + '%';
+  if (h === DAY_HOURS) s.style.transform = 'translateX(-100%)';
+  s.textContent = (DAY_START + h) + ':00';
+  wtax.appendChild(s);
+}
+WEEK.forEach(day => {
+  const tr = document.createElement('div'); tr.className = 'trow';
+  const lb = document.createElement('button'); lb.className = 'rlab' + (day.w === '土' ? ' sat' : day.w === '日' ? ' sun' : '');
+  lb.type = 'button';
+  lb.innerHTML = day.d + '（' + day.w + '）<span class="role">' + (day.closed ? '定休日' : day.evs.length + ' 件') + (day.today ? '・本日' : '') + '</span>';
+  lb.addEventListener('click', () => setView('day'));
+  const bd = document.createElement('div'); bd.className = 'rbody';
+  if (day.closed) {
+    const h = document.createElement('div'); h.className = 'hatch';
+    h.style.left = '0'; h.style.width = '100%'; h.textContent = '定休日';
+    bd.appendChild(h);
+  }
+  day.evs.forEach(e => {
+    const el = document.createElement('div');
+    const school = e.cls === 'school';
+    const pc = periodCls(e.s, e.s + e.dur);
+    el.className = 'tev ' + e.cls + (pc ? ' ' + pc : '') + (school ? ' laneA' : ' laneB');   // 定額プラン枠は上段、個別の施術は下段
+    el.style.left  = ((e.s - DAY_START) / DAY_HOURS * 100) + '%';
+    el.style.width = (e.dur / DAY_HOURS * 100) + '%';
+    el.innerHTML = school
+      ? '<b>' + e.t + '</b>　' + fmt(e.s) + '〜' + fmt(e.s + e.dur)
+      : '<b>' + e.t + '</b>' + fmt(e.s) + '〜' + fmt(e.s + e.dur);
+    el.title = day.d + ' ' + fmt(e.s) + '〜' + fmt(e.s + e.dur) + '　' + e.t;
+    bd.appendChild(el);
+  });
+  tr.append(lb, bd); wtl.appendChild(tr);
+});
+
+// ================= 月表示 =================
+// [日, 施術件数, 定額プラン利用者, 初回のお客様]（0 = 定休日）
+// 水曜定休（2026年7月は 1・8・15・22・29 日）。20〜26日は週表示の内容と一致
+const MONTH = [
+  [1,0,0,0],[2,6,5,1],[3,8,6,0],[4,9,0,1],[5,5,3,0],[6,4,5,0],[7,6,6,1],
+  [8,0,0,0],[9,7,4,0],[10,8,6,1],[11,11,0,0],[12,4,3,0],[13,5,5,0],[14,6,6,2],
+  [15,0,0,0],[16,6,4,0],[17,9,6,1],[18,10,0,1],[19,3,3,0],[20,3,5,0],[21,1,6,2],
+  [22,0,0,0],[23,3,4,0],[24,4,6,1],[25,5,0,0],[26,2,3,0],[27,4,5,0],[28,6,6,1],
+  [29,0,0,0],[30,7,4,0],[31,8,6,0],
+];
+const mgrid = document.getElementById('mgrid');
+['月','火','水','木','金','土','日'].forEach((w, i) => {
+  const d = document.createElement('div');
+  d.className = 'dow' + (i === 5 ? ' sat' : i === 6 ? ' sun' : '');
+  d.textContent = w;
+  mgrid.appendChild(d);
+});
+for (let i = 0; i < 2; i++) {                       // 2026/7/1 は水曜 → 月・火は前月分
+  const c = document.createElement('div'); c.className = 'mcell out';
+  c.innerHTML = '<span class="dnum">' + (29 + i) + '</span>';
+  mgrid.appendChild(c);
+}
+MONTH.forEach(([day, salon, school, trial]) => {
+  const dow = (day + 1) % 7;                        // 0=月 … 5=土, 6=日
+  const c = document.createElement('button'); c.type = 'button';
+  c.className = 'mcell' + (day === 24 ? ' today' : '') + (salon === 0 ? ' out' : '');
+  let html = '<span class="dnum' + (dow === 5 ? ' sat' : dow === 6 ? ' sun' : '') + '">' + day + '</span>';
+  if (salon === 0) {
+    html += '<span class="closed">定休日</span>';
+  } else {
+    html += '<span class="mline"><i style="background:var(--accent)"></i><span>施術</span><b>' + salon + '</b></span>';
+    if (school) html += '<span class="mline"><i style="background:var(--honey)"></i><span>定額</span><b>' + school + '</b></span>';
+    if (trial)  html += '<span class="mline"><i style="background:var(--good)"></i><span>初回</span><b>' + trial + '</b></span>';
+  }
+  c.innerHTML = html;
+  if (salon) c.addEventListener('click', () => setView('day'));
+  mgrid.appendChild(c);
+});
+for (let i = 0; i < 2; i++) {                       // 7/31 は金曜 → 土・日は翌月分
+  const c = document.createElement('div'); c.className = 'mcell out';
+  c.innerHTML = '<span class="dnum">' + (1 + i) + '</span>';
+  mgrid.appendChild(c);
+}
+const mt = MONTH.reduce((a, x) => [a[0] + x[1], a[1] + x[2], a[2] + x[3]], [0, 0, 0]);
+document.getElementById('msum').innerHTML =
+  '7月合計　施術 <b>' + mt[0] + ' 件</b>　定額プラン延べ <b>' + mt[1] + ' 名</b>　初回 <b>' + mt[2] + ' 件</b>　営業 <b>' + MONTH.filter(x => x[1]).length + ' 日</b>（水曜定休）';
+
+// ---- 表示切替 ----
+const VIEWS = {
+  day:   { range:'2026年7月24日（金）7:00〜22:00', sub:'横軸が時間（7:00〜22:00）・縦が担当の表示。<b>9:00以前の予定は青、18:00以降は紫、両方にまたがる予定はグラデーション</b>で色分けされます。<b>新規のお客様は自動で+30分の枠（斜線）を確保</b>。スタッフ名の☆で新人マーク&#11088;を付与。タップで詳細、長押し（PCはドラッグ）でコピー、両端スライドで時間変更ができます（30分単位）。' },
+  week:  { range:'2026年7月20日（月）〜 7月26日（日）', sub:'1週間の予約を一覧で確認できます。日付をタップするとその日の詳細（日表示）に切り替わります。' },
+  month: { range:'2026年7月', sub:'日ごとの件数を俯瞰できます。日付をタップするとその日の詳細（日表示）に切り替わります。' },
+};
+function setView(v){
+  document.querySelectorAll('#vseg button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+  ['day', 'week', 'month'].forEach(x => document.getElementById('v-' + x).style.display = x === v ? '' : 'none');
+  document.getElementById('vrange').textContent = VIEWS[v].range;
+  document.getElementById('calsub').innerHTML = VIEWS[v].sub;
+}
+document.getElementById('vseg').addEventListener('click', e => {
+  const b = e.target.closest('button[data-v]');
+  if (b) setView(b.dataset.v);
+});
+setView('day');
+
+// ---- 新人スタッフの⭐マーク（カレンダー・シフトで共通） ----
+const ROOKIE = new Set(['伊藤', '山本']);
+function updateStars(){
+  document.querySelectorAll('.star').forEach(b => {
+    const on = ROOKIE.has(b.dataset.star);
+    b.innerHTML = on ? '&#11088;' : '&#9734;';
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-pressed', on);
+  });
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('.star');
+  if (!b) return;
+  const name = b.dataset.star;
+  if (ROOKIE.has(name)) { ROOKIE.delete(name); showToast(name + 'の新人マークを外しました'); }
+  else { ROOKIE.add(name); showToast(name + 'に新人マーク⭐を付けました'); }
+  updateStars();
+});
+updateStars();
+
+// ---- LINE botからのシフト変更申請 ----
+const SHIFT_REQS = [
+  { name:'高橋', day:'8/1(土)',  col:6, kind:'yukyu', cell:'有休',             short:'有休', note:'子どもの行事のため' },
+  { name:'山本', day:'7/30(木)', col:4, kind:'jikan', cell:'時間休<br>10-12', short:'時間休 10:00〜12:00', note:'' },
+];
+const reqsEl = document.getElementById('reqs'), reqcnt = document.getElementById('reqcnt');
+let pendingReqs = SHIFT_REQS.length;
+function setShiftCell(name, col, kind, label){
+  document.querySelectorAll('.sh tr').forEach(tr => {
+    if (tr.querySelector('td .star[data-star="' + name + '"]')) {
+      const c = tr.children[col].querySelector('.shcell');
+      if (c) { c.className = 'shcell ' + kind; c.innerHTML = label; }
+    }
+  });
+}
+SHIFT_REQS.forEach(r => {
+  const row = document.createElement('div'); row.className = 'sreq';
+  row.innerHTML = '<div><div class="sn">' + r.name + '　' + r.day + ' → ' + r.short + '</div>'
+    + '<div class="sd">LINEから申請' + (r.note ? '｜理由: ' + r.note : '') + '</div></div>';
+  const acts = document.createElement('div'); acts.className = 'acts2';
+  const ok = document.createElement('button'); ok.className = 'abtn'; ok.textContent = '承認';
+  const ng = document.createElement('button'); ng.className = 'abtn ng'; ng.textContent = '却下';
+  const done = msg => {
+    acts.innerHTML = '<span class="pill ' + (msg === '反映済み' ? 'good' : 'mut') + '">' + msg + '</span>';
+    reqcnt.textContent = --pendingReqs ? pendingReqs + '件' : 'なし';
+    if (!pendingReqs) { reqcnt.className = 'pill mut'; }
+  };
+  ok.addEventListener('click', () => {
+    setShiftCell(r.name, r.col, r.kind, r.cell);
+    done('反映済み');
+    showToast(r.name + ' ' + r.day + ' を' + r.short + 'に更新し、LINEで通知しました');
+  });
+  ng.addEventListener('click', () => {
+    done('却下');
+    showToast(r.name + 'へ却下をLINEで通知しました');
+  });
+  acts.append(ok, ng);
+  row.appendChild(acts);
+  reqsEl.appendChild(row);
+});
+
+// ---- 初回ご来店の一覧モーダル（ダッシュボードのKPIから） ----
+const TRIALS = [
+  ['7/24', '陽菜',     'カット',                 '本日 初回（17:00〜）',   'warn'],
+  ['7/21', '陽向',     'カット',                 '次回 7/29 ご予約済',     'good'],
+  ['7/21', '恵子',     'カット',                 '再来意向あり・日程未定', 'warn'],
+  ['7/19', '湊',       'カット',                 '追客中（7/25予定）',     'crit'],
+  ['7/18', '悠真',     'カット＋カラー',         '再来店・継続中',         'good'],
+  ['7/12', '芽依',     'カット＋トリートメント', '追客2回済・検討中',      'crit'],
+  ['7/10', '佐伯 蓮',  'カット',                 '次回 8月 ご予約済',      'good'],
+  ['7/5',  '井上 楓',  'カット＋カラー',         '再来なし',               'mut'],
+  ['7/2',  '原田 千夏','カット',                 '再来店・継続中',         'good'],
+];
+let tmodal = null;
+function closeTrialModal(){ if (tmodal) { tmodal.remove(); tmodal = null; } }
+document.getElementById('kpiTrial').addEventListener('click', () => {
+  closeTrialModal();
+  const back = document.createElement('div'); back.className = 'mback';
+  back.addEventListener('click', e => { if (e.target === back) closeTrialModal(); });
+  const win = document.createElement('div'); win.className = 'mwin';
+  win.innerHTML = '<div class="mhd"><h2>7月の初回ご来店（' + TRIALS.length + '名）</h2>'
+    + '<button class="mx" aria-label="閉じる">&#10005;</button></div>';
+  win.querySelector('.mx').addEventListener('click', closeTrialModal);
+  const list = document.createElement('div'); list.className = 'tri-rows';
+  TRIALS.forEach(([dt, name, menu, status, cls]) => {
+    let owner = null, dog = null;
+    FAMILIES.forEach(o => o.members.forEach(d => { if (d.n === name) { owner = o; dog = d; } }));
+    const row = document.createElement(dog ? 'button' : 'div');
+    row.className = 'trow2';
+    row.innerHTML = '<span class="td2 num">' + dt + '</span>'
+      + '<span class="tn"><b>' + name + '</b><span>' + menu + '</span>'
+      + (owner ? '<span class="ow">' + owner.name + ' 様</span>' : '<span class="ow">（カルテ未登録）</span>') + '</span>'
+      + '<span class="pill ' + cls + '">' + status + '</span>';
+    if (dog) row.addEventListener('click', () => { closeTrialModal(); openCarte(dog, owner); });
+    list.appendChild(row);
+  });
+  win.appendChild(list);
+  win.insertAdjacentHTML('beforeend', '<div class="mft">名前をタップするとカルテが開きます。再来率 67%（9名中6名が再来店・ご予約済）</div>');
+  back.appendChild(win);
+  document.body.appendChild(back);
+  tmodal = back;
+});
+window.addEventListener('keydown', e => { if (e.key === 'Escape') closeTrialModal(); });
+
+// ---- 長押しドラッグでコピー ----
+const toast = document.getElementById('toast');
+let toastT;
+function showToast(msg){
+  toast.textContent = msg; toast.classList.add('on');
+  clearTimeout(toastT); toastT = setTimeout(() => toast.classList.remove('on'), 2600);
+}
+function showUndoToast(msg, onUndo){
+  toast.textContent = '';
+  toast.append(msg);
+  const b = document.createElement('button');
+  b.textContent = '元に戻す';
+  b.addEventListener('click', () => { onUndo(); showToast('元に戻しました'); });
+  toast.appendChild(b);
+  toast.classList.add('on');
+  clearTimeout(toastT); toastT = setTimeout(() => toast.classList.remove('on'), 6000);
+}
+
+// ---- タップで予約詳細ポップアップ（キャンセル/削除） ----
+let pop = null;
+function closePop(){ if (pop) { pop.back.remove(); pop.el.remove(); pop = null; } }
+function openPop(ev, x, y){
+  closePop();
+  const row = rows[bodies.indexOf(ev.parentElement)];
+  const s = parseFloat(ev.dataset.s), d = parseFloat(ev.dataset.d);
+  const title = (ev.querySelector('b') || {}).textContent || '予約';
+  const back = document.createElement('div'); back.className = 'popback';
+  back.addEventListener('pointerdown', closePop);
+  const el = document.createElement('div'); el.className = 'pop';
+  el.innerHTML = '<h3></h3>'
+    + '<div class="meta">時間: <b>' + fmt(s) + ' 〜 ' + fmt(s + d) + '</b></div>'
+    + '<div class="meta">担当・枠: <b>' + row.name + '</b>（' + row.role + '）</div>';
+  el.querySelector('h3').textContent = title;
+  const acts = document.createElement('div'); acts.className = 'acts';
+  const mk = (cls, label, fn) => { const b = document.createElement('button'); b.className = 'pbtn ' + cls; b.textContent = label; b.addEventListener('click', fn); return b; };
+  acts.append(
+    mk('', '顧客カルテを開く', () => { closePop(); document.querySelector('#nav button[data-s="cust"]').click(); }),
+    mk('cancel', 'キャンセルとして記録', () => removeEv(ev, 'キャンセルとして記録しました（履歴に残ります）')),
+    mk('del', '完全に削除（入力ミス用）', () => removeEv(ev, '削除しました'))
+  );
+  el.appendChild(acts);
+  document.body.append(back, el);
+  const r = el.getBoundingClientRect();
+  el.style.left = Math.max(8, Math.min(x, innerWidth - r.width - 8)) + 'px';
+  el.style.top  = Math.max(8, Math.min(y + 10, innerHeight - r.height - 8)) + 'px';
+  pop = { el, back };
+}
+function removeEv(ev, msg){
+  const parent = ev.parentElement, next = ev.nextSibling;
+  ev.remove();
+  closePop();
+  showUndoToast(msg, () => parent.insertBefore(ev, next));
+}
+window.addEventListener('keydown', e => { if (e.key === 'Escape') closePop(); });
+let press = null, drag = null, rsz = null;
+tl.addEventListener('pointerdown', e => {
+  const hz = e.target.closest('.hz');
+  if (hz) {                                    // 両端スライドで時間変更
+    const ev = hz.closest('.tev');
+    ev.classList.add('rsz');
+    const badge = document.createElement('span');
+    badge.className = 'tbadge';
+    ev.parentElement.appendChild(badge);
+    rsz = { ev, side: hz.classList.contains('l') ? 'l' : 'r',
+            s: parseFloat(ev.dataset.s), d: parseFloat(ev.dataset.d), badge };
+    updateBadge();
+    return;
+  }
+  const ev = e.target.closest('.tev');
+  if (!ev) return;
+  press = { ev, x: e.clientX, y: e.clientY, id: e.pointerId, type: e.pointerType,
+    timer: setTimeout(() => startDrag(ev, e.clientX, e.clientY), 420) };
+});
+function updateBadge(){
+  rsz.badge.textContent = fmt(rsz.s) + ' 〜 ' + fmt(rsz.s + rsz.d);
+  rsz.badge.style.left = rsz.ev.style.left;
+}
+function applyRsz(){
+  const { ev, s, d } = rsz;
+  const ext = ev.dataset.nc === '1' ? 0.5 : 0;
+  ev.style.left  = ((s - DAY_START) / DAY_HOURS * 100) + '%';
+  ev.style.width = ((d + ext) / DAY_HOURS * 100) + '%';
+  ev.dataset.s = s; ev.dataset.d = d;
+  ev.classList.remove('early', 'late', 'both');       // 時間帯の色分けを再判定
+  const pc = periodCls(s, s + d);
+  if (pc) ev.classList.add(pc);
+}
+function startDrag(ev, x, y){
+  const r = ev.getBoundingClientRect();
+  const g = ev.cloneNode(true);
+  g.classList.add('ghost');
+  g.style.left = r.left + 'px'; g.style.top = r.top + 'px';
+  g.style.width = r.width + 'px'; g.style.removeProperty('right');
+  document.body.appendChild(g);
+  ev.classList.add('lift');
+  drag = { ev, g, dx: x - r.left, dy: y - r.top, target: null, t: parseFloat(ev.dataset.s) };
+  if (navigator.vibrate) navigator.vibrate(10);
+}
+window.addEventListener('pointermove', e => {
+  if (rsz) {
+    e.preventDefault();
+    const r = rsz.ev.parentElement.getBoundingClientRect();
+    const t = DAY_START + Math.round((e.clientX - r.left) / r.width * DAY_HOURS * 2) / 2;   // 30分スナップ
+    const end = rsz.s + rsz.d;
+    if (rsz.side === 'l') {
+      const ns = Math.min(end - 0.5, Math.max(DAY_START, t));
+      rsz.d = end - ns; rsz.s = ns;
+    } else {
+      const ne = Math.max(rsz.s + 0.5, Math.min(DAY_START + DAY_HOURS, t));
+      rsz.d = ne - rsz.s;
+    }
+    applyRsz(); updateBadge();
+    return;
+  }
+  if (press && !drag) {
+    if (Math.abs(e.clientX - press.x) > 10 || Math.abs(e.clientY - press.y) > 10) {
+      clearTimeout(press.timer);
+      if (press.type === 'mouse') { startDrag(press.ev, e.clientX, e.clientY); }  // PCは長押し不要で即ドラッグ
+      else { press = null; }                                                       // タッチはスクロール優先
+    }
+    return;
+  }
+  if (!drag) return;
+  e.preventDefault();
+  drag.g.style.left = (e.clientX - drag.dx) + 'px';
+  drag.g.style.top  = (e.clientY - drag.dy) + 'px';
+  let hit = null;
+  bodies.forEach(b => {
+    const r = b.getBoundingClientRect();
+    const on = e.clientY >= r.top && e.clientY <= r.bottom;
+    b.classList.toggle('drop', on);
+    if (on) {
+      hit = b;
+      const frac = (e.clientX - drag.dx - r.left) / r.width;               // 左端基準・30分スナップ
+      drag.t = Math.min(DAY_START + DAY_HOURS - parseFloat(drag.ev.dataset.d),
+               Math.max(DAY_START, DAY_START + Math.round(frac * DAY_HOURS * 2) / 2));
+    }
+  });
+  drag.target = hit;
+}, { passive: false });
+function endDrag(commit){
+  if (press) { clearTimeout(press.timer); press = null; }
+  if (!drag) return;
+  const { ev, g, target, t } = drag;
+  const sameSpot = target === ev.parentElement && t === parseFloat(ev.dataset.s);
+  if (commit && target && !sameSpot) {
+    makeEvIn(target, { s: t, d: parseFloat(ev.dataset.d), cls: ev.dataset.cls, html: ev.dataset.html, nc: ev.dataset.nc === '1' ? 1 : 0 });
+    const nm = rows[bodies.indexOf(target)].name;
+    showToast('コピーしました：' + nm + ' ' + fmt(t) + '〜');
+  }
+  g.remove(); ev.classList.remove('lift');
+  bodies.forEach(b => b.classList.remove('drop'));
+  drag = null;
+}
+function makeEvIn(body, e){
+  const row = bodies.indexOf(body);
+  makeEv({ ...e, row });
+}
+function endRsz(){
+  if (!rsz) return;
+  rsz.ev.classList.remove('rsz');
+  rsz.badge.remove();
+  showToast('時間を変更しました：' + fmt(rsz.s) + ' 〜 ' + fmt(rsz.s + rsz.d));
+  rsz = null;
+}
+window.addEventListener('pointerup', e => {
+  if (rsz) { endRsz(); return; }
+  if (press && !drag) {                        // 動かさず離した → タップで詳細
+    clearTimeout(press.timer);
+    openPop(press.ev, e.clientX, e.clientY);
+    press = null;
+    return;
+  }
+  endDrag(true);
+});
+window.addEventListener('pointercancel', () => { endRsz(); endDrag(false); });
+// ---- リマインドのトグル ----
+document.querySelectorAll('#s-rem .sw').forEach(sw => {   // 店舗全体の設定のみ（カルテ側は個別ハンドラ）
+  sw.addEventListener('click', () => sw.setAttribute('aria-checked', sw.getAttribute('aria-checked') !== 'true'));
+});
+
+// ---- シフトセルの切替 ----
+const CYCLE = [['work','出勤'],['am','AM半休'],['pm','PM半休'],['koukyu','公休'],['yukyu','有休'],['jikan','時間休<br>要時間指定']];
+document.querySelectorAll('.shcell').forEach(c => {
+  c.addEventListener('click', () => {
+    const cur = CYCLE.findIndex(([k]) => c.classList.contains(k));
+    const next = CYCLE[(cur + 1) % CYCLE.length];
+    CYCLE.forEach(([k]) => c.classList.remove(k));
+    c.classList.add(next[0]);
+    c.innerHTML = next[1];
+  });
+});
+
+// ---- SNS写真プレースホルダ ----
+const shots = ['里奈','陽向','由美','悠真','結菜','亮','直樹','湊','芽依','陽菜','美穂','千尋','大輔','恵子'];
+const hues = [155, 42, 205, 18, 95, 265, 330, 175, 60, 230, 10, 130, 300, 190];
+function photo(i, no){
+  const d = document.createElement('div');
+  d.className = 'ph';
+  d.style.background = `linear-gradient(135deg, hsl(${hues[i]} 32% 62%), hsl(${(hues[i]+40)%360} 30% 44%))`;
+  d.innerHTML = `${shots[i]}<span class="no num">${no}</span>`;
+  return d;
+}
+const p1 = document.getElementById('post1'), p2 = document.getElementById('post2');
+for (let i = 0; i < 14; i++) (i < 10 ? p1 : p2).appendChild(photo(i, i < 10 ? i + 1 : i - 9));
+</script>
+</body>
+</html>

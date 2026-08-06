@@ -26,7 +26,7 @@ test('デモメニューを投入し、表示順を連番で振る', async () =>
   assert.equal(result.skipped.length, 0);
 
   const inserts = pool.queries.filter((q) => /INSERT INTO menus/.test(q.sql));
-  assert.equal(inserts[0].params[0], 'カット');
+  assert.equal(inserts[0].params[0], 'シャンプーコース');
   assert.equal(inserts[0].params[1], 60);
   assert.deepEqual(
     inserts.map((q) => q.params[2]),
@@ -36,12 +36,12 @@ test('デモメニューを投入し、表示順を連番で振る', async () =>
 });
 
 test('同名メニューが既にあれば追加せずスキップする', async () => {
-  const pool = makePool({ existingNames: ['カット', 'カラー'] });
+  const pool = makePool({ existingNames: ['シャンプーコース', '一時預かり'] });
   const result = await seedMenus(pool);
 
-  assert.deepEqual(result.skipped, ['カット', 'カラー']);
+  assert.deepEqual(result.skipped, ['シャンプーコース', '一時預かり']);
   assert.equal(result.added.length, DEMO_MENUS.length - 2);
-  assert.ok(!result.added.includes('カット'));
+  assert.ok(!result.added.includes('シャンプーコース'));
 });
 
 test('既存メニューがある場合は表示順をその後ろから振る', async () => {
@@ -54,7 +54,7 @@ test('既存メニューがある場合は表示順をその後ろから振る',
 
 test('重複挿入を SQL 側でも防いでいる', async () => {
   const pool = makePool();
-  await seedMenus(pool, [{ name: 'カット', durationMinutes: 60 }]);
+  await seedMenus(pool, [{ name: 'シャンプーコース', durationMinutes: 60 }]);
   const insert = pool.queries.find((q) => /INSERT INTO menus/.test(q.sql));
   assert.match(insert.sql, /WHERE NOT EXISTS \(SELECT 1 FROM menus WHERE name = \$1\)/);
 });

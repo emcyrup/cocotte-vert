@@ -932,15 +932,22 @@ tr.await td{background:var(--warn-soft)}
 <section class="screen" id="s-sns">
   <div class="crumb">集客</div>
   <h1>SNS投稿</h1>
-  <p class="sub">写真が11枚以上あるときは自動で2つの投稿に分割します（Instagramの1投稿10枚上限に対応）。リール動画の投稿にも対応。</p>
+  <p class="sub">写真投稿（自動2分割・予約投稿）は <span class="pill good">実装済</span>（実物は管理画面の「Instagram 投稿」）。
+  リール動画は <span class="pill mut">構想</span>。11枚以上を選ぶと Instagram の1投稿10枚上限に合わせて自動で2つに分割されます。</p>
 
   <div class="grid snswrap">
     <div class="card">
-      <div class="hd"><h2>本日の写真 14枚</h2><span class="pill acc">自動で2投稿に分割</span></div>
+      <div class="hd"><h2>本日の写真</h2><span class="pill acc" id="sns-count"></span></div>
       <div class="bd">
-        <div class="splitlb"><span class="pill acc">投稿 1</span>10枚</div>
+        <div class="frow" style="margin-bottom:12px">
+          <label class="btn sub" style="cursor:pointer">写真を追加
+            <input type="file" id="sns-add" accept="image/*" multiple style="display:none">
+          </label>
+          <button class="btn sub" id="sns-clear" type="button">全部外す</button>
+        </div>
+        <div class="splitlb"><span class="pill acc">投稿 1</span><span id="sns-c1"></span></div>
         <div class="photos" id="post1"></div>
-        <div class="splitlb"><span class="pill hny">投稿 2</span>4枚</div>
+        <div class="splitlb" id="sns-lb2"><span class="pill hny">投稿 2</span><span id="sns-c2"></span></div>
         <div class="photos" id="post2"></div>
       </div>
     </div>
@@ -948,19 +955,35 @@ tr.await td{background:var(--warn-soft)}
       <div class="card">
         <div class="hd"><h2>キャプション</h2></div>
         <div class="bd">
-          <textarea rows="6">今日の保育コースのようす🐾 みんなでボール遊び！ ソラくんは初めてのシャンプーもがんばりました。#ここっとベール #犬のようちえん #トリミングサロン</textarea>
-          <p style="font-size:12px;color:var(--muted);margin:8px 0 12px">投稿2には「つづき（2/2）」が自動で追記されます。</p>
-          <button class="btn block">2件まとめて予約投稿</button>
+          <textarea rows="6" id="snscap">今日の保育コースのようす🐾 みんなでボール遊び！ ソラくんは初めてのシャンプーもがんばりました。#ここっとベール #犬のようちえん #トリミングサロン</textarea>
+          <p style="font-size:12px;color:var(--muted);margin:8px 0 12px">2投稿に分かれる場合、投稿2には「つづき（2/2）」が自動で追記されます。</p>
+          <button class="btn block" id="sns-now" type="button">今すぐ投稿</button>
+          <div class="frow" style="margin-top:8px">
+            <input type="datetime-local" id="sns-at" value="2026-07-24T19:00" style="flex:1" aria-label="予約日時">
+            <button class="btn sub" id="sns-later" type="button">予約投稿</button>
+          </div>
         </div>
       </div>
       <div class="card">
-        <div class="hd"><h2>リール動画</h2><span class="pill good">対応</span></div>
+        <div class="hd"><h2>リール動画</h2><span class="pill mut">構想</span></div>
         <div class="bd reelbd">
           <div class="reel">動画をドラッグ＆ドロップ<br><span style="font-size:11px">縦型（9:16）・90秒まで推奨</span></div>
           <textarea rows="3" placeholder="リールのキャプション（例: 今日の保育のようす🐾 #ここっとベール）"></textarea>
-          <button class="btn block">リールを作成して予約投稿</button>
+          <button class="btn block" type="button" onclick="showToast('リール投稿は構想段階です（写真投稿のみ実装済み）')">リールを作成して予約投稿</button>
         </div>
       </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div class="hd"><h2>投稿履歴</h2><span class="pill mut">直近20件</span></div>
+    <div class="bd" style="padding-top:6px">
+      <table>
+        <thead><tr><th>日時</th><th class="r">枚数</th><th>状態</th><th>キャプション</th><th></th></tr></thead>
+        <tbody id="snshist"></tbody>
+      </table>
+      <p style="font-size:12px;color:var(--muted);margin:10px 0 0">
+        予約投稿は5分おきにチェックされ、時刻を過ぎたものから投稿されます。失敗はスタッフへ通知され、ここから取消・再投稿できます。</p>
     </div>
   </div>
 </section>
@@ -1797,18 +1820,114 @@ document.querySelectorAll('.shcell').forEach(c => {
   });
 });
 
-// ---- SNS写真プレースホルダ ----
+// ---- SNS投稿（実装版の管理画面と同じ挙動をモックで再現） ----
 const shots = ['マロン','ソラ','ハナ','レオ','ココ','モカ','プリン','クッキー','モモ','チョコ','ラテ','きなこ','ムギ','ベル'];
 const hues = [155, 42, 205, 18, 95, 265, 330, 175, 60, 230, 10, 130, 300, 190];
-function photo(i, no){
+const snsItems = shots.map((label, i) => ({ label, hue: hues[i], url: null }));
+
+function snsPhotoEl(item, no){
   const d = document.createElement('div');
   d.className = 'ph';
-  d.style.background = `linear-gradient(135deg, hsl(${hues[i]} 32% 62%), hsl(${(hues[i]+40)%360} 30% 44%))`;
-  d.innerHTML = `${shots[i]}<span class="no num">${no}</span>`;
+  if (item.url) {
+    d.style.background = `url(${item.url}) center/cover`;
+  } else {
+    d.style.background = `linear-gradient(135deg, hsl(${item.hue} 32% 62%), hsl(${(item.hue+40)%360} 30% 44%))`;
+  }
+  d.innerHTML = `${item.label}<span class="no num">${no}</span>`;
+  d.title = 'タップで外す';
+  d.style.cursor = 'pointer';
+  d.addEventListener('click', () => {
+    const i = snsItems.indexOf(item);
+    snsItems.splice(i, 1);
+    renderSnsPhotos();
+    showToast('写真を外しました');
+  });
   return d;
 }
-const p1 = document.getElementById('post1'), p2 = document.getElementById('post2');
-for (let i = 0; i < 14; i++) (i < 10 ? p1 : p2).appendChild(photo(i, i < 10 ? i + 1 : i - 9));
+function renderSnsPhotos(){
+  const p1 = document.getElementById('post1'), p2 = document.getElementById('post2');
+  p1.innerHTML = ''; p2.innerHTML = '';
+  snsItems.forEach((item, i) => {
+    (i < 10 ? p1 : p2).appendChild(snsPhotoEl(item, i < 10 ? i + 1 : i - 9));
+  });
+  const second = Math.max(0, snsItems.length - 10);
+  document.getElementById('sns-count').textContent =
+    snsItems.length + '枚' + (second ? '・自動で2投稿に分割' : '');
+  document.getElementById('sns-c1').textContent = Math.min(10, snsItems.length) + '枚';
+  document.getElementById('sns-c2').textContent = second + '枚';
+  document.getElementById('sns-lb2').style.display = second ? '' : 'none';
+  document.getElementById('post2').style.display = second ? '' : 'none';
+}
+document.getElementById('sns-add').addEventListener('change', (e) => {
+  for (const file of e.target.files) {
+    if (snsItems.length >= 20) { showToast('写真は20枚まで（10枚×2投稿）です'); break; }
+    snsItems.push({ label: '', hue: 0, url: URL.createObjectURL(file) });
+  }
+  e.target.value = '';
+  renderSnsPhotos();
+});
+document.getElementById('sns-clear').addEventListener('click', () => {
+  snsItems.length = 0;
+  renderSnsPhotos();
+});
+renderSnsPhotos();
+
+// 投稿履歴。実装版と同じ状態遷移（予約中 → 投稿済み / 失敗 → 取消）を見せる
+const SNS_HIST = [
+  { at:'7/23(木) 19:00', count:12, status:'published', caption:'保育コースのようす🐾 みんなで水遊び！' },
+  { at:'7/22(水) 19:00', count:3,  status:'failed',    caption:'シャンプー before → after', error:'画像の取得に失敗しました' },
+];
+const SNS_ST = { scheduled:['予約中','warn'], published:['投稿済み','good'], failed:['失敗','crit'], dry_run:['dry_run','mut'] };
+function renderSnsHist(){
+  const tb = document.getElementById('snshist');
+  tb.innerHTML = '';
+  SNS_HIST.forEach((h) => {
+    const [label, cls] = SNS_ST[h.status];
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td class="num" style="white-space:nowrap">${h.at}</td>`
+      + `<td class="r num">${h.count}</td>`
+      + `<td><span class="pill ${cls}">${label}</span>`
+      + (h.error ? `<div style="font-size:11.5px;color:var(--muted);margin-top:2px">${h.error}</div>` : '') + `</td>`
+      + `<td style="font-size:12px;color:var(--muted)">${h.caption.slice(0, 30)}</td>`;
+    const td = document.createElement('td');
+    if (h.status === 'scheduled' || h.status === 'failed') {
+      const b = document.createElement('button');
+      b.className = 'sbtn mut';
+      b.textContent = '取消';
+      b.addEventListener('click', () => {
+        const i = SNS_HIST.indexOf(h);
+        SNS_HIST.splice(i, 1);
+        renderSnsHist();
+        showUndoToast('投稿を取り消しました', () => { SNS_HIST.splice(i, 0, h); renderSnsHist(); });
+      });
+      td.appendChild(b);
+    }
+    tr.appendChild(td);
+    tb.appendChild(tr);
+  });
+}
+function snsSubmit(status, at){
+  if (snsItems.length === 0) { showToast('先に写真を選んでください'); return; }
+  const parts = snsItems.length > 10 ? 2 : 1;
+  SNS_HIST.unshift({ at, count: snsItems.length, status,
+    caption: document.getElementById('snscap').value });
+  renderSnsHist();
+  showToast(status === 'scheduled'
+    ? `予約しました（${parts}件に分割・時刻になると自動投稿）`
+    : `${parts}件に分割して投稿しました（モックのため実投稿はされません）`);
+  snsItems.length = 0;
+  renderSnsPhotos();
+}
+document.getElementById('sns-now').addEventListener('click', () => snsSubmit('published', '7/24(金) いま'));
+document.getElementById('sns-later').addEventListener('click', () => {
+  const at = document.getElementById('sns-at').value;
+  if (!at) { showToast('予約日時を指定してください'); return; }
+  const [d, t] = at.split('T');
+  const [, mo, da] = d.split('-');
+  const w = '日月火水木金土'[new Date(d + 'T00:00:00+09:00').getDay()];
+  snsSubmit('scheduled', `${Number(mo)}/${Number(da)}(${w}) ${t}`);
+});
+renderSnsHist();
 
 // ================= 予約管理 =================
 // 管理画面（/admin/）と同じ操作をモックでも試せるようにしたもの。

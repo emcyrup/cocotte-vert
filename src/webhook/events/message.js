@@ -7,7 +7,14 @@ import { looksLikePhone } from '../../customers/phone.js';
 // フォロー送信からこの日数以内の返信をフォロー回答とみなす
 const FOLLOWUP_WINDOW_DAYS = 14;
 
-export function createMessageHandler({ pool, lineClient, slack, linkService, classifier }) {
+export function createMessageHandler({
+  pool,
+  lineClient,
+  slack,
+  linkService,
+  classifier,
+  staffCommand = null,
+}) {
   async function handlePhoneText(event, text) {
     const lineUserId = event.source.userId;
     // 突合失敗時の Slack 通知に表示名を添える（取れなくても処理は続行）
@@ -83,6 +90,10 @@ export function createMessageHandler({ pool, lineClient, slack, linkService, cla
   return async function handleMessage(event) {
     if (event.message?.type !== 'text') return;
     const text = event.message.text ?? '';
+
+    // スタッフグループからのコマンドを先に処理する（顧客向けの分類には回さない）
+    if (staffCommand && (await staffCommand(event, text))) return;
+
     if (!event.source?.userId) return;
 
     if (looksLikePhone(text)) {

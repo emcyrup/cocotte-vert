@@ -2,6 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createJobRunner } from '../src/jobs/runner.js';
 
+// 実行結果は Push せず app_settings に保存する運用のため、保存先も差し替えられるようにする
+function makeSettings() {
+  const store = new Map();
+  return { store, settings: { get: async (k) => store.get(k) ?? null, set: async (k, v) => void store.set(k, v) } };
+}
+
 function makeSlack() {
   const notifications = [];
   return {
@@ -106,9 +112,10 @@ test('残数確認の失敗はジョブを止めず警告も出さない', async
   assert.equal(notifications.length, 0);
 });
 
-test('runAll: 全ジョブの結果が1つのまとめメッセージで通知される', async () => {
+test('runAll: 結果は Push せず保存される（通数を消費しないため）', async () => {
   const { slack, notifications } = makeSlack();
-  const runner = createJobRunner({ slack });
+  const { store, settings } = makeSettings();
+  const runner = createJobRunner({ slack, settings });
   const ok = { total: 2, sent: 2, dryRun: 0, skipped: 0, failed: 0, errors: [] };
   const zero = { total: 0, sent: 0, dryRun: 0, skipped: 0, failed: 0, errors: [] };
 
@@ -119,18 +126,20 @@ test('runAll: 全ジョブの結果が1つのまとめメッセージで通知�
     birthday: async () => zero,
   });
 
-  assert.equal(notifications.length, 1, '通知は1通だけ');
-  const text = notifications[0];
-  assert.match(text, /本日のジョブ実行結果/);
+  assert.equal(notifications.length, 0, '通数を消費する Push はしない');
+  const text = store.get('last_job_summary');
+  assert.ok(text, '実行結果が保存される');
+  assert.match(text, /ジョブ実行結果/);
   assert.match(text, /・前々日確認: 対象 2 \/ 送信 2/);
   assert.match(text, /・来店フォロー: 対象 0/);
   assert.match(text, /・休眠フォロー: 対象 0/);
   assert.match(text, /・誕生日: 対象 0/);
 });
 
-test('runAll: 失敗詳細と通数警告も同じメッセージに含まれる', async () => {
-  const { slack, notifications } = makeSlack();
-  const runner = createJobRunner({ slack });
+test('runAll: 失敗詳細と通数警告も同じまとめに含まれる', async () => {
+  const { slack } = makeSlack();
+  const { store, settings } = makeSettings();
+  const runner = createJobRunner({ slack, settings });
   const withFailure = {
     total: 3, sent: 2, dryRun: 0, skipped: 0, failed: 1,
     errors: [{ customerId: 7, message: 'LINE API error' }],
@@ -141,8 +150,7 @@ test('runAll: 失敗詳細と通数警告も同じメッセージに含まれる
 
   await runner.runAll({ preReminder: async () => withFailure }, { lineClient });
 
-  assert.equal(notifications.length, 1);
-  const text = notifications[0];
+  const text = store.get('last_job_summary');
   assert.match(text, /⚠️ 失敗 1/);
   assert.match(text, /前々日確認: customer=7: LINE API error/);
   assert.match(text, /残り 300 通/);
@@ -150,7 +158,8 @@ test('runAll: 失敗詳細と通数警告も同じメッセージに含まれる
 
 test('runAll: 異常終了したジョブはまとめに明記され、スタックは即時に別通知される', async () => {
   const { slack, notifications } = makeSlack();
-  const runner = createJobRunner({ slack });
+  const { store, settings } = makeSettings();
+  const runner = createJobRunner({ slack, settings });
   const zero = { total: 0, sent: 0, dryRun: 0, skipped: 0, failed: 0, errors: [] };
 
   await runner.runAll({
@@ -160,10 +169,28 @@ test('runAll: 異常終了したジョブはまとめに明記され、スタッ
     birthday: async () => zero,
   });
 
-  assert.equal(notifications.length, 2, '異常終了の詳細＋まとめの2通');
+  assert.equal(notifications.length, 1, '異常終了だけは即時に Push する');
   assert.match(notifications[0], /ERROR:ジョブ異常終了: preReminder:db down/);
-  assert.match(notifications[1], /・前々日確認: 🚨 異常終了/);
-  assert.match(notifications[1], /・誕生日: 対象 0/, '異常終了後も他ジョブは実行される');
+  const text = store.get('last_job_summary');
+  assert.match(text, /・前々日確認: 🚨 異常終了/);
+  assert.match(text, /・誕生日: 対象 0/, '異常終了後も他ジョブは実行される');
+});
+
+test('runAll: 保存に失敗したときは結果が消えないよう Push する', async () => {
+  const { slack, notifications } = makeSlack();
+  const settings = {
+    get: async () => null,
+    set: async () => {
+      throw new Error('db down');
+    },
+  };
+  const runner = createJobRunner({ slack, settings });
+  const zero = { total: 0, sent: 0, dryRun: 0, skipped: 0, failed: 0, errors: [] };
+
+  await runner.runAll({ birthday: async () => zero });
+
+  assert.equal(notifications.length, 1);
+  assert.match(notifications[0], /ジョブ実行結果/);
 });
 
 test('ジョブ全体の異常終了は notifyError され null が返る', async () => {

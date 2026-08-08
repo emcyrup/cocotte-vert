@@ -54,6 +54,7 @@ app.post(
     linkService,
     classifier,
     settings,
+    config,
     liffUrl: config.liffUrl,
   })
 );
@@ -224,7 +225,7 @@ app.use((err, _req, res, next) => {
 });
 
 // 毎日 10:00 JST の配信ジョブ（Phase 4・5 のジョブもここに追加していく）
-const runner = createJobRunner({ slack });
+const runner = createJobRunner({ slack, settings });
 runner.scheduleDaily(
   {
     preReminder: createPreReminderJob({ pool, lineClient }),

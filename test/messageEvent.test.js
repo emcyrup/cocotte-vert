@@ -140,3 +140,32 @@ test('テキスト以外のメッセージは無視する', async () => {
   assert.equal(f.linkCalls.length, 0);
   assert.equal(f.classifyCalls.length, 0);
 });
+
+// ---- スタッフグループのコマンド ----
+
+test('スタッフグループのコマンドは先に処理し、顧客向けの分類には回さない', async () => {
+  const f = makeFakes();
+  const handled = [];
+  const handler = createMessageHandler({
+    ...f,
+    staffCommand: async (_event, text) => {
+      handled.push(text);
+      return true;
+    },
+  });
+
+  await handler(makeEvent('配信結果'));
+
+  assert.deepEqual(handled, ['配信結果']);
+  assert.equal(f.classifyCalls.length, 0, 'Claude での分類は走らせない');
+  assert.equal(f.replies.length, 0, '応答はコマンド側で返す');
+});
+
+test('コマンドでなければ従来どおり顧客の発言として処理する', async () => {
+  const f = makeFakes({ label: 'good' });
+  const handler = createMessageHandler({ ...f, staffCommand: async () => false });
+
+  await handler(makeEvent('調子いいです'));
+
+  assert.deepEqual(f.classifyCalls, ['調子いいです']);
+});

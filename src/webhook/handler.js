@@ -6,6 +6,7 @@ import { createMessageHandler } from './events/message.js';
 import { createPostbackHandler } from './events/postback.js';
 import { createJoinHandler } from './events/join.js';
 import { createLeaveHandler } from './events/leave.js';
+import { createStaffCommandHandler } from './events/staffCommand.js';
 
 export function createWebhookHandler({
   pool,
@@ -14,12 +15,14 @@ export function createWebhookHandler({
   linkService,
   classifier,
   settings,
+  config = null,
   liffUrl = null,
 }) {
+  const staffCommand = createStaffCommandHandler({ settings, lineClient, config });
   const handlers = {
     follow: createFollowHandler({ pool, lineClient, liffUrl }),
     unfollow: createUnfollowHandler({ pool }),
-    message: createMessageHandler({ pool, lineClient, slack, linkService, classifier }),
+    message: createMessageHandler({ pool, lineClient, slack, linkService, classifier, staffCommand }),
     postback: createPostbackHandler({ pool, lineClient, slack }),
     join: createJoinHandler({ lineClient, settings, slack }),
     leave: createLeaveHandler({ settings, slack }),

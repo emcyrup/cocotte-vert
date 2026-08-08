@@ -2,6 +2,8 @@
 // 個々の対象者のエラーはジョブ側で捕捉する前提（1件の失敗で他を止めない）。
 // ここで捕捉するのはジョブ全体の異常（DB 接続断など）。
 import cron from 'node-cron';
+import { SETTING_KEYS } from '../settings.js';
+import { formatJstDateTime } from '../util/jst.js';
 
 const JOB_LABELS = {
   preReminder: '前々日確認',
@@ -22,7 +24,7 @@ export function summaryLine(name, summary) {
   return `・${label}: ${parts.join(' / ')}`;
 }
 
-export function createJobRunner({ slack }) {
+export function createJobRunner({ slack, settings = null }) {
   /**
    * ジョブを1つ実行する。
    * ジョブ関数は { total, sent, dryRun, skipped, failed, errors } を返す規約とする。
@@ -89,8 +91,12 @@ export function createJobRunner({ slack }) {
   }
 
   /**
-   * 全ジョブを直列実行し、結果を1つのまとめメッセージで通知する。
-   * 失敗詳細（ジョブごとに最大5件）と通数警告も同じメッセージに含める。
+   * 全ジョブを直列実行し、結果を1つのまとめにして保存する。
+   * 失敗詳細（ジョブごとに最大5件）と通数警告も同じまとめに含める。
+   *
+   * 結果は Push せず保存だけする。グループへの Push は1通ごとに通数を消費するため、
+   * スタッフが「配信結果」と聞いたときに応答メッセージ（無料）で返す運用にしている。
+   * 保存できなかった場合のみ、結果が消えないよう従来どおり Push する。
    */
   async function runAll(jobs, { lineClient, quotaWarnRatio, quotaWarnRemaining } = {}) {
     const lines = [];
@@ -106,7 +112,7 @@ export function createJobRunner({ slack }) {
       }
     }
 
-    let text = `:package: *本日のジョブ実行結果*\n${lines.join('\n')}`;
+    let text = `:package: *ジョブ実行結果*（${formatJstDateTime(new Date())} 実行）\n${lines.join('\n')}`;
     if (failures.length > 0) {
       text += `\n\n:warning: 失敗詳細（ジョブごとに最大5件）\n\`\`\`${failures.join('\n')}\`\`\``;
     }
@@ -117,7 +123,19 @@ export function createJobRunner({ slack }) {
       });
       if (warning) text += `\n\n${warning}`;
     }
-    await slack.notify(text);
+
+    if (!settings) {
+      await slack.notify(text);
+      return text;
+    }
+    try {
+      await settings.set(SETTING_KEYS.lastJobSummary, text);
+    } catch (err) {
+      // 保存に失敗したら結果が確認できなくなるため、このときだけ Push する
+      console.error(`[job] 実行結果の保存に失敗: ${err.message}`);
+      await slack.notify(text);
+    }
+    return text;
   }
 
   /**

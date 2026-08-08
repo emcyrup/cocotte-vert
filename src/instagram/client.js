@@ -29,15 +29,23 @@ export function createInstagramClient({
     return config.igAccessToken ?? null;
   }
 
+  // どの呼び出しで失敗したかが分からないと切り分けできないため、
+  // パスと Meta 側の詳細（error_user_msg / code / subcode）をメッセージに含める
+  function apiError(status, path, error = {}) {
+    const detail = [error.message, error.error_user_msg].filter(Boolean).join(' / ') || 'unknown error';
+    const codes = error.code
+      ? `, code=${error.code}${error.error_subcode ? `/${error.error_subcode}` : ''}`
+      : '';
+    return new Error(`Instagram API ${status}: ${detail}（at ${path.split('?')[0]}${codes}）`);
+  }
+
   async function apiGet(path) {
     const token = await resolveToken();
     if (!token) throw new Error('Instagram のアクセストークンが未設定です');
     const sep = path.includes('?') ? '&' : '?';
     const res = await fetchFn(`${base}${path}${sep}access_token=${encodeURIComponent(token)}`);
     const json = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      throw new Error(`Instagram API ${res.status}: ${json.error?.message ?? 'unknown error'}`);
-    }
+    if (!res.ok) throw apiError(res.status, path, json.error);
     return json;
   }
 
@@ -65,9 +73,7 @@ export function createInstagramClient({
     const body = new URLSearchParams({ ...params, access_token: token });
     const res = await fetchFn(`${base}${path}`, { method: 'POST', body });
     const json = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      throw new Error(`Instagram API ${res.status}: ${json.error?.message ?? 'unknown error'}`);
-    }
+    if (!res.ok) throw apiError(res.status, `POST ${path}`, json.error);
     return json;
   }
 

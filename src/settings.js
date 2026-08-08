@@ -2,6 +2,9 @@
 
 export const SETTING_KEYS = {
   staffLineGroupId: 'staff_line_group_id',
+  // 日次ジョブの実行結果。Push すると通数を消費するため、保存しておいて
+  // グループから「配信結果」と聞かれたときに応答メッセージ（無料）で返す
+  lastJobSummary: 'last_job_summary',
 };
 
 export function createSettings({ pool }) {

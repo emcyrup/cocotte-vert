@@ -72,6 +72,12 @@ npm test
 `/mock/` に置いている（管理画面と同じ Basic 認証の内側）。**サンプルデータのみで実データには
 つながらない。** 何が実装済みで何が構想かは [src/mock/README.md](src/mock/README.md) を参照。
 
+## 本番アカウントへの切り替え
+
+テスト用チャネルから店舗の本番 LINE 公式アカウントに繋ぎ替える手順は
+[docs/switch-account.md](docs/switch-account.md) を参照。**順番を飛ばすと本物のお客様へ
+配信が飛ぶ**ため、`SEND_MODE` は最後まで `dry_run` のままにすること。
+
 ## デプロイ（インターネット公開）
 
 VPS / EC2 / GCP Compute Engine + Docker Compose、または Render での公開手順を

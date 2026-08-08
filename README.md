@@ -72,6 +72,19 @@ npm test
 `/mock/` に置いている（管理画面と同じ Basic 認証の内側）。**サンプルデータのみで実データには
 つながらない。** 何が実装済みで何が構想かは [src/mock/README.md](src/mock/README.md) を参照。
 
+## 運用中の公式アカウントへの接続
+
+テスト用チャネルから店舗の LINE 公式アカウントに繋ぎ替える手順は
+[docs/switch-account.md](docs/switch-account.md) を参照。
+
+すでにお客様が友だちにいるアカウントの場合、**Webhook URL は1つしか設定できない**
+（他ツールの連携を上書きすると黙って止まる）、**リッチメニューの登録は既存メニューを
+差し替える**など、既存の運用を壊す操作がある。`SEND_MODE` は最後まで `dry_run` のままにし、
+配信は前々日確認から段階的に始めること。
+
+切り替え後は `node scripts/check-line.js` で、どのアカウントに繋がっているか
+（表示名・ベーシック ID・応答モード・Webhook の疎通・月間通数）を確認できる。
+
 ## デプロイ（インターネット公開）
 
 VPS / EC2 / GCP Compute Engine + Docker Compose、または Render での公開手順を

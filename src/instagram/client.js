@@ -53,8 +53,9 @@ export function createInstagramClient({ config, settings = null, fetchFn = fetch
       return { status: 'dry_run' };
     }
 
-    const igUserId = config.igUserId;
-    if (!igUserId) throw new Error('IG_USER_ID が未設定です');
+    // トークン自身がアカウントを特定するため、ID 未設定なら 'me' で呼ぶ。
+    // ID の手入力ミス（別画面の ID を貼る等）が実際に起きたための措置
+    const igUserId = config.igUserId || 'me';
 
     let creationId;
     if (imageUrls.length === 1) {

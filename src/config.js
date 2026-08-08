@@ -48,10 +48,6 @@ export function loadConfig(env = process.env) {
   if (!IG_POST_MODES.includes(igPostMode)) {
     throw new Error(`IG_POST_MODE が不正です: "${igPostMode}"（${IG_POST_MODES.join(' | ')} のいずれか）`);
   }
-  if (igPostMode === 'live' && !env.IG_USER_ID) {
-    throw new Error('IG_POST_MODE=live には IG_USER_ID が必要です');
-  }
-
   const liffId = env.LIFF_ID || null;
 
   return {

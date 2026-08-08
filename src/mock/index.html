@@ -1823,10 +1823,46 @@ document.querySelectorAll('.shcell').forEach(c => {
   });
 });
 
-// ---- SNS投稿（実装版の管理画面と同じ挙動をモックで再現） ----
+// ---- SNS投稿 ----
+// 管理 API（/api/admin/sns）に届く環境では実際に Instagram へ投稿できる（実投稿モード）。
+// モックを単体で開いた場合など API に届かないときは、従来どおりのデモ動作にフォールバックする。
+const SNS_API = '/api/admin/sns';
+let snsLive = false;
 const shots = ['マロン','ソラ','ハナ','レオ','ココ','モカ','プリン','クッキー','モモ','チョコ','ラテ','きなこ','ムギ','ベル'];
 const hues = [155, 42, 205, 18, 95, 265, 330, 175, 60, 230, 10, 130, 300, 190];
 const snsItems = shots.map((label, i) => ({ label, hue: hues[i], url: null }));
+
+// 管理画面と同じブラウザ側 JPEG 正規化（Instagram の縦横比 4:5〜1.91:1 に白地パディング）
+async function snsNormalizeToJpeg(file){
+  const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
+  let cw = bmp.width, ch = bmp.height;
+  const ratio = bmp.width / bmp.height;
+  if (ratio < 0.8) cw = Math.round(bmp.height * 0.8);
+  else if (ratio > 1.91) ch = Math.round(bmp.width / 1.91);
+  const scale = Math.min(1, 1440 / Math.max(cw, ch));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(cw * scale);
+  canvas.height = Math.round(ch * scale);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(bmp,
+    Math.round((canvas.width - bmp.width * scale) / 2),
+    Math.round((canvas.height - bmp.height * scale) / 2),
+    Math.round(bmp.width * scale), Math.round(bmp.height * scale));
+  bmp.close();
+  return new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+}
+
+function snsFmtJst(iso){
+  if (!iso) return '';
+  const d = new Date(iso);
+  const parts = new Intl.DateTimeFormat('ja-JP', { timeZone:'Asia/Tokyo', month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' }).formatToParts(d);
+  const g = (t) => parts.find(p => p.type === t)?.value ?? '';
+  // 曜日も JST 基準で取る（ブラウザのローカル TZ の getDay とずれる日があるため）
+  const wd = new Intl.DateTimeFormat('ja-JP', { timeZone:'Asia/Tokyo', weekday:'narrow' }).format(d);
+  return `${g('month')}/${g('day')}(${wd}) ${g('hour')}:${g('minute')}`;
+}
 
 function snsPhotoEl(item, no){
   const d = document.createElement('div');
@@ -1843,6 +1879,8 @@ function snsPhotoEl(item, no){
   rm.textContent = '×';
   rm.title = 'この写真を外す';
   rm.addEventListener('click', () => {
+    // 実投稿モードではサーバのファイルも掃除する（失敗しても選択解除は続行）
+    if (snsLive && item.file) fetch(`${SNS_API}/photos/${item.file}`, { method: 'DELETE' }).catch(() => {});
     const i = snsItems.indexOf(item);
     snsItems.splice(i, 1);
     renderSnsPhotos();
@@ -1865,26 +1903,63 @@ function renderSnsPhotos(){
   document.getElementById('sns-lb2').style.display = second ? '' : 'none';
   document.getElementById('post2').style.display = second ? '' : 'none';
 }
-document.getElementById('sns-add').addEventListener('change', (e) => {
-  for (const file of e.target.files) {
-    if (snsItems.length >= 20) { showToast('写真は20枚まで（10枚×2投稿）です'); break; }
-    snsItems.push({ label: '', hue: 0, url: URL.createObjectURL(file) });
-  }
+document.getElementById('sns-add').addEventListener('change', async (e) => {
+  const files = [...e.target.files];
   e.target.value = '';
+  if (snsItems.length + files.length > 20) { showToast('写真は20枚まで（10枚×2投稿）です'); return; }
+  if (!snsLive) {
+    for (const file of files) snsItems.push({ label: '', hue: 0, url: URL.createObjectURL(file) });
+    renderSnsPhotos();
+    return;
+  }
+  showToast(`${files.length}枚を変換・アップロード中…`);
+  try {
+    for (const file of files) {
+      const jpeg = await snsNormalizeToJpeg(file);
+      const res = await fetch(`${SNS_API}/photos`, {
+        method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: jpeg,
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || !body.ok) throw new Error(body.error || `HTTP ${res.status}`);
+      snsItems.push({ label: '', hue: 0, url: URL.createObjectURL(jpeg), file: body.file });
+    }
+    showToast(`アップロード完了（計${snsItems.length}枚）`);
+  } catch (err) {
+    showToast(`アップロード失敗: ${err.message}`);
+  }
   renderSnsPhotos();
 });
 document.getElementById('sns-clear').addEventListener('click', () => {
+  if (snsLive) {
+    for (const it of snsItems) {
+      if (it.file) fetch(`${SNS_API}/photos/${it.file}`, { method: 'DELETE' }).catch(() => {});
+    }
+  }
   snsItems.length = 0;
   renderSnsPhotos();
 });
-renderSnsPhotos();
 
-// 投稿履歴。実装版と同じ状態遷移（予約中 → 投稿済み / 失敗 → 取消）を見せる
+// 投稿履歴。実投稿モードではサーバの実データ、デモではサンプルを表示する
 const SNS_HIST = [
   { at:'7/23(木) 19:00', count:12, status:'published', caption:'保育コースのようす🐾 みんなで水遊び！' },
   { at:'7/22(水) 19:00', count:3,  status:'failed',    caption:'シャンプー before → after', error:'画像の取得に失敗しました' },
 ];
-const SNS_ST = { scheduled:['予約中','warn'], published:['投稿済み','good'], failed:['失敗','crit'], dry_run:['dry_run','mut'] };
+const SNS_ST = { scheduled:['予約中','warn'], publishing:['投稿処理中','warn'], published:['投稿済み','good'], failed:['失敗','crit'], dry_run:['dry_run','mut'] };
+
+function snsMapPost(p){
+  return { id: p.id, at: snsFmtJst(p.published_at || p.scheduled_at), count: p.photo_count,
+    status: p.status, caption: p.caption || '', error: p.error };
+}
+async function snsReloadHist(){
+  try {
+    const res = await fetch(`${SNS_API}/posts`);
+    if (!res.ok) throw new Error();
+    const { posts } = await res.json();
+    SNS_HIST.length = 0;
+    posts.forEach((p) => SNS_HIST.push(snsMapPost(p)));
+    renderSnsHist();
+  } catch { /* 一覧の更新失敗は表示据え置き */ }
+}
 function renderSnsHist(){
   const tb = document.getElementById('snshist');
   tb.innerHTML = '';
@@ -1901,7 +1976,16 @@ function renderSnsHist(){
       const b = document.createElement('button');
       b.className = 'sbtn mut';
       b.textContent = '取消';
-      b.addEventListener('click', () => {
+      b.addEventListener('click', async () => {
+        if (snsLive) {
+          try {
+            const res = await fetch(`${SNS_API}/posts/${h.id}/cancel`, { method: 'POST' });
+            if (!res.ok) throw new Error();
+            showToast('投稿を取り消しました');
+          } catch { showToast('取消に失敗しました'); }
+          snsReloadHist();
+          return;
+        }
         const i = SNS_HIST.indexOf(h);
         SNS_HIST.splice(i, 1);
         renderSnsHist();
@@ -1913,28 +1997,88 @@ function renderSnsHist(){
     tb.appendChild(tr);
   });
 }
-function snsSubmit(status, at){
+// scheduledAtLocal は datetime-local の値（null なら今すぐ投稿）
+async function snsSubmit(scheduledAtLocal){
   if (snsItems.length === 0) { showToast('先に写真を選んでください'); return; }
   const parts = snsItems.length > 10 ? 2 : 1;
-  SNS_HIST.unshift({ at, count: snsItems.length, status,
-    caption: document.getElementById('snscap').value });
-  renderSnsHist();
-  showToast(status === 'scheduled'
-    ? `予約しました（${parts}件に分割・時刻になると自動投稿）`
-    : `${parts}件に分割して投稿しました（モックのため実投稿はされません）`);
-  snsItems.length = 0;
-  renderSnsPhotos();
+  const caption = document.getElementById('snscap').value;
+
+  if (!snsLive) {
+    // デモ動作（API に届かない環境）
+    let at = '7/24(金) いま';
+    if (scheduledAtLocal) {
+      const [d, t] = scheduledAtLocal.split('T');
+      const [, mo, da] = d.split('-');
+      const w = '日月火水木金土'[new Date(d + 'T00:00:00+09:00').getDay()];
+      at = `${Number(mo)}/${Number(da)}(${w}) ${t}`;
+    }
+    SNS_HIST.unshift({ at, count: snsItems.length, status: scheduledAtLocal ? 'scheduled' : 'published', caption });
+    renderSnsHist();
+    showToast(scheduledAtLocal
+      ? `予約しました（${parts}件に分割・時刻になると自動投稿）`
+      : `${parts}件に分割して投稿しました（モックのため実投稿はされません）`);
+    snsItems.length = 0;
+    renderSnsPhotos();
+    return;
+  }
+
+  if (!scheduledAtLocal && !confirm(`${snsItems.length}枚を今すぐ投稿しますか？（実際に Instagram へ投稿されます）`)) return;
+  try {
+    const res = await fetch(`${SNS_API}/posts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        caption,
+        files: snsItems.map((i) => i.file).filter(Boolean),
+        scheduledAt: scheduledAtLocal ? `${scheduledAtLocal}:00+09:00` : null,
+      }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+    const messages = {
+      published: '投稿しました',
+      dry_run: 'dry_run のため実投稿せず記録しました（実投稿には IG_POST_MODE=live が必要です）',
+      scheduled: '予約しました。時刻になると自動で投稿されます',
+    };
+    showToast(messages[body.status] || '受け付けました');
+    snsItems.length = 0;
+    renderSnsPhotos();
+    document.getElementById('snscap').value = '';
+  } catch (err) {
+    showToast(`失敗しました: ${err.message}`);
+  }
+  snsReloadHist();
 }
-document.getElementById('sns-now').addEventListener('click', () => snsSubmit('published', '7/24(金) いま'));
+document.getElementById('sns-now').addEventListener('click', () => snsSubmit(null));
 document.getElementById('sns-later').addEventListener('click', () => {
   const at = document.getElementById('sns-at').value;
   if (!at) { showToast('予約日時を指定してください'); return; }
-  const [d, t] = at.split('T');
-  const [, mo, da] = d.split('-');
-  const w = '日月火水木金土'[new Date(d + 'T00:00:00+09:00').getDay()];
-  snsSubmit('scheduled', `${Number(mo)}/${Number(da)}(${w}) ${t}`);
+  snsSubmit(at);
 });
-renderSnsHist();
+
+// 初期化: API に届けば実投稿モード、届かなければデモのまま
+(async () => {
+  try {
+    const res = await fetch(`${SNS_API}/posts`);
+    if (!res.ok) throw new Error();
+    const { posts } = await res.json();
+    snsLive = true;
+    snsItems.length = 0; // デモ用のダミー写真は実投稿できないため外す
+    SNS_HIST.length = 0;
+    posts.forEach((p) => SNS_HIST.push(snsMapPost(p)));
+    document.getElementById('snscap').value = '';
+    // 予約日時の初期値をデモ用の過去日時から「今日の19:00」に差し替える
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    document.getElementById('sns-at').value =
+      `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T19:00`;
+    const sub = document.querySelector('#s-sns .sub');
+    if (sub) sub.innerHTML = '写真投稿（自動2分割・予約投稿）は <span class="pill good">実投稿モード</span> — この画面から実際に Instagram へ投稿されます。'
+      + 'リール動画は <span class="pill mut">構想</span>。11枚以上を選ぶと Instagram の1投稿10枚上限に合わせて自動で2つに分割されます。';
+  } catch { /* デモ動作のまま */ }
+  renderSnsPhotos();
+  renderSnsHist();
+})();
 
 // ================= 予約管理 =================
 // 管理画面（/admin/）と同じ操作をモックでも試せるようにしたもの。

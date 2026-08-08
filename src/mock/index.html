@@ -765,9 +765,12 @@ tr.await td{background:var(--warn-soft)}
             <tr><td>宿泊 レギュラーコース<span style="display:block;font-size:11.5px;color:var(--muted)">2頭同室 5,225円</span></td><td class="r num">1泊2日 3,850円</td></tr>
             <tr><td>宿泊 保育コース</td><td class="r num">1泊2日 4,950円</td></tr>
             <tr><td>一時預かり<span style="display:block;font-size:11.5px;color:var(--muted)">対応時間 10:00〜19:00</span></td><td class="r num">550円</td></tr>
-            <tr><td>ワンず写真日記<span style="display:block;font-size:11.5px;color:var(--muted)">写真or動画はおまかせ</span></td><td class="r num">1日2通 330円</td></tr>
+            <tr><td>ワンず写メ日記<span style="display:block;font-size:11.5px;color:var(--muted)">写真or動画はおまかせ</span></td><td class="r num">1日2通 330円</td></tr>
           </table>
-          <p class="hint" style="margin:10px 0 0">4泊目以降は10%OFF。2頭同室をご希望の場合は2頭目が半額（中型ゲージのみ）。</p>
+          <p class="hint" style="margin:10px 0 0">4泊目以降は10%OFF。2頭同室をご希望の場合は2頭目が半額（中型ゲージのみ）。<br>
+          チェックイン・チェックアウトは営業時間内（前後30分 9:30〜19:30 までは無料で受付）。<br>
+          アーリーチェックイン 9:00〜9:30／レイトチェックアウト 19:30〜20:00 は各＋550円。<br>
+          <b>定休日（木曜）もお預かりの受付は 10:00〜17:00 で対応。</b></p>
         </div>
       </div>
       <div class="card">
@@ -1083,7 +1086,7 @@ const FAMILIES = [
       ticket:null,
       patch:{ date:'2026/01/15', state:['good','有効'], allergy:'2026/04/05' },
       lapsed:[['5/31','保育コース 月8回','4月分の繰越',2]],
-      visits:[['7/20 日','宿泊（レギュラーコース）','line','山本','1泊2日。ワンず写真日記をご利用。'],
+      visits:[['7/20 日','宿泊（レギュラーコース）','line','山本','1泊2日。ワンず写メ日記をご利用。'],
               ['7/13 日','保育コース','line','山本','他の子とのあいさつが上手に。'],
               ['7/6 日','保育コース','line','中村','']] }]},
 ];
@@ -1320,7 +1323,7 @@ const evs = [
   {row:2, s:15.5, d:0.5, cls:'',       html:'<b>レオ 爪切り・耳掃除</b><span class="src">電話</span>'},
   {row:2, s:19,   d:1.5, cls:'',       html:'<b>ベル 夜間のお迎え対応</b><span class="src">LINE</span>'},
   {row:4, s:10,   d:8,   cls:'school', html:'<b>保育コース 6頭</b>マロン・ソラ ほか'},
-  {row:5, s:8,    d:11,  cls:'',       html:'<b>ベル 宿泊（レギュラー）</b>1泊2日・ワンず写真日記あり <span class="src">LINE</span>'},
+  {row:5, s:8,    d:11,  cls:'',       html:'<b>ベル 宿泊（レギュラー）</b>1泊2日・ワンず写メ日記あり <span class="src">LINE</span>'},
 ];
 const tl = document.getElementById('tl');
 const bodies = [];
@@ -1817,7 +1820,7 @@ const RESV = [
   { id:104, at:'7/24(金) 17:00', name:'チョコ',   menu:'初回カウンセリング',       staff:'中村', status:'confirmed', note:'大型犬ですが対応可能でしょうか。' },
   { id:105, at:'7/25(土) 10:00', name:'ムギ',     menu:'シャンプーコース',         staff:'佐藤', status:'confirmed', note:'', ok:true },
   { id:106, at:'7/25(土) 12:30', name:'レオ',     menu:'シャンプー＆カットコース', staff:'高橋', status:'confirmed', note:'' },
-  { id:107, at:'7/28(火) 13:00', name:'ベル',     menu:'宿泊（レギュラーコース）', staff:'山本', status:'confirmed', note:'ワンず写真日記をお願いします。' },
+  { id:107, at:'7/28(火) 13:00', name:'ベル',     menu:'宿泊（レギュラーコース）', staff:'山本', status:'confirmed', note:'ワンず写メ日記をお願いします。' },
   { id:108, at:'7/22(火) 10:00', name:'マロン',   menu:'保育コース',               staff:'山本', status:'visited',  note:'' },
   { id:109, at:'7/21(月) 13:00', name:'ハナ',     menu:'保育コース（体験）',       staff:'中村', status:'visited',  note:'' },
   { id:110, at:'7/20(月) 15:00', name:'きなこ',   menu:'シャンプーコース',         staff:'伊藤', status:'cancelled', note:'' },
@@ -1900,7 +1903,7 @@ const MENUS = [
   { name:'一時預かり', min:60, active:true },
   { name:'宿泊（レギュラーコース）', min:null, active:true },
   { name:'宿泊（保育コース）', min:null, active:true },
-  { name:'ワンず写真日記（オプション）', min:null, active:true },
+  { name:'ワンず写メ日記（オプション）', min:null, active:true },
   { name:'夏季限定 クールシャンプー', min:60, active:false },
 ];
 const mnlist = document.getElementById('mnlist');

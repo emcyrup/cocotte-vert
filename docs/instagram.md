@@ -53,10 +53,13 @@ vi .env
 ```
 
 ```
-IG_USER_ID=（Instagram user ID・数字）
-IG_ACCESS_TOKEN=（Generate token で取得したトークン）
+IG_ACCESS_TOKEN=（Generate token で取得したトークン。IGAA〜 で始まる長い1行）
 IG_POST_MODE=dry_run
 ```
+
+`IG_USER_ID` は**空でよい**（トークンからアカウントが特定される）。
+指定する場合は「API setup with Instagram login」画面の Instagram user ID を使うこと。
+Facebook 側の画面に出る ID は別物で、`object does not exist` エラーになる。
 
 ```bash
 docker compose --profile standalone up -d

@@ -148,3 +148,15 @@ test('splitIntoPosts: 11枚以上は2投稿に分割し、2件目に「つづき
   assert.equal(parts[0].caption, '本日のようす');
   assert.equal(parts[1].caption, '本日のようす\n\nつづき（2/2）');
 });
+
+test('IG_USER_ID 未設定なら me で投稿する（トークンがアカウントを特定する）', async () => {
+  const { calls, fetchFn } = makeFetch();
+  const client = createInstagramClient({
+    config: { ...liveConfig, igUserId: null },
+    fetchFn,
+  });
+
+  await client.publishPost({ imageUrls: ['https://e.com/a.jpg'], caption: '' });
+  assert.match(calls[0].url, /\/me\/media$/);
+  assert.match(calls[1].url, /\/me\/media_publish$/);
+});

@@ -66,6 +66,12 @@ npm test
 取り込み API とスタッフ向け管理画面（`/admin/`。メニュー登録・予約の承認・来店登録）の使い方は
 [docs/import-api.md](docs/import-api.md) を参照。
 
+## Instagram 投稿
+
+管理画面から店舗の Instagram へ写真を投稿できる（複数枚のカルーセル・11枚以上の自動2分割・
+予約投稿）。`IG_POST_MODE=dry_run` が既定で、`live` にするまで実投稿されない。
+Meta 側のセットアップは [docs/instagram.md](docs/instagram.md) を参照。
+
 ## 画面モック
 
 提案・要件確認用の画面モック（予約カレンダー・顧客カルテ・シフト・SNS投稿）を

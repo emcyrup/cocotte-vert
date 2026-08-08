@@ -22,6 +22,11 @@ import { createReservationService } from './reservations/service.js';
 import { basicAuth, bearerAuth } from './http/auth.js';
 import { createAdminRouter } from './http/adminRoutes.js';
 import { createImportRouter } from './http/importRoutes.js';
+import { createSnsRouter } from './http/snsRoutes.js';
+import { createInstagramClient } from './instagram/client.js';
+import { createSnsPublisher } from './jobs/snsPublisher.js';
+import { mkdirSync } from 'node:fs';
+import cron from 'node-cron';
 
 const config = loadConfig();
 const lineClient = createLineClient({ config, pool });
@@ -207,6 +212,37 @@ app.use('/api/admin', adminGuard, createAdminRouter({ pool, reservationService, 
 // 実在の顧客データと混同されないよう、管理画面と同じ Basic 認証の内側に置く
 const mockDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'mock');
 app.use('/mock', adminGuard, express.static(mockDir));
+
+// ---- Instagram 投稿 ----
+// 投稿画像は Instagram 側が公開 URL から取得する仕様のため、認証なしで配信する。
+// ファイル名が推測不能なランダム値であることが実質のアクセス制御になる
+const snsDataDir = path.join(process.cwd(), 'data', 'sns');
+mkdirSync(snsDataDir, { recursive: true });
+app.use('/sns-media', express.static(snsDataDir, { maxAge: '7d', immutable: true }));
+
+const instagram = createInstagramClient({ config, settings });
+const snsPublisher = createSnsPublisher({ pool, instagram, slack, config });
+app.use('/api/admin/sns', adminGuard, createSnsRouter({ pool, publisher: snsPublisher, dataDir: snsDataDir }));
+
+// 予約投稿の時刻チェック（5分おき）。深夜帯の投稿も予約どおり実行する（SNS は顧客への Push ではないため）
+cron.schedule('*/5 * * * *', async () => {
+  try {
+    await snsPublisher.publishDue();
+  } catch (err) {
+    console.error(`[sns] 予約投稿の処理に失敗: ${err.message}`);
+  }
+}, { timezone: 'Asia/Tokyo' });
+
+// Instagram 長期トークンの延長（毎日チェックし、7日ごとに実際に延長）
+cron.schedule('30 4 * * *', async () => {
+  try {
+    const result = await instagram.refreshTokenIfNeeded();
+    if (result.refreshed) console.log('[instagram] アクセストークンを延長しました');
+  } catch (err) {
+    console.error(`[instagram] トークン延長に失敗: ${err.message}`);
+    await slack.notify(`:warning: Instagram トークンの延長に失敗しました。期限切れ前に再発行してください。\n${err.message}`);
+  }
+}, { timezone: 'Asia/Tokyo' });
 
 // 外部予約システムからの取り込み（Bearer トークン。INGEST_API_TOKEN 未設定なら無効）
 app.use(

@@ -7,6 +7,7 @@ const SEND_MODES = ['dry_run', 'test', 'live'];
 const REQUIRED_VARS = ['DATABASE_URL', 'LINE_CHANNEL_ACCESS_TOKEN', 'LINE_CHANNEL_SECRET'];
 
 const STAFF_NOTIFY_CHANNELS = ['slack', 'line', 'both'];
+const IG_POST_MODES = ['dry_run', 'live'];
 
 export function loadConfig(env = process.env) {
   const missing = REQUIRED_VARS.filter((key) => !env[key]);
@@ -42,6 +43,15 @@ export function loadConfig(env = process.env) {
   }
   // STAFF_LINE_GROUP_ID は任意（Bot のグループ参加時に DB へ自動設定される。env は手動上書き用）
 
+  // Instagram 投稿も LINE と同じく、明示しない限り実投稿しない
+  const igPostMode = env.IG_POST_MODE || 'dry_run';
+  if (!IG_POST_MODES.includes(igPostMode)) {
+    throw new Error(`IG_POST_MODE が不正です: "${igPostMode}"（${IG_POST_MODES.join(' | ')} のいずれか）`);
+  }
+  if (igPostMode === 'live' && !env.IG_USER_ID) {
+    throw new Error('IG_POST_MODE=live には IG_USER_ID が必要です');
+  }
+
   const liffId = env.LIFF_ID || null;
 
   return {
@@ -74,6 +84,13 @@ export function loadConfig(env = process.env) {
     // 通数で固定したい場合のみ QUOTA_WARN_REMAINING で明示する
     quotaWarnRatio: Number(env.QUOTA_WARN_RATIO || 0.1),
     quotaWarnRemaining: env.QUOTA_WARN_REMAINING ? Number(env.QUOTA_WARN_REMAINING) : null,
+    // Instagram 投稿（未設定なら機能ごと無効）
+    igUserId: env.IG_USER_ID || null,
+    igAccessToken: env.IG_ACCESS_TOKEN || null,
+    igPostMode,
+    igGraphBase: env.IG_GRAPH_BASE || 'https://graph.instagram.com',
+    // Instagram は投稿画像を公開 URL から取得するため、外から見える自分の URL が要る
+    publicBaseUrl: env.PUBLIC_BASE_URL || (env.DOMAIN ? `https://${env.DOMAIN}` : null),
     port: Number(env.PORT || 3000),
   };
 }

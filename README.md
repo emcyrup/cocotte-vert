@@ -82,6 +82,9 @@ npm test
 差し替える**など、既存の運用を壊す操作がある。`SEND_MODE` は最後まで `dry_run` のままにし、
 配信は前々日確認から段階的に始めること。
 
+切り替え後は `node scripts/check-line.js` で、どのアカウントに繋がっているか
+（表示名・ベーシック ID・応答モード・Webhook の疎通・月間通数）を確認できる。
+
 ## デプロイ（インターネット公開）
 
 VPS / EC2 / GCP Compute Engine + Docker Compose、または Render での公開手順を

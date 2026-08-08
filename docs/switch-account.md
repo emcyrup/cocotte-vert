@@ -83,10 +83,22 @@ LIFF_ID=（運用中アカウントの LIFF ID）
 SEND_MODE=dry_run
 ```
 
+**3つは必ず同時に差し替える。** トークンだけ替えて `LIFF_ID` が古いままだと、友だち追加した
+お客様に**旧アカウントの登録フォームの URL** が送られ、開いても登録できない。
+
 ```bash
 docker compose --profile standalone up -d
 curl -s https://<ドメイン>/health
 ```
+
+意図したアカウントに繋がったかを確認する。
+
+```bash
+docker compose exec app node scripts/check-line.js
+```
+
+表示名・ベーシック ID が運用中アカウントのものであること、応答モードが Bot であること、
+Webhook の疎通テストが成功することを確認する。ここが通らないうちは先に進まない。
 
 ### Step 3. 古い紐付けを消す
 
@@ -106,15 +118,16 @@ UPDATE customers SET line_user_id = NULL, is_blocked = false;
 DELETE FROM app_settings WHERE key = 'staff_line_group_id';
 ```
 
-### Step 4. Webhook だけ繋ぐ
+### Step 4. Webhook を繋ぐ
 
-まだお客様の画面は何も変わらない段階。
+リッチメニューを変えるまで、お客様の画面は変わらない。ただし**この時点から、新しく友だち
+追加した人にはシステムのあいさつが返る**（応答メッセージなので通数は消費しない）。
 
 **LINE Developers → Messaging API 設定**
 
 - Webhook URL: `https://<ドメイン>/webhook`
 - Webhook の利用: オン
-- 「検証」ボタンが成功すること
+- 「検証」ボタンが成功すること（`scripts/check-line.js` の疎通テストでも同じ確認ができる）
 
 **OA Manager → 設定 → 応答設定**
 

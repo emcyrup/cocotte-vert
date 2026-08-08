@@ -33,6 +33,21 @@ export function createSnsRouter({ pool, publisher, dataDir }) {
     }
   );
 
+  // ---- アップロード済み写真の削除（投稿前に選択から外したとき）----
+  // 投稿に紐づいた写真は消さない（履歴のサムネイル表示が壊れるため）
+  router.delete('/photos/:file', async (req, res, next) => {
+    try {
+      const { file } = req.params;
+      if (!/^[0-9a-f]{24}\.jpg$/.test(file)) return res.status(400).json({ error: 'invalid_file' });
+      const { rows } = await pool.query(`SELECT 1 FROM sns_photos WHERE file = $1 LIMIT 1`, [file]);
+      if (rows.length > 0) return res.status(400).json({ error: 'file_in_use' });
+      await unlink(path.join(dataDir, file)).catch(() => {});
+      res.json({ ok: true });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   // ---- 投稿の作成（即時 or 予約）----
   router.post('/posts', async (req, res, next) => {
     try {

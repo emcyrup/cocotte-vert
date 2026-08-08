@@ -217,7 +217,12 @@ app.use('/mock', adminGuard, express.static(mockDir));
 // 投稿画像は Instagram 側が公開 URL から取得する仕様のため、認証なしで配信する。
 // ファイル名が推測不能なランダム値であることが実質のアクセス制御になる
 const snsDataDir = path.join(process.cwd(), 'data', 'sns');
-mkdirSync(snsDataDir, { recursive: true });
+try {
+  mkdirSync(snsDataDir, { recursive: true });
+} catch (err) {
+  // 写真置き場が作れなくても LINE 配信まで道連れにしない（SNS 機能だけ落とす）
+  console.error(`[sns] 写真ディレクトリを作成できません: ${err.message}`);
+}
 app.use('/sns-media', express.static(snsDataDir, { maxAge: '7d', immutable: true }));
 
 const instagram = createInstagramClient({ config, settings });

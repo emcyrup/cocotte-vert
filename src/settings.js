@@ -5,6 +5,9 @@ export const SETTING_KEYS = {
   // 日次ジョブの実行結果。Push すると通数を消費するため、保存しておいて
   // グループから「配信結果」と聞かれたときに応答メッセージ（無料）で返す
   lastJobSummary: 'last_job_summary',
+  // Instagram の長期トークン。60日で切れるため定期的に延長し、更新後の値はこちらを正とする
+  igAccessToken: 'ig_access_token',
+  igTokenRefreshedAt: 'ig_token_refreshed_at',
 };
 
 export function createSettings({ pool }) {

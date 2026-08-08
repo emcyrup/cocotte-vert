@@ -59,6 +59,22 @@
     .chip-list li.off { color: #9ca3af; background: #fafafa; }
     .chip-list button { padding: 3px 10px; font-size: 0.75rem; border-radius: 999px; }
 
+    /* Instagram 投稿 */
+    .sns-grid { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+    .sns-grid figure { margin: 0; position: relative; }
+    .sns-grid img { width: 72px; height: 72px; object-fit: cover; border-radius: 8px; display: block; }
+    .sns-grid .no { position: absolute; top: 2px; left: 2px; background: rgba(0,0,0,.55); color: #fff;
+                    font-size: 0.7rem; border-radius: 4px; padding: 1px 5px; }
+    /* 11枚目からは2投稿目に分割される。境界が分かるように色を変える */
+    .sns-grid figure.second img { outline: 3px solid #f59e0b; }
+    .sns-split-note { font-size: 0.8rem; color: #b45309; margin: 0 0 8px; display: none; }
+    #sns-caption { width: 100%; min-height: 72px; resize: vertical; }
+    .sns-status-published { color: #059669; }
+    .sns-status-scheduled { color: #b45309; }
+    .sns-status-failed { color: #dc2626; font-weight: 700; }
+    .sns-status-dry_run { color: #6b7280; }
+    .sns-thumb { width: 40px; height: 40px; object-fit: cover; border-radius: 6px; vertical-align: middle; }
+
     /* 操作ボタンは折り返して縦に積む（列を無限に広げない） */
     .row-actions { display: flex; flex-wrap: wrap; gap: 4px; max-width: 240px; }
     .row-actions button { padding: 4px 8px; font-size: 0.75rem; }
@@ -145,6 +161,32 @@
         <button type="submit">追加</button>
       </form>
       <ul id="menus" class="chip-list"></ul>
+    </section>
+
+    <section>
+      <h2>Instagram 投稿</h2>
+      <p class="note">
+        写真は自動で JPEG に変換し、縦横比も Instagram の範囲に収めます。
+        11枚以上を選ぶと自動で2つの投稿に分割されます（<span style="outline: 2px solid #f59e0b; padding: 0 4px;">枠の色</span>が2投稿目）。
+        投稿先の設定は <code>docs/instagram.md</code> を参照。<b>IG_POST_MODE=dry_run のあいだは実投稿されません。</b>
+      </p>
+      <form id="sns-form">
+        <input type="file" id="sns-files" accept="image/*" multiple />
+      </form>
+      <p class="sns-split-note" id="sns-split-note"></p>
+      <div class="sns-grid" id="sns-grid"></div>
+      <textarea id="sns-caption" placeholder="キャプション（#ここっとベール など）"></textarea>
+      <form id="sns-submit-form" style="margin-top: 8px;">
+        <button type="button" id="sns-post-now">今すぐ投稿</button>
+        <input type="datetime-local" id="sns-schedule-at" />
+        <button type="button" class="ghost" id="sns-post-schedule">予約投稿</button>
+      </form>
+      <div class="table-wrap" style="margin-top: 12px;">
+        <table>
+          <thead><tr><th></th><th>予定/投稿日時</th><th>枚数</th><th>状態</th><th>キャプション</th><th>操作</th></tr></thead>
+          <tbody id="sns-posts"></tbody>
+        </table>
+      </div>
     </section>
 
     <section>

@@ -19,6 +19,9 @@ services:
       DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD を .env に設定してください}@db:5432/cocotte_vert
     # 起動前にマイグレーションを適用する
     command: sh -c "node scripts/migrate.js && node src/index.js"
+    volumes:
+      # Instagram 投稿用の写真置き場。再ビルドで消えないよう永続化する
+      - snsdata:/app/data
     depends_on:
       db:
         condition: service_healthy
@@ -62,5 +65,6 @@ services:
 
 volumes:
   dbdata:
+  snsdata:
   caddy_data:
   caddy_config:

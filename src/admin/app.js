@@ -363,3 +363,171 @@ document.getElementById('new-menu').addEventListener('submit', async (e) => {
 loadStaff().catch(() => showMsg('スタッフの取得に失敗しました'));
 loadMenus().catch(() => showMsg('メニューの取得に失敗しました'));
 loadReservations().catch((err) => showMsg(`エラー: ${err.message}`));
+
+// ---- Instagram 投稿 ----
+// 画像はブラウザ側で JPEG へ正規化する（サーバに画像処理ライブラリを足さないため）。
+// Instagram が受け付ける縦横比（4:5 〜 1.91:1）から外れる写真は白地でパディングする。
+const SNS_MAX_EDGE = 1440;
+const snsPhotos = []; // { file: サーバ上のファイル名, url: プレビュー用 ObjectURL }
+
+async function normalizeToJpeg(file) {
+  const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
+  let cw = bmp.width;
+  let ch = bmp.height;
+  const ratio = bmp.width / bmp.height;
+  if (ratio < 0.8) cw = Math.round(bmp.height * 0.8);       // 縦長すぎ → 横に余白
+  else if (ratio > 1.91) ch = Math.round(bmp.width / 1.91); // 横長すぎ → 縦に余白
+  const scale = Math.min(1, SNS_MAX_EDGE / Math.max(cw, ch));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(cw * scale);
+  canvas.height = Math.round(ch * scale);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(
+    bmp,
+    Math.round((canvas.width - bmp.width * scale) / 2),
+    Math.round((canvas.height - bmp.height * scale) / 2),
+    Math.round(bmp.width * scale),
+    Math.round(bmp.height * scale)
+  );
+  bmp.close();
+  return new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+}
+
+function renderSnsGrid() {
+  const grid = document.getElementById('sns-grid');
+  grid.innerHTML = '';
+  snsPhotos.forEach((p, i) => {
+    const fig = document.createElement('figure');
+    if (i >= 10) fig.className = 'second';
+    const img = document.createElement('img');
+    img.src = p.url;
+    const no = document.createElement('span');
+    no.className = 'no';
+    no.textContent = i + 1;
+    fig.append(img, no);
+    grid.appendChild(fig);
+  });
+  const note = document.getElementById('sns-split-note');
+  if (snsPhotos.length > 10) {
+    note.textContent = `11枚以上のため自動で2つの投稿に分割されます（投稿1: 10枚 / 投稿2: ${snsPhotos.length - 10}枚）`;
+    note.style.display = 'block';
+  } else {
+    note.style.display = 'none';
+  }
+}
+
+document.getElementById('sns-files').addEventListener('change', async (e) => {
+  const files = [...e.target.files];
+  e.target.value = '';
+  if (snsPhotos.length + files.length > 20) {
+    showMsg('写真は20枚まで（10枚×2投稿）です');
+    return;
+  }
+  showMsg(`${files.length}枚を変換・アップロード中…`, 10000);
+  try {
+    for (const file of files) {
+      const jpeg = await normalizeToJpeg(file);
+      const res = await fetch(`${API}/sns/photos`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'image/jpeg' },
+        body: jpeg,
+      });
+      const body = await res.json();
+      if (!res.ok || !body.ok) throw new Error(body.error || `HTTP ${res.status}`);
+      snsPhotos.push({ file: body.file, url: URL.createObjectURL(jpeg) });
+    }
+    renderSnsGrid();
+    showMsg(`アップロード完了（計${snsPhotos.length}枚）`);
+  } catch (err) {
+    showMsg(`アップロード失敗: ${err.message}`);
+  }
+});
+
+async function submitSnsPost(scheduledAt) {
+  if (snsPhotos.length === 0) return showMsg('先に写真を選んでください');
+  const label = scheduledAt ? '予約' : '投稿';
+  try {
+    const body = await api('/sns/posts', {
+      method: 'POST',
+      body: JSON.stringify({
+        caption: document.getElementById('sns-caption').value,
+        files: snsPhotos.map((p) => p.file),
+        scheduledAt,
+      }),
+    });
+    const messages = {
+      published: '投稿しました',
+      dry_run: 'dry_run のため実投稿せず記録しました（実投稿には IG_POST_MODE=live が必要です）',
+      scheduled: '予約しました。時刻になると自動で投稿されます',
+    };
+    showMsg(messages[body.status] || `${label}を受け付けました`, 4000);
+    snsPhotos.length = 0;
+    renderSnsGrid();
+    document.getElementById('sns-caption').value = '';
+    loadSnsPosts();
+  } catch (err) {
+    showMsg(`${label}に失敗しました: ${err.message}`, 5000);
+    loadSnsPosts();
+  }
+}
+
+document.getElementById('sns-post-now').addEventListener('click', () => {
+  if (!confirm(`${snsPhotos.length}枚を今すぐ投稿しますか？`)) return;
+  submitSnsPost(null);
+});
+document.getElementById('sns-post-schedule').addEventListener('click', () => {
+  const at = document.getElementById('sns-schedule-at').value;
+  if (!at) return showMsg('予約日時を指定してください');
+  submitSnsPost(toJstIso(at));
+});
+
+const SNS_STATUS_LABELS = {
+  scheduled: '予約中',
+  publishing: '投稿処理中',
+  published: '投稿済み',
+  dry_run: 'dry_run',
+  failed: '失敗',
+};
+
+async function loadSnsPosts() {
+  const { posts } = await api('/sns/posts');
+  const tbody = document.getElementById('sns-posts');
+  tbody.innerHTML = '';
+  for (const p of posts) {
+    const tr = document.createElement('tr');
+    const thumb = p.thumb ? `<img class="sns-thumb" src="/sns-media/${p.thumb}" alt="">` : '';
+    const when = p.published_at ?? p.scheduled_at;
+    tr.innerHTML =
+      `<td>${thumb}</td>` +
+      `<td class="nowrap">${fmtJst(when)}</td>` +
+      `<td>${p.photo_count}</td>` +
+      `<td class="sns-status-${p.status}">${SNS_STATUS_LABELS[p.status] ?? p.status}` +
+      (p.error ? `<div class="note" style="margin:4px 0 0">${p.error}</div>` : '') +
+      `</td>` +
+      `<td>${(p.caption || '').slice(0, 40)}</td>`;
+    const td = document.createElement('td');
+    if (p.status === 'scheduled' || p.status === 'failed') {
+      const btn = document.createElement('button');
+      btn.className = 'sub';
+      btn.textContent = '取消';
+      btn.onclick = async () => {
+        if (!confirm('この投稿を取り消しますか？（写真も削除されます）')) return;
+        try {
+          await api(`/sns/posts/${p.id}/cancel`, { method: 'POST' });
+          showMsg('取り消しました');
+          loadSnsPosts();
+        } catch (err) {
+          showMsg(`エラー: ${err.message}`);
+        }
+      };
+      td.appendChild(btn);
+    }
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+  }
+}
+
+loadSnsPosts().catch(() => {});

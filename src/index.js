@@ -67,9 +67,16 @@ app.post(
 // ---- ここから下は JSON パースを使う（webhook 以外のルート） ----
 app.use(express.json());
 
+// 画面（HTML/JS）は毎回サーバーへ更新確認させる。デプロイ後に古い app.js が
+// キャッシュされたまま残り、「ボタンが効かない」事故が繰り返されたため。
+// 変更がなければ 304 で返るので転送量はほぼ増えない
+const noStaleCache = {
+  setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache'),
+};
+
 // LIFF 登録フォーム（静的ファイル）
 const liffDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'liff');
-app.use('/liff', express.static(liffDir));
+app.use('/liff', express.static(liffDir, noStaleCache));
 
 // フロントに LIFF ID を渡す（HTML に焼き込まない）
 app.get('/liff/config', (_req, res) => {
@@ -205,13 +212,13 @@ app.post('/liff/reserve', async (req, res) => {
 // 管理画面（Basic 認証。ADMIN_USER / ADMIN_PASSWORD 未設定なら無効）
 const adminGuard = basicAuth({ user: config.adminUser, password: config.adminPassword });
 const adminDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'admin');
-app.use('/admin', adminGuard, express.static(adminDir));
+app.use('/admin', adminGuard, express.static(adminDir, noStaleCache));
 app.use('/api/admin', adminGuard, createAdminRouter({ pool, reservationService, lineClient, config }));
 
 // 提案・要件確認用の画面モック（サンプルデータのみ。実データには一切つながらない）。
 // 実在の顧客データと混同されないよう、管理画面と同じ Basic 認証の内側に置く
 const mockDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'mock');
-app.use('/mock', adminGuard, express.static(mockDir));
+app.use('/mock', adminGuard, express.static(mockDir, noStaleCache));
 
 // ---- Instagram 投稿 ----
 // 投稿画像は Instagram 側が公開 URL から取得する仕様のため、認証なしで配信する。

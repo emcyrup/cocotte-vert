@@ -12,7 +12,12 @@ const API_VERSION = 'v21.0';
 // 60日トークンの残りが切れる前に延長する。リフレッシュは発行から24時間後以降のみ可能
 const REFRESH_INTERVAL_DAYS = 7;
 
-export function createInstagramClient({ config, settings = null, fetchFn = fetch }) {
+export function createInstagramClient({
+  config,
+  settings = null,
+  fetchFn = fetch,
+  sleepFn = (ms) => new Promise((r) => setTimeout(r, ms)),
+}) {
   const base = `${config.igGraphBase}/${API_VERSION}`;
 
   // トークンは DB（リフレッシュで更新される）を優先し、env を初期値にする
@@ -22,6 +27,36 @@ export function createInstagramClient({ config, settings = null, fetchFn = fetch
       if (stored) return stored;
     }
     return config.igAccessToken ?? null;
+  }
+
+  async function apiGet(path) {
+    const token = await resolveToken();
+    if (!token) throw new Error('Instagram のアクセストークンが未設定です');
+    const sep = path.includes('?') ? '&' : '?';
+    const res = await fetchFn(`${base}${path}${sep}access_token=${encodeURIComponent(token)}`);
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(`Instagram API ${res.status}: ${json.error?.message ?? 'unknown error'}`);
+    }
+    return json;
+  }
+
+  /**
+   * コンテナの処理完了を待つ。Instagram は画像をこちらのサーバーへ取りに来て処理するため、
+   * 完了前に公開すると「Media ID is not available」で失敗する（Meta の推奨手順どおり待つ）。
+   */
+  async function waitForContainer(creationId, { tries = 20, intervalMs = 2000 } = {}) {
+    for (let i = 0; i < tries; i++) {
+      const { status_code: status } = await apiGet(`/${creationId}?fields=status_code`);
+      if (status === 'FINISHED') return;
+      if (status === 'ERROR' || status === 'EXPIRED') {
+        throw new Error(
+          `画像の処理に失敗しました（status=${status}）。画像URLに Instagram が到達できているか確認してください`
+        );
+      }
+      await sleepFn(intervalMs);
+    }
+    throw new Error('画像の処理が時間内に完了しませんでした（あとで再投稿してください）');
   }
 
   async function api(path, params) {
@@ -76,6 +111,7 @@ export function createInstagramClient({ config, settings = null, fetchFn = fetch
       creationId = container.id;
     }
 
+    await waitForContainer(creationId);
     const published = await api(`/${igUserId}/media_publish`, { creation_id: creationId });
     return { status: 'published', mediaId: published.id };
   }

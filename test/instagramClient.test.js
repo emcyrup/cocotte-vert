@@ -7,7 +7,9 @@ function makeFetch(responses = {}) {
   const fetchFn = async (url, options = {}) => {
     calls.push({ url, body: options.body ? Object.fromEntries(options.body) : null });
     const key = Object.keys(responses).find((k) => url.includes(k));
-    const value = responses[key] ?? { id: `id-${calls.length}` };
+    const value =
+      responses[key] ??
+      (url.includes('status_code') ? { status_code: 'FINISHED' } : { id: `id-${calls.length}` });
     if (value.__status) {
       return { ok: false, status: value.__status, json: async () => value };
     }
@@ -49,11 +51,12 @@ test('1枚はコンテナ作成→公開の2段階で投稿される', async () 
 
   assert.equal(result.status, 'published');
   assert.equal(result.mediaId, 'media-1');
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 3, 'コンテナ作成 → 状態確認 → 公開');
   assert.match(calls[0].url, /\/media$/);
   assert.equal(calls[0].body.image_url, 'https://example.com/a.jpg');
   assert.equal(calls[0].body.caption, '本日のようす');
-  assert.match(calls[1].url, /\/media_publish$/);
+  assert.match(calls[1].url, /status_code/);
+  assert.match(calls[2].url, /\/media_publish$/);
 });
 
 test('複数枚はカルーセルとして投稿される（各画像→束ね→公開）', async () => {
@@ -63,12 +66,13 @@ test('複数枚はカルーセルとして投稿される（各画像→束ね�
   const urls = ['https://e.com/1.jpg', 'https://e.com/2.jpg', 'https://e.com/3.jpg'];
   await client.publishPost({ imageUrls: urls, caption: 'c' });
 
-  // 3枚のコンテナ + カルーセルコンテナ + 公開 = 5回
-  assert.equal(calls.length, 5);
+  // 3枚のコンテナ + カルーセルコンテナ + 状態確認 + 公開 = 6回
+  assert.equal(calls.length, 6);
   assert.equal(calls[0].body.is_carousel_item, 'true');
   assert.equal(calls[3].body.media_type, 'CAROUSEL');
   assert.equal(calls[3].body.children, 'id-1,id-2,id-3');
   assert.equal(calls[3].body.caption, 'c');
+  assert.match(calls[4].url, /status_code/);
 });
 
 test('11枚以上は publishPost では拒否される（分割は呼び出し側の責務）', async () => {
@@ -158,5 +162,43 @@ test('IG_USER_ID 未設定なら me で投稿する（トークンがアカウ�
 
   await client.publishPost({ imageUrls: ['https://e.com/a.jpg'], caption: '' });
   assert.match(calls[0].url, /\/me\/media$/);
-  assert.match(calls[1].url, /\/me\/media_publish$/);
+  assert.match(calls[2].url, /\/me\/media_publish$/);
+});
+
+// ---- コンテナ処理待ち ----
+
+test('処理中（IN_PROGRESS）の間は待ち、FINISHED になってから公開する', async () => {
+  const statuses = ['IN_PROGRESS', 'IN_PROGRESS', 'FINISHED'];
+  const calls = [];
+  const fetchFn = async (url, options = {}) => {
+    calls.push(url);
+    if (url.includes('status_code')) {
+      return { ok: true, status: 200, json: async () => ({ status_code: statuses.shift() }) };
+    }
+    return { ok: true, status: 200, json: async () => ({ id: 'x' }) };
+  };
+  const client = createInstagramClient({ config: liveConfig, fetchFn, sleepFn: async () => {} });
+
+  const result = await client.publishPost({ imageUrls: ['https://e.com/a.jpg'], caption: '' });
+  assert.equal(result.status, 'published');
+  assert.equal(calls.filter((u) => u.includes('status_code')).length, 3);
+  assert.ok(calls[calls.length - 1].includes('media_publish'), '公開は FINISHED の後');
+});
+
+test('画像処理が ERROR になったら公開せず、原因つきで失敗する', async () => {
+  const calls = [];
+  const fetchFn = async (url) => {
+    calls.push(url);
+    if (url.includes('status_code')) {
+      return { ok: true, status: 200, json: async () => ({ status_code: 'ERROR' }) };
+    }
+    return { ok: true, status: 200, json: async () => ({ id: 'x' }) };
+  };
+  const client = createInstagramClient({ config: liveConfig, fetchFn, sleepFn: async () => {} });
+
+  await assert.rejects(
+    () => client.publishPost({ imageUrls: ['https://e.com/a.jpg'], caption: '' }),
+    /画像の処理に失敗/
+  );
+  assert.ok(!calls.some((u) => u.includes('media_publish')), '公開 API は呼ばない');
 });

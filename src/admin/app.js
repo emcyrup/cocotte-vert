@@ -407,7 +407,19 @@ function renderSnsGrid() {
     const no = document.createElement('span');
     no.className = 'no';
     no.textContent = i + 1;
-    fig.append(img, no);
+    const rm = document.createElement('button');
+    rm.type = 'button';
+    rm.className = 'rm';
+    rm.textContent = '×';
+    rm.title = 'この写真を外す';
+    rm.addEventListener('click', () => {
+      // サーバ上のファイルも掃除する。失敗しても選択解除は続行（未参照ファイルが残るだけ）
+      api(`/sns/photos/${p.file}`, { method: 'DELETE' }).catch(() => {});
+      URL.revokeObjectURL(p.url);
+      snsPhotos.splice(i, 1);
+      renderSnsGrid();
+    });
+    fig.append(img, no, rm);
     grid.appendChild(fig);
   });
   const note = document.getElementById('sns-split-note');

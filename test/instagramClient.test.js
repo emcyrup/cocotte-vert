@@ -95,6 +95,31 @@ test('API エラーはメッセージ付きで投げる', async () => {
   );
 });
 
+test('API エラーには失敗箇所と Meta の詳細コードを含める', async () => {
+  const { fetchFn } = makeFetch({
+    media: {
+      __status: 400,
+      error: {
+        message: 'Only photos or videos can be accepted as media type.',
+        error_user_msg: 'メディアを取得できませんでした',
+        code: 9004,
+        error_subcode: 2207052,
+      },
+    },
+  });
+  const client = createInstagramClient({ config: liveConfig, fetchFn });
+  await assert.rejects(
+    () => client.publishPost({ imageUrls: ['https://e.com/a.jpg'], caption: '' }),
+    (err) => {
+      assert.match(err.message, /Only photos or videos/);
+      assert.match(err.message, /メディアを取得できませんでした/);
+      assert.match(err.message, /at POST \/17840000000000000\/media/);
+      assert.match(err.message, /code=9004\/2207052/);
+      return true;
+    }
+  );
+});
+
 test('トークンは DB（settings）を env より優先する', async () => {
   const { calls, fetchFn } = makeFetch();
   const settings = { get: async () => 'token-db', set: async () => {} };

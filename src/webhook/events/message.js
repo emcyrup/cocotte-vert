@@ -1,7 +1,8 @@
 // message イベント:
 //   1. グループでの「会員情報」等のコマンド → 店舗管理画面の顧客一覧（参照・編集）への導線を返信
-//   2. 電話番号らしき文字列 → 突合を試行（補助経路・Phase 2）
-//   3. それ以外のテキスト → 直近に来店フォローを送った顧客なら Claude Haiku で分類（Phase 4）
+//   2. 連携済みスタッフからの 1:1 発言 → シフト変更申請として解釈（Phase 8）
+//   3. 電話番号らしき文字列 → 突合を試行（補助経路・Phase 2）
+//   4. それ以外のテキスト → 直近に来店フォローを送った顧客なら Claude Haiku で分類（Phase 4）
 //      concern / question のみ Slack へ通知する
 import { looksLikePhone } from '../../customers/phone.js';
 
@@ -20,6 +21,7 @@ export function createMessageHandler({
   linkService,
   classifier,
   staffCommand = null,
+  staffShift = null,
   adminUrl = null,
 }) {
   async function handlePhoneText(event, text) {
@@ -117,6 +119,10 @@ export function createMessageHandler({
     }
 
     if (!event.source?.userId) return;
+
+    // 連携済みスタッフからの 1:1 発言はシフト申請として扱う。
+    // 未連携＝顧客とみなし、下の従来処理へ落とす
+    if (staffShift && (await staffShift(event, text))) return;
 
     if (looksLikePhone(text)) {
       await handlePhoneText(event, text);

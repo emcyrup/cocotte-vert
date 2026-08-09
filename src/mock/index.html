@@ -909,7 +909,7 @@ tr.await td{background:var(--warn-soft)}
   <div class="grid shift2">
     <div class="card">
       <div class="hd"><h2>公式LINE botからの申請</h2><span class="pill good">LINE連携</span></div>
-      <div class="bd">
+      <div class="bd" id="shift-line-bd">
         <div class="chat">
           <span class="tstamp">今日 21:47</span>
           <div class="bub staff"><span class="who">高橋</span>8/1(土) 有休お願いします。子どもの行事のため</div>
@@ -925,7 +925,7 @@ tr.await td{background:var(--warn-soft)}
       <div class="hd"><h2>承認待ちの申請</h2><span class="pill warn" id="reqcnt">2件</span></div>
       <div id="reqs"></div>
       <div class="bd" style="border-top:1px solid var(--line)">
-        <p style="font-size:12px;color:var(--muted);margin:0">「承認」すると上のシフト表と予約カレンダーに即時反映され、申請したスタッフへLINEで結果が自動通知されます（実際に承認を押して試せます）。</p>
+        <p style="font-size:12px;color:var(--muted);margin:0" id="shift-approve-note">「承認」すると上のシフト表と予約カレンダーに即時反映され、申請したスタッフへLINEで結果が自動通知されます（実際に承認を押して試せます）。</p>
       </div>
     </div>
   </div>
@@ -1645,12 +1645,18 @@ document.addEventListener('click', e => {
 updateStars();
 
 // ---- LINE botからのシフト変更申請 ----
+// 実運用モードでは管理 API の実データ（スタッフが公式LINE へ送った申請）を表示し、
+// 承認・却下すると本人へ LINE で自動通知される。
 const SHIFT_REQS = [
   { name:'高橋', day:'8/1(土)',  col:6, kind:'yukyu', cell:'有休',             short:'有休', note:'子どもの行事のため' },
   { name:'山本', day:'7/31(金)', col:5, kind:'jikan', cell:'時間休<br>10-12', short:'時間休 10:00〜12:00', note:'' },
 ];
+const SHIFT_KIND_LABELS = { work:'出勤', am:'AM半休', pm:'PM半休', koukyu:'公休', yukyu:'有休', jikan:'時間休' };
+const SHIFT_STATUS = { pending:['承認待ち','warn'], approved:['承認済み','good'], rejected:['却下','mut'] };
 const reqsEl = document.getElementById('reqs'), reqcnt = document.getElementById('reqcnt');
 let pendingReqs = SHIFT_REQS.length;
+let shiftReqs = SHIFT_REQS;   // 実運用モードではサーバの実データに差し替わる
+
 function setShiftCell(name, col, kind, label){
   document.querySelectorAll('.sh tr').forEach(tr => {
     if (tr.querySelector('td .star[data-star="' + name + '"]')) {
@@ -1659,31 +1665,115 @@ function setShiftCell(name, col, kind, label){
     }
   });
 }
-SHIFT_REQS.forEach(r => {
-  const row = document.createElement('div'); row.className = 'sreq';
-  row.innerHTML = '<div><div class="sn">' + r.name + '　' + r.day + ' → ' + r.short + '</div>'
-    + '<div class="sd">LINEから申請' + (r.note ? '｜理由: ' + r.note : '') + '</div></div>';
-  const acts = document.createElement('div'); acts.className = 'acts2';
-  const ok = document.createElement('button'); ok.className = 'abtn'; ok.textContent = '承認';
-  const ng = document.createElement('button'); ng.className = 'abtn ng'; ng.textContent = '却下';
-  const done = msg => {
-    acts.innerHTML = '<span class="pill ' + (msg === '反映済み' ? 'good' : 'mut') + '">' + msg + '</span>';
-    reqcnt.textContent = --pendingReqs ? pendingReqs + '件' : 'なし';
-    if (!pendingReqs) { reqcnt.className = 'pill mut'; }
-  };
-  ok.addEventListener('click', () => {
-    setShiftCell(r.name, r.col, r.kind, r.cell);
-    done('反映済み');
-    showToast(r.name + ' ' + r.day + ' を' + r.short + 'に更新し、LINEで通知しました');
+// サーバの申請1件を画面表示用にほぐす。日付・曜日は JST で組み立てる
+function mapShiftReq(r){
+  const [, mo, da] = r.target_date.split('-');
+  const w = new Intl.DateTimeFormat('ja-JP', { timeZone:'Asia/Tokyo', weekday:'short' })
+    .format(new Date(r.target_date + 'T00:00:00+09:00'));
+  const time = r.kind === 'jikan' && r.start_time ? ' ' + r.start_time + '〜' + r.end_time : '';
+  return { id: r.id, name: r.staff_name, day: Number(mo) + '/' + Number(da) + '(' + w + ')',
+    short: (SHIFT_KIND_LABELS[r.kind] || r.kind) + time, note: r.reason, raw: r.raw_text, status: r.status };
+}
+async function loadShiftReqs(){
+  const { requests } = await adminApi('/shift-requests');
+  shiftReqs = requests.map(mapShiftReq);
+  renderShiftReqs();
+}
+function renderShiftReqs(){
+  reqsEl.innerHTML = '';
+  if (!shiftReqs.length) {
+    reqsEl.innerHTML = '<div class="bd"><p style="font-size:12.5px;color:var(--muted);margin:0">'
+      + '申請はまだありません。スタッフが公式LINEにシフトの希望を送ると、ここに届きます。</p></div>';
+  }
+  shiftReqs.forEach(r => {
+    const row = document.createElement('div'); row.className = 'sreq';
+    row.innerHTML = '<div><div class="sn">' + r.name + '　' + r.day + ' → ' + r.short + '</div>'
+      + '<div class="sd">LINEから申請' + (r.note ? '｜理由: ' + r.note : '')
+      // 解釈がずれていないか承認前に確かめられるよう、申請の原文も見せる
+      + (r.raw ? '<br><span style="opacity:.85">原文: ' + r.raw + '</span>' : '') + '</div></div>';
+    const acts = document.createElement('div'); acts.className = 'acts2';
+    if (adminLive && r.status !== 'pending') {
+      const [label, cls] = SHIFT_STATUS[r.status];
+      acts.innerHTML = '<span class="pill ' + cls + '">' + label + '</span>';
+    } else {
+      const done = msg => {
+        acts.innerHTML = '<span class="pill ' + (msg === '反映済み' ? 'good' : 'mut') + '">' + msg + '</span>';
+        reqcnt.textContent = --pendingReqs ? pendingReqs + '件' : 'なし';
+        if (!pendingReqs) { reqcnt.className = 'pill mut'; }
+      };
+      const decide = async (status, demoMsg, cellArgs) => {
+        if (!adminLive) {
+          if (cellArgs) setShiftCell(r.name, cellArgs.col, cellArgs.kind, cellArgs.cell);
+          done(status === 'approved' ? '反映済み' : '却下');
+          showToast(demoMsg);
+          return;
+        }
+        if (!confirm(r.name + 'さんの「' + r.day + ' ' + r.short + '」を'
+          + (status === 'approved' ? '承認' : '却下') + 'し、本人へLINEで通知しますか？')) return;
+        try {
+          const { delivery } = await adminApi('/shift-requests/' + r.id, {
+            method: 'PATCH', body: JSON.stringify({ status }),
+          });
+          const notes = {
+            sent: '（本人へLINEで通知しました）',
+            dry_run: '（dry_run のためLINE通知は送っていません）',
+            not_linked: '（LINE未連携のため通知できませんでした）',
+            failed: '（LINE通知に失敗しました。店長へ直接お伝えください）',
+          };
+          showToast((status === 'approved' ? '承認しました' : '却下しました') + (notes[delivery] || ''));
+          await loadShiftReqs();
+        } catch (err) { showToast('エラー: ' + err.message); }
+      };
+      const ok = document.createElement('button'); ok.className = 'abtn'; ok.textContent = '承認';
+      const ng = document.createElement('button'); ng.className = 'abtn ng'; ng.textContent = '却下';
+      ok.addEventListener('click', () => decide('approved',
+        r.name + ' ' + r.day + ' を' + r.short + 'に更新し、LINEで通知しました',
+        r.col != null ? { col: r.col, kind: r.kind, cell: r.cell } : null));
+      ng.addEventListener('click', () => decide('rejected', r.name + 'へ却下をLINEで通知しました', null));
+      acts.append(ok, ng);
+    }
+    row.appendChild(acts);
+    reqsEl.appendChild(row);
   });
-  ng.addEventListener('click', () => {
-    done('却下');
-    showToast(r.name + 'へ却下をLINEで通知しました');
+  if (adminLive) {
+    const waiting = shiftReqs.filter(r => r.status === 'pending').length;
+    reqcnt.textContent = waiting ? waiting + '件' : 'なし';
+    reqcnt.className = 'pill ' + (waiting ? 'warn' : 'mut');
+  }
+}
+renderShiftReqs();
+
+// ---- スタッフの LINE 連携（実運用モードのみ）----
+// LINE の userId は本人からは見えないため、管理画面で発行した合言葉を本人に送ってもらう
+async function renderStaffLink(){
+  const { staff } = await adminApi('/staff');
+  const ul = document.getElementById('stafflink');
+  ul.innerHTML = '';
+  if (!staff.length) {
+    ul.innerHTML = '<li class="off">スタッフが未登録です（予約管理の「スタッフ追加」から登録してください）</li>';
+    return;
+  }
+  staff.forEach(s => {
+    const li = document.createElement('li');
+    if (!s.line_linked) li.className = 'off';
+    li.innerHTML = '<span>' + s.name
+      + (s.line_linked ? ' <span class="pill good">連携済み</span>' : ' <span class="pill mut">未連携</span>') + '</span>';
+    const b = document.createElement('button');
+    b.className = 'sbtn' + (s.line_linked ? ' mut' : ' pri');
+    b.textContent = s.line_linked ? 'コード再発行' : '連携コード発行';
+    b.addEventListener('click', async () => {
+      try {
+        const { code, expiresInHours } = await adminApi('/staff/' + s.id + '/link-code', { method: 'POST' });
+        // トーストは消えてしまうため、コードは画面に残す
+        b.outerHTML = '<b class="num" style="font-size:14px;letter-spacing:.08em">' + code + '</b>'
+          + '<span class="pill mut">' + expiresInHours + '時間有効</span>';
+        showToast(s.name + 'さんに「スタッフ登録 ' + code + '」と公式LINEへ送ってもらってください');
+      } catch (err) { showToast('エラー: ' + err.message); }
+    });
+    li.appendChild(b);
+    ul.appendChild(li);
   });
-  acts.append(ok, ng);
-  row.appendChild(acts);
-  reqsEl.appendChild(row);
-});
+}
 
 // ---- 初回ご来店の一覧モーダル（ダッシュボードのKPIから） ----
 const TRIALS = [
@@ -2669,13 +2759,37 @@ async function loadFamiliesLive(){
   document.getElementById('rv-to').value = iso(week);
   document.getElementById('nr-at').value = iso(today) + 'T10:00';
 
+  // シフト申請のカードを、デモの会話例からスタッフ連携の操作 UI に差し替える
+  document.getElementById('shift-line-bd').innerHTML =
+    '<p class="hint">連携したスタッフが公式LINEのトークにシフトの希望を送ると、'
+    + '申請として右の一覧に届きます。文章は自由で、日付と種別が読み取れれば受け付けます'
+    + '（例：<b>8/1 有休お願いします</b> ／ <b>7/31 10時から12時まで時間休</b>）。'
+    + '連携していない相手の発言は、これまでどおり顧客からのメッセージとして扱われます。</p>'
+    + '<ul class="chips" id="stafflink"></ul>'
+    + '<p class="hint">「連携コード発行」を押すと6桁のコードが出ます。'
+    + '<b>スタッフ本人</b>が公式LINEのトークへ「スタッフ登録 123456」と送ると連携完了です。</p>';
+
   try {
-    await Promise.all([loadStaffLive(), loadMenusLive(), rvReload(), loadFamiliesLive()]);
+    await Promise.all([
+      loadStaffLive(), loadMenusLive(), rvReload(), loadFamiliesLive(),
+      loadShiftReqs(), renderStaffLink(),
+    ]);
   } catch (err) {
     showToast('データの読み込みに失敗しました: ' + err.message);
   }
   renderMenus(); fillMenuSelect();
   renderOwners(qEl.value);
+
+  // 週のシフト表そのものはまだ実データを持たないため、承認結果は下の一覧に出ることを明示する
+  document.getElementById('shift-approve-note').innerHTML =
+    '「承認」「却下」を押すと、申請したスタッフへ LINE で結果が自動通知されます。'
+    + '承認しても<b>上のシフト表は変わりません</b>（シフト表のデータ化は次の段階）。'
+    + 'AI の読み違いがないか、各行の「原文」を確かめてから承認してください。';
+  document.querySelector('.foot').innerHTML =
+    'ここっとベール 管理システム<br><b>実運用モード</b><br>実データに接続しています';
+  document.querySelector('#s-shift .shift-note').innerHTML =
+    '<span class="pill mut">構想</span> 上のシフト表はサンプルです（マスの操作は保存されません）。'
+    + '<b>公式LINE からの申請と承認は実際に動きます</b>— 承認すると申請したスタッフへ LINE で通知が届きます。';
 
   // 実運用モードであることを画面上でも分かるようにする
   document.title = 'ここっとベール 店舗管理';

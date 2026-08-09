@@ -6,16 +6,32 @@ import { buildAfterVisitMessage } from '../line/messages/afterVisit.js';
 import { buildDormantMessage } from '../line/messages/dormant.js';
 import { buildBirthdayMessage } from '../line/messages/birthday.js';
 
-export function createAdminRouter({ pool, reservationService, lineClient, config }) {
+export function createAdminRouter({ pool, reservationService, lineClient, config, shiftService = null }) {
   const router = express.Router();
 
   // ---- スタッフ ----
   router.get('/staff', async (_req, res, next) => {
     try {
       const { rows } = await pool.query(
-        `SELECT id, name FROM staff WHERE active = true ORDER BY id`
+        `SELECT id, name, (line_user_id IS NOT NULL) AS line_linked
+         FROM staff WHERE active = true ORDER BY id`
       );
       res.json({ staff: rows });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // シフト申請に使う LINE 連携の合言葉を発行する。
+  // スタッフ本人が公式LINE へ送ると紐付く（userId は本人から見えないため、この方式にしている）
+  router.post('/staff/:id/link-code', async (req, res, next) => {
+    try {
+      if (!shiftService) return res.status(503).json({ error: 'shift_disabled' });
+      const id = Number(req.params.id);
+      if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'invalid_id' });
+      const result = await shiftService.issueLinkCode(id);
+      if (!result.ok) return res.status(404).json(result);
+      res.json(result);
     } catch (err) {
       next(err);
     }
@@ -281,6 +297,36 @@ export function createAdminRouter({ pool, reservationService, lineClient, config
       const id = Number(req.params.id);
       if (!Number.isInteger(id)) return res.status(400).json({ error: 'invalid_id' });
       const result = await reservationService.setStatus(id, req.body?.status);
+      if (!result.ok) {
+        return res.status(result.error === 'not_found' ? 404 : 400).json(result);
+      }
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // ---- シフト変更申請（公式LINE から届いたもの）----
+  router.get('/shift-requests', async (req, res, next) => {
+    try {
+      if (!shiftService) return res.status(503).json({ error: 'shift_disabled' });
+      const status = req.query.status || null;
+      if (status && !['pending', 'approved', 'rejected'].includes(status)) {
+        return res.status(400).json({ error: 'invalid_status' });
+      }
+      res.json({ requests: await shiftService.listRequests({ status }) });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // 承認・却下。結果は申請したスタッフへ LINE で自動通知される
+  router.patch('/shift-requests/:id', async (req, res, next) => {
+    try {
+      if (!shiftService) return res.status(503).json({ error: 'shift_disabled' });
+      const id = Number(req.params.id);
+      if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'invalid_id' });
+      const result = await shiftService.decide({ id, status: req.body?.status });
       if (!result.ok) {
         return res.status(result.error === 'not_found' ? 404 : 400).json(result);
       }

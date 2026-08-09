@@ -1,5 +1,5 @@
 // message イベント:
-//   1. 「お客様情報」等のコマンド → LIFF（確認・変更画面）への導線を返信
+//   1. グループでの「会員情報」等のコマンド → 管理画面の顧客管理（参照・編集）への導線を返信
 //   2. 電話番号らしき文字列 → 突合を試行（補助経路・Phase 2）
 //   3. それ以外のテキスト → 直近に来店フォローを送った顧客なら Claude Haiku で分類（Phase 4）
 //      concern / question のみ Slack へ通知する
@@ -8,8 +8,9 @@ import { looksLikePhone } from '../../customers/phone.js';
 // フォロー送信からこの日数以内の返信をフォロー回答とみなす
 const FOLLOWUP_WINDOW_DAYS = 14;
 
-// リッチメニュー未設定でもテキストで LIFF を呼び出せるようにする（1:1・グループどちらでも）
-const INFO_COMMANDS = new Set(['お客様情報', '登録情報', '会員情報', 'マイページ']);
+// スタッフが既存顧客を参照・編集する導線。グループ（＝スタッフの場）でのみ応答する。
+// 顧客自身の登録・変更は友だち追加あいさつやリッチメニューの LIFF に任せる
+const INFO_COMMANDS = new Set(['お客様情報', '登録情報', '会員情報', 'マイページ', '顧客情報']);
 const normalizeInfoCommand = (text) => text.replace(/[\s　]/g, '').replace(/[?？!！。、]/g, '');
 
 export function createMessageHandler({
@@ -19,7 +20,7 @@ export function createMessageHandler({
   linkService,
   classifier,
   staffCommand = null,
-  liffUrl = null,
+  adminUrl = null,
 }) {
   async function handlePhoneText(event, text) {
     const lineUserId = event.source.userId;
@@ -100,15 +101,18 @@ export function createMessageHandler({
     // スタッフグループからのコマンドを先に処理する（顧客向けの分類には回さない）
     if (staffCommand && (await staffCommand(event, text))) return;
 
-    // お客様情報の呼び出し。グループでも動くよう userId の有無より先に処理し、
-    // 分類（Haiku）にも回さない。開いた本人の情報だけが表示されるため導線自体は無害
-    if (liffUrl && INFO_COMMANDS.has(normalizeInfoCommand(text)) && event.replyToken) {
-      await lineClient.reply(event.replyToken, [
-        {
-          type: 'text',
-          text: `お客様情報のご確認・ご変更はこちらから開けます。\n${liffUrl}`,
-        },
-      ]);
+    // 顧客情報の呼び出し。グループ（スタッフの場）でのみ管理画面へ誘導し、
+    // 1:1 では応答しない。分類（Haiku）にも回さない
+    if (INFO_COMMANDS.has(normalizeInfoCommand(text))) {
+      const inGroup = event.source?.type === 'group' || event.source?.type === 'room';
+      if (inGroup && adminUrl && event.replyToken) {
+        await lineClient.reply(event.replyToken, [
+          {
+            type: 'text',
+            text: `お客様情報の参照・編集は管理画面から行えます。\n${adminUrl}`,
+          },
+        ]);
+      }
       return;
     }
 

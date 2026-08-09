@@ -405,6 +405,46 @@ export function createAdminRouter({ pool, reservationService, lineClient, config
     }
   });
 
+  // ---- 週次シフト ----
+  const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+  const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+  const SHIFT_KINDS = ['work', 'am', 'pm', 'koukyu', 'yukyu', 'jikan'];
+
+  router.get('/shifts', async (req, res, next) => {
+    try {
+      if (!shiftService) return res.status(503).json({ error: 'shift_disabled' });
+      const { from, to } = req.query;
+      if (!DATE_RE.test(from ?? '') || !DATE_RE.test(to ?? '')) {
+        return res.status(400).json({ error: 'invalid_range' });
+      }
+      res.json(await shiftService.listShifts({ from, to }));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // 1マス分の入力。kind を省略（null）すると未入力に戻す
+  router.put('/shifts', async (req, res, next) => {
+    try {
+      if (!shiftService) return res.status(503).json({ error: 'shift_disabled' });
+      const { staffId, date, kind, startTime, endTime } = req.body ?? {};
+      const id = Number(staffId);
+      if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'invalid_staff' });
+      if (!DATE_RE.test(date ?? '')) return res.status(400).json({ error: 'invalid_date' });
+      if (kind && !SHIFT_KINDS.includes(kind)) return res.status(400).json({ error: 'invalid_kind' });
+      // 時間休は時刻が揃っていないと勤怠として成立しない
+      if (kind === 'jikan') {
+        if (!TIME_RE.test(startTime ?? '') || !TIME_RE.test(endTime ?? '')) {
+          return res.status(400).json({ error: 'invalid_time' });
+        }
+        if (startTime >= endTime) return res.status(400).json({ error: 'invalid_time_order' });
+      }
+      res.json(await shiftService.upsertShift({ staffId: id, date, kind: kind || null, startTime, endTime }));
+    } catch (err) {
+      next(err);
+    }
+  });
+
   // ---- 配信メッセージのテスト送信 ----
   // 日付条件を待たずに各ジョブの実物メッセージを確認するための機能。
   // 宛先は常に TEST_LINE_USER_ID（lineClient.pushTest 側で保証）。

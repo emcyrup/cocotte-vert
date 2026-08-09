@@ -170,6 +170,51 @@ export function createShiftService({ pool, lineClient, slack, settings = null, c
     return rows;
   }
 
+  // ---- 週次シフト ----
+
+  /**
+   * 1マス分の登録・更新。kind が null なら未入力に戻す（行を消す）。
+   * @param {string} p.date YYYY-MM-DD（JST の日付）
+   */
+  async function upsertShift({ staffId, date, kind, startTime = null, endTime = null }) {
+    if (!kind) {
+      await pool.query(`DELETE FROM shifts WHERE staff_id = $1 AND work_date = $2`, [staffId, date]);
+      return { ok: true, shift: null };
+    }
+    // 時間休以外に時刻が残ると表示が崩れるため、ここで落とす
+    const jikan = kind === 'jikan';
+    const { rows } = await pool.query(
+      `INSERT INTO shifts (staff_id, work_date, kind, start_time, end_time)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (staff_id, work_date) DO UPDATE
+         SET kind = EXCLUDED.kind, start_time = EXCLUDED.start_time,
+             end_time = EXCLUDED.end_time, updated_at = now()
+       RETURNING id, to_char(work_date, 'YYYY-MM-DD') AS work_date, kind::text AS kind,
+                 to_char(start_time, 'HH24:MI') AS start_time,
+                 to_char(end_time, 'HH24:MI') AS end_time`,
+      [staffId, date, kind, jikan ? startTime : null, jikan ? endTime : null]
+    );
+    return { ok: true, shift: rows[0] };
+  }
+
+  /**
+   * 期間内のシフトを、スタッフ一覧とあわせて返す。
+   * スタッフを追加すれば、その人の行が自動で増える（シフトが未入力でも一覧には出す）。
+   */
+  async function listShifts({ from, to }) {
+    const { rows: staff } = await pool.query(
+      `SELECT id, name FROM staff WHERE active = true ORDER BY id`
+    );
+    const { rows: shifts } = await pool.query(
+      `SELECT staff_id, to_char(work_date, 'YYYY-MM-DD') AS work_date, kind::text AS kind,
+              to_char(start_time, 'HH24:MI') AS start_time, to_char(end_time, 'HH24:MI') AS end_time
+       FROM shifts
+       WHERE work_date BETWEEN $1::date AND $2::date`,
+      [from, to]
+    );
+    return { staff, shifts };
+  }
+
   /**
    * 承認・却下。結果は必ず申請したスタッフへ LINE で伝える。
    * 通知に失敗しても判断自体は確定させ、Slack でスタッフに知らせる
@@ -193,10 +238,22 @@ export function createShiftService({ pool, lineClient, slack, settings = null, c
       [id]
     );
     const request = full[0];
+
+    // 承認したら週次シフトへ反映する。ここを飛ばすと「承認したのに表が変わらない」ことになる
+    if (status === 'approved') {
+      await upsertShift({
+        staffId: request.staff_id,
+        date: request.target_date,
+        kind: request.kind,
+        startTime: request.start_time,
+        endTime: request.end_time,
+      });
+    }
+
     const label = formatShift(request);
     const text =
       status === 'approved'
-        ? `シフト変更が承認されました。\n${label}\nよろしくお願いします。`
+        ? `シフト変更が承認されました。\n${label}\nシフト表に反映しました。`
         : `シフト変更は見送りとなりました。\n${label}\nお手数ですが、店長へご相談ください。`;
 
     // 送れなかった理由（未連携／dry_run／失敗）を画面で区別できるようにする
@@ -218,6 +275,8 @@ export function createShiftService({ pool, lineClient, slack, settings = null, c
     linkStaffByCode,
     linkStaffByName,
     listStaffLineStatus,
+    upsertShift,
+    listShifts,
     findStaffByLineUserId,
     createRequests,
     listRequests,

@@ -1794,10 +1794,11 @@ function staffRow(s, { live }){
     if (!live) { showToast('モックのため連携コードは発行されません'); return; }
     try {
       const { code: issued, expiresInHours } = await adminApi('/staff/' + s.id + '/link-code', { method: 'POST' });
-      // トーストは消えてしまうため、コードは画面に残す
-      code.outerHTML = '<b class="num" style="font-size:15px;letter-spacing:.08em">' + issued + '</b>'
+      // トーストは消えるため画面に残す。数字だけだと本人が数字だけ送ってしまうので、
+      // 送ってもらう文面をそのまま出す
+      code.outerHTML = '<b class="num" style="font-size:14px">スタッフ登録 ' + issued + '</b>'
         + '<span class="pill mut">' + expiresInHours + '時間有効</span>';
-      showToast(s.name + 'さんに「スタッフ登録 ' + issued + '」と公式LINEへ送ってもらってください');
+      showToast(s.name + 'さんに「スタッフ登録 ' + issued + '」をそのまま公式LINEへ送ってもらってください');
     } catch (err) { showToast('エラー: ' + err.message); }
   });
   acts.append(edit, code);
@@ -2706,8 +2707,10 @@ function openEditModal(title, rows, { onSave, onDelete, after }){
     del.addEventListener('click', async () => {
       del.disabled = true;
       try {
-        if (await onDelete() === false) { del.disabled = false; return; }   // confirm でキャンセル
-        closeEdit(); showToast('削除しました');
+        // false ならキャンセル。文字列を返した場合はそれをそのまま知らせる
+        const outcome = await onDelete();
+        if (outcome === false) { del.disabled = false; return; }
+        closeEdit(); showToast(typeof outcome === 'string' ? outcome : '削除しました');
         if (after) await after();
       } catch (err) { showToast(ERRORS[err.message] || 'エラー: ' + err.message); del.disabled = false; }
     });
@@ -2755,6 +2758,23 @@ function editOwner(o){
       method: 'PATCH',
       body: JSON.stringify({ name: v.name, phone: v.phone || null, birthday: v.birthday || null, optOut: v.optOut }),
     }),
+    onDelete: async () => {
+      // 取り消せない操作なので、何が一緒に消えるかを数で示してから確認する
+      const dogs = o.members.length;
+      const visits = o.members[0] ? o.members[0].visits.length : 0;
+      if (!confirm(
+        o.name + ' 様を削除します。元に戻せません。\n\n'
+        + '一緒に削除されるもの:\n'
+        + '・わんちゃん ' + dogs + '頭の情報\n'
+        + '・来店・予約の履歴 ' + visits + '件\n'
+        + '・配信の履歴\n\n'
+        + (o.line ? 'この方は LINE 連携済みです。友だちのままメッセージを送ると、'
+          + '新しいお客様として登録され直します。配信を止めたいだけなら、削除せず「配信停止」を使ってください。\n\n' : '')
+        + '削除してよろしいですか？'
+      )) return false;
+      const { deleted } = await adminApi('/customers/' + o.id, { method: 'DELETE' });
+      return o.name + ' 様を削除しました（わんちゃん' + deleted.pets + '頭・予約' + deleted.reservations + '件）';
+    },
     after: () => refreshAfterEdit(o.id),
   });
 }

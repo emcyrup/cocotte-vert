@@ -225,6 +225,31 @@ export function createAdminRouter({ pool, reservationService, lineClient, config
     }
   });
 
+  // 顧客の削除。ペット・予約・配信ログも外部キーの CASCADE で一緒に消える。
+  // 取り消せないため、何を巻き込んだかを呼び出し元へ返して画面で伝えられるようにする
+  router.delete('/customers/:id', async (req, res, next) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'invalid_id' });
+      const { rows: counts } = await pool.query(
+        `SELECT (SELECT count(*) FROM pets WHERE customer_id = $1) AS pets,
+                (SELECT count(*) FROM reservations WHERE customer_id = $1) AS reservations`,
+        [id]
+      );
+      const { rowCount } = await pool.query(`DELETE FROM customers WHERE id = $1`, [id]);
+      if (rowCount === 0) return res.status(404).json({ error: 'not_found' });
+      res.json({
+        ok: true,
+        deleted: {
+          pets: Number(counts[0].pets),
+          reservations: Number(counts[0].reservations),
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   // ---- ペット ----
   const validatePet = (body) => {
     const { name, breed, birthday, notes } = body ?? {};

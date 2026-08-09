@@ -4,9 +4,10 @@ import { createStaffCommandHandler } from '../src/webhook/events/staffCommand.js
 
 const STAFF_GROUP = 'Cstaff-group';
 
-function makeDeps({ stored = {}, staffLineGroupId = null, linkResult = null } = {}) {
+function makeDeps({ stored = {}, staffLineGroupId = null, linkResult = null, codeResult = null } = {}) {
   const replies = [];
   const linkCalls = [];
+  const codeCalls = [];
   const settings = {
     get: async (key) => stored[key] ?? null,
     set: async () => {},
@@ -14,17 +15,22 @@ function makeDeps({ stored = {}, staffLineGroupId = null, linkResult = null } = 
   const lineClient = {
     reply: async (_token, messages) => replies.push(messages[0].text),
   };
-  const shiftService = linkResult
+  const shiftService = linkResult || codeResult
     ? {
         linkStaffByName: async (args) => {
           linkCalls.push(args);
           return linkResult;
+        },
+        linkStaffByCode: async (args) => {
+          codeCalls.push(args);
+          return codeResult;
         },
       }
     : null;
   return {
     replies,
     linkCalls,
+    codeCalls,
     handler: createStaffCommandHandler({
       settings,
       lineClient,
@@ -178,4 +184,29 @@ test('名前の無い連携コマンドはコマンドとして扱わない', as
 
   assert.equal(await handler(groupEvent('スタッフ登録'), 'スタッフ登録'), false);
   assert.equal(linkCalls.length, 0);
+});
+
+test('スタッフグループで6桁の連携コードを送ると、名前ではなくコードとして扱う', async () => {
+  const { handler, replies, codeCalls, linkCalls } = makeDeps({
+    stored: { staff_line_group_id: STAFF_GROUP },
+    codeResult: { ok: true, staff: { id: 3, name: '高橋' } },
+  });
+
+  const handled = await handler(groupEvent('スタッフ登録 123456'), 'スタッフ登録 123456');
+
+  assert.equal(handled, true);
+  assert.deepEqual(codeCalls[0], { lineUserId: 'U-staff', code: '123456' });
+  assert.equal(linkCalls.length, 0, '数字を名前として探しにいかない');
+  assert.match(replies[0], /高橋さんのLINEアカウントを連携しました/);
+});
+
+test('期限切れの連携コードはコードとして案内する（名前が見つからない扱いにしない）', async () => {
+  const { handler, replies } = makeDeps({
+    stored: { staff_line_group_id: STAFF_GROUP },
+    codeResult: { ok: false, error: 'invalid_code' },
+  });
+
+  await handler(groupEvent('スタッフ登録 123456'), 'スタッフ登録 123456');
+
+  assert.match(replies[0], /連携コードを確認できませんでした/);
 });

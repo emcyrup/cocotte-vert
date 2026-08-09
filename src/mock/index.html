@@ -892,9 +892,16 @@ tr.await td{background:var(--warn-soft)}
   <h2 style="font-size:15px;margin:22px 0 6px">シフト入力</h2>
   <p class="shift-note">マスをクリックするだけで「出勤 → AM半休 → PM半休 → 公休 → 有休 → 時間休」の順に切り替わります（実際に触ってみてください）。入力したシフトはそのまま予約カレンダーに反映されます。名前の横の☆をタップすると<b>新人マーク&#11088;</b>を付与でき、カレンダーにも反映されます。</p>
 
+  <div class="frow" id="shweek" style="margin-bottom:10px; display:none">
+    <button class="btn sub" id="sh-prev" type="button">← 前の週</button>
+    <button class="btn sub" id="sh-today" type="button">今週</button>
+    <button class="btn sub" id="sh-next" type="button">次の週 →</button>
+    <span style="font-size:13px;color:var(--muted)" id="sh-range"></span>
+  </div>
+
   <div class="card">
     <div class="bd" style="overflow-x:auto">
-      <table class="sh" style="min-width:640px">
+      <table class="sh" style="min-width:640px" id="shtable">
         <tr><th style="width:90px">7/27週</th><th>月 27</th><th>火 28</th><th>水 29</th><th>木 30<br><span style="font-weight:600">定休</span></th><th>金 31</th><th>土 1</th><th>日 2</th></tr>
         <tr><td style="white-space:nowrap">佐藤<button class="star" data-star="佐藤" aria-label="佐藤の新人マーク">&#9734;</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell koukyu">公休</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell am">AM半休</button></td></tr>
         <tr><td style="white-space:nowrap">高橋<button class="star" data-star="高橋" aria-label="高橋の新人マーク">&#9734;</button></td><td><button class="shcell am">AM半休</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell yukyu">有休</button></td><td><button class="shcell koukyu">公休</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell work">出勤</button></td><td><button class="shcell koukyu">公休</button></td></tr>
@@ -1727,7 +1734,7 @@ function renderShiftReqs(){
             failed: '（LINE通知に失敗しました。店長へ直接お伝えください）',
           };
           showToast((status === 'approved' ? '承認しました' : '却下しました') + (notes[delivery] || ''));
-          await loadShiftReqs();
+          await Promise.all([loadShiftReqs(), renderShiftTable()]);
         } catch (err) { showToast('エラー: ' + err.message); }
       };
       const ok = document.createElement('button'); ok.className = 'abtn'; ok.textContent = '承認';
@@ -1846,6 +1853,128 @@ async function renderStaffInfo(){
   }
 }
 
+// ---- 週次シフト表（実運用モードのみ実データ）----
+// スタッフを追加すると、その人の行が次の描画から自動で増える。
+// マスをクリックすると区分が巡回し、その都度サーバへ保存する。
+const SHIFT_CYCLE = ['work', 'am', 'pm', 'koukyu', 'yukyu', 'jikan', null];  // null は未入力
+const SHIFT_CELL_LABELS = {
+  work: '出勤', am: 'AM半休', pm: 'PM半休', koukyu: '公休', yukyu: '有休', jikan: '時間休',
+};
+const WD = ['日', '月', '火', '水', '木', '金', '土'];
+let shWeekStart = null;   // 表示中の週の月曜（YYYY-MM-DD）
+
+// 「今日」は JST の暦日として取り出す
+const isoDate = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tokyo',
+  year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+// 以降の日付計算は暦日そのものを扱う。UTC 0時として解釈すれば、
+// ブラウザのタイムゾーンに関係なく曜日と加減算が一致する
+const asDate = (iso) => new Date(iso + 'T00:00:00Z');
+const toIso = (d) => d.toISOString().slice(0, 10);
+const dowOf = (iso) => asDate(iso).getUTCDay();
+function mondayOf(dateOrIso){
+  const d = asDate(typeof dateOrIso === 'string' ? dateOrIso : isoDate(dateOrIso));
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+  return toIso(d);
+}
+function addDays(iso, n){
+  const d = asDate(iso);
+  d.setUTCDate(d.getUTCDate() + n);
+  return toIso(d);
+}
+const dayLabel = (iso) => WD[dowOf(iso)] + ' ' + Number(iso.split('-')[2]);
+
+function shiftCellText(s){
+  if (!s) return '—';
+  return s.kind === 'jikan' && s.start_time
+    ? '時間休<br>' + s.start_time.slice(0, 2) + '-' + s.end_time.slice(0, 2)
+    : SHIFT_CELL_LABELS[s.kind] || s.kind;
+}
+
+async function renderShiftTable(){
+  if (!adminLive) return;
+  if (!shWeekStart) shWeekStart = mondayOf(new Date());
+  const days = Array.from({ length: 7 }, (_, i) => addDays(shWeekStart, i));
+  const { staff, shifts } = await adminApi('/shifts?from=' + days[0] + '&to=' + days[6]);
+  const byKey = {};
+  shifts.forEach(s => { byKey[s.staff_id + '|' + s.work_date] = s; });
+
+  const table = document.getElementById('shtable');
+  table.innerHTML = '';
+  const head = document.createElement('tr');
+  head.innerHTML = '<th style="width:90px">' + days[0].slice(5).replace('-', '/') + 'の週</th>'
+    + days.map(d => '<th>' + dayLabel(d)
+        // 木曜定休。表の上でも休みの日が分かるようにする
+        + (dowOf(d) === 4 ? '<br><span style="font-weight:600">定休</span>' : '')
+        + '</th>').join('');
+  table.appendChild(head);
+
+  if (!staff.length) {
+    table.insertAdjacentHTML('beforeend',
+      '<tr><td colspan="8" style="font-size:12.5px;color:var(--muted)">スタッフが未登録です。上の「スタッフ情報」から追加してください。</td></tr>');
+  }
+  staff.forEach(st => {
+    const tr = document.createElement('tr');
+    const name = document.createElement('td');
+    name.style.whiteSpace = 'nowrap';
+    name.textContent = st.name;
+    tr.appendChild(name);
+    days.forEach(date => {
+      const td = document.createElement('td');
+      const cur = byKey[st.id + '|' + date] || null;
+      const btn = document.createElement('button');
+      btn.className = 'shcell' + (cur ? ' ' + cur.kind : '');
+      btn.innerHTML = shiftCellText(cur);
+      btn.title = st.name + ' ' + date;
+      btn.addEventListener('click', () => cycleShift(st, date, cur));
+      td.appendChild(btn);
+      tr.appendChild(td);
+    });
+    table.appendChild(tr);
+  });
+  document.getElementById('sh-range').textContent = days[0] + ' 〜 ' + days[6];
+}
+
+async function saveShift(staffId, date, kind, startTime, endTime){
+  await adminApi('/shifts', {
+    method: 'PUT',
+    body: JSON.stringify({ staffId, date, kind, startTime, endTime }),
+  });
+  await renderShiftTable();
+}
+
+function cycleShift(st, date, cur){
+  const next = SHIFT_CYCLE[(SHIFT_CYCLE.indexOf(cur ? cur.kind : null) + 1) % SHIFT_CYCLE.length];
+  // 時間休は時刻が無いと勤怠にならないため、その場で聞く
+  if (next === 'jikan') {
+    openEditModal(st.name + ' ' + date + ' の時間休', [
+      { key: 'startTime', label: '開始', type: 'time', value: (cur && cur.start_time) || '10:00' },
+      { key: 'endTime', label: '終了', type: 'time', value: (cur && cur.end_time) || '12:00' },
+    ], {
+      onSave: async (v) => {
+        if (!v.startTime || !v.endTime || v.startTime >= v.endTime) throw new Error('invalid_time_order');
+        await saveShift(st.id, date, 'jikan', v.startTime, v.endTime);
+      },
+    });
+    return;
+  }
+  saveShift(st.id, date, next, null, null)
+    .then(() => showToast(st.name + ' ' + date + ' を' + (next ? SHIFT_CELL_LABELS[next] : '未入力') + 'にしました'))
+    .catch(err => showToast('エラー: ' + err.message));
+}
+
+document.getElementById('sh-prev').addEventListener('click', () => {
+  shWeekStart = addDays(shWeekStart, -7);
+  renderShiftTable().catch(err => showToast('エラー: ' + err.message));
+});
+document.getElementById('sh-next').addEventListener('click', () => {
+  shWeekStart = addDays(shWeekStart, 7);
+  renderShiftTable().catch(err => showToast('エラー: ' + err.message));
+});
+document.getElementById('sh-today').addEventListener('click', () => {
+  shWeekStart = mondayOf(new Date());
+  renderShiftTable().catch(err => showToast('エラー: ' + err.message));
+});
+
 function editStaff(s){
   openEditModal(s.name + ' さんの情報を編集', [
     { key: 'name', label: 'スタッフ名', value: s.name },
@@ -1858,7 +1987,8 @@ function editStaff(s){
     }),
     after: async () => {
       await renderStaffInfo();
-      await loadStaffLive();   // 予約管理の担当プルダウンにも反映する
+      await loadStaffLive();      // 予約管理の担当プルダウンにも反映する
+      await renderShiftTable();   // 退職・改名をシフト表にも反映する
     },
   });
 }
@@ -2654,7 +2784,7 @@ document.getElementById('ns-add').addEventListener('click', async () => {
   if (adminLive) {
     try {
       await adminApi('/staff', { method: 'POST', body: JSON.stringify({ name }) });
-      await Promise.all([loadStaffLive(), renderStaffInfo()]);
+      await Promise.all([loadStaffLive(), renderStaffInfo(), renderShiftTable()]);
     } catch (err) { showToast('エラー: ' + err.message); return; }
   }
   document.getElementById('ns-name').value = '';
@@ -2708,6 +2838,8 @@ function openEditModal(title, rows, { onSave, onDelete, after }){
     invalid_birthday: '誕生日の形式が不正です',
     invalid_line_user_id: 'LINE ID の形式が違います（U から始まる33文字）',
     line_user_id_exists: 'この LINE ID は別のスタッフに設定済みです',
+    invalid_time: '時刻の形式が不正です',
+    invalid_time_order: '終了は開始より後の時刻にしてください',
   };
   if (onDelete) {
     const del = document.createElement('button');
@@ -2886,7 +3018,7 @@ async function loadFamiliesLive(){
   try {
     await Promise.all([
       loadStaffLive(), loadMenusLive(), rvReload(), loadFamiliesLive(),
-      loadShiftReqs(), renderStaffInfo(),
+      loadShiftReqs(), renderStaffInfo(), renderShiftTable(),
     ]);
   } catch (err) {
     showToast('データの読み込みに失敗しました: ' + err.message);
@@ -2901,9 +3033,12 @@ async function loadFamiliesLive(){
     + 'AI の読み違いがないか、各行の「原文」を確かめてから承認してください。';
   document.querySelector('.foot').innerHTML =
     'ここっとベール 管理システム<br><b>実運用モード</b><br>実データに接続しています';
+  document.getElementById('shweek').style.display = '';
   document.querySelector('#s-shift .shift-note').innerHTML =
-    '<span class="pill mut">構想</span> 上のシフト表はサンプルです（マスの操作は保存されません）。'
-    + '<b>公式LINE からの申請と承認は実際に動きます</b>— 承認すると申請したスタッフへ LINE で通知が届きます。';
+    'マスをクリックすると「出勤 → AM半休 → PM半休 → 公休 → 有休 → 時間休 → 未入力」の順に切り替わり、'
+    + '<b>その都度保存されます</b>。スタッフを追加すると、この表に行が自動で増えます。'
+    + '公式LINE からの申請を承認すると、該当のマスにも反映されます。'
+    + '<span class="pill mut">構想</span> 予約カレンダーへの反映はまだです。';
 
   // 実運用モードであることを画面上でも分かるようにする
   document.title = 'ここっとベール 店舗管理';

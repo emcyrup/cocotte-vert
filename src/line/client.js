@@ -87,6 +87,23 @@ export function createLineClient({ config, pool, api }) {
   }
 
   /**
+   * スタッフがグループに参加しているかの確認（読み取りのみ）。
+   * 未参加なら LINE 側が 404 を返すため、それを 'left' として扱う。
+   * 判定できないとき（権限・通信エラー）は 'unknown' にし、未参加と言い切らない。
+   * @returns {Promise<'joined'|'left'|'unknown'>}
+   */
+  async function getGroupMembership(groupId, lineUserId) {
+    try {
+      await client.getGroupMemberProfile(groupId, lineUserId);
+      return 'joined';
+    } catch (err) {
+      if (err?.status === 404) return 'left';
+      console.error(`[group-membership] 判定できません: ${err.message}`);
+      return 'unknown';
+    }
+  }
+
+  /**
    * スタッフ向け通知の Push（宛先はスタッフ用グループ等。通数を消費する）。
    * 顧客配信ではないため message_logs には記録しないが、SEND_MODE のガードは同様に効かせる。
    */
@@ -132,5 +149,5 @@ export function createLineClient({ config, pool, api }) {
     return { limited: true, limit: quota.value, used, remaining: quota.value - used };
   }
 
-  return { deliver, reply, getProfile, getQuota, pushStaff, pushTest };
+  return { deliver, reply, getProfile, getGroupMembership, getQuota, pushStaff, pushTest };
 }

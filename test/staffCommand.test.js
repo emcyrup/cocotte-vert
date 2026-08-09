@@ -4,8 +4,9 @@ import { createStaffCommandHandler } from '../src/webhook/events/staffCommand.js
 
 const STAFF_GROUP = 'Cstaff-group';
 
-function makeDeps({ stored = {}, staffLineGroupId = null } = {}) {
+function makeDeps({ stored = {}, staffLineGroupId = null, linkResult = null } = {}) {
   const replies = [];
+  const linkCalls = [];
   const settings = {
     get: async (key) => stored[key] ?? null,
     set: async () => {},
@@ -13,12 +14,22 @@ function makeDeps({ stored = {}, staffLineGroupId = null } = {}) {
   const lineClient = {
     reply: async (_token, messages) => replies.push(messages[0].text),
   };
+  const shiftService = linkResult
+    ? {
+        linkStaffByName: async (args) => {
+          linkCalls.push(args);
+          return linkResult;
+        },
+      }
+    : null;
   return {
     replies,
+    linkCalls,
     handler: createStaffCommandHandler({
       settings,
       lineClient,
       config: { staffLineGroupId },
+      shiftService,
     }),
   };
 }
@@ -107,4 +118,64 @@ test('DB 未設定でも環境変数のグループIDで判定できる', async 
 
   assert.equal(await handler(groupEvent('配信結果'), '配信結果'), true);
   assert.equal(replies.length, 1);
+});
+
+// ---- グループでのスタッフ LINE 連携 ----
+
+test('スタッフグループで名前を送ると LINE アカウントを連携する', async () => {
+  const { handler, replies, linkCalls } = makeDeps({
+    stored: { staff_line_group_id: STAFF_GROUP },
+    linkResult: { ok: true, staff: { id: 3, name: '高橋' } },
+  });
+
+  const handled = await handler(groupEvent('スタッフ登録 高橋'), 'スタッフ登録 高橋');
+
+  assert.equal(handled, true);
+  assert.deepEqual(linkCalls[0], { lineUserId: 'U-staff', name: '高橋' });
+  assert.match(replies[0], /高橋さんのLINEアカウントを連携しました/);
+});
+
+test('同名のスタッフが複数いるときは連携せず、画面での設定を促す', async () => {
+  const { handler, replies } = makeDeps({
+    stored: { staff_line_group_id: STAFF_GROUP },
+    linkResult: { ok: false, error: 'ambiguous' },
+  });
+
+  await handler(groupEvent('スタッフ登録 佐藤'), 'スタッフ登録 佐藤');
+
+  assert.match(replies[0], /複数います/);
+});
+
+test('登録の無い名前は連携しない', async () => {
+  const { handler, replies } = makeDeps({
+    stored: { staff_line_group_id: STAFF_GROUP },
+    linkResult: { ok: false, error: 'not_found' },
+  });
+
+  await handler(groupEvent('スタッフ登録 存在しない人'), 'スタッフ登録 存在しない人');
+
+  assert.match(replies[0], /見つかりません/);
+});
+
+test('スタッフ通知先ではないグループでは連携コマンドに反応しない', async () => {
+  const { handler, replies, linkCalls } = makeDeps({
+    stored: { staff_line_group_id: STAFF_GROUP },
+    linkResult: { ok: true, staff: { id: 3, name: '高橋' } },
+  });
+
+  const handled = await handler(groupEvent('スタッフ登録 高橋', 'C-other'), 'スタッフ登録 高橋');
+
+  assert.equal(handled, false, '通常の処理へ委ねる');
+  assert.equal(linkCalls.length, 0);
+  assert.equal(replies.length, 0);
+});
+
+test('名前の無い連携コマンドはコマンドとして扱わない', async () => {
+  const { handler, linkCalls } = makeDeps({
+    stored: { staff_line_group_id: STAFF_GROUP },
+    linkResult: { ok: true, staff: { id: 3, name: '高橋' } },
+  });
+
+  assert.equal(await handler(groupEvent('スタッフ登録'), 'スタッフ登録'), false);
+  assert.equal(linkCalls.length, 0);
 });

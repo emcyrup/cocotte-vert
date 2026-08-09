@@ -5,6 +5,7 @@
 // JST の日付が1日ずれるため。
 
 import { randomInt } from 'node:crypto';
+import { SETTING_KEYS } from '../settings.js';
 
 const KIND_LABELS = {
   work: '出勤',
@@ -37,7 +38,7 @@ const REQUEST_COLUMNS = `
   to_char(r.end_time, 'HH24:MI') AS end_time,
   r.reason, r.raw_text, r.status::text AS status, r.decided_at, r.created_at`;
 
-export function createShiftService({ pool, lineClient, slack }) {
+export function createShiftService({ pool, lineClient, slack, settings = null, config = null }) {
   // ---- スタッフの LINE 連携 ----
 
   /** 管理画面から連携コードを発行する。既存のコードは上書きして使い捨てにする */
@@ -66,6 +67,54 @@ export function createShiftService({ pool, lineClient, slack }) {
     );
     if (rows.length === 0) return { ok: false, error: 'invalid_code' };
     return { ok: true, staff: rows[0] };
+  }
+
+  /**
+   * スタッフグループでの「スタッフ登録 高橋」による紐付け。
+   * 同姓のスタッフがいると誤って別人に紐づくため、1人に絞れないときは紐付けない。
+   */
+  async function linkStaffByName({ lineUserId, name }) {
+    // 姓名の間の空白は入れ方が揺れるため、両側から除いて比較する
+    const { rows: matches } = await pool.query(
+      `SELECT id, name FROM staff
+       WHERE active = true
+         AND replace(replace(name, ' ', ''), '　', '') = replace(replace($1, ' ', ''), '　', '')`,
+      [name]
+    );
+    if (matches.length === 0) return { ok: false, error: 'not_found' };
+    if (matches.length > 1) return { ok: false, error: 'ambiguous' };
+
+    const { rows } = await pool.query(
+      `UPDATE staff SET line_user_id = $1, link_code = NULL, link_code_expires_at = NULL
+       WHERE id = $2
+         AND NOT EXISTS (SELECT 1 FROM staff o WHERE o.line_user_id = $1 AND o.id <> $2)
+       RETURNING id, name`,
+      [lineUserId, matches[0].id]
+    );
+    if (rows.length === 0) return { ok: false, error: 'already_linked_to_other' };
+    return { ok: true, staff: rows[0] };
+  }
+
+  /**
+   * 連携済みスタッフがスタッフグループに参加しているかを一覧で返す。
+   * グループ未設定のときは判定そのものができないため、その旨だけを返す。
+   */
+  async function listStaffLineStatus() {
+    const groupId =
+      (settings ? await settings.get(SETTING_KEYS.staffLineGroupId).catch(() => null) : null) ??
+      config?.staffLineGroupId ??
+      null;
+    if (!groupId) return { groupConfigured: false, membership: {} };
+
+    const { rows } = await pool.query(
+      `SELECT id, line_user_id FROM staff WHERE active = true AND line_user_id IS NOT NULL ORDER BY id`
+    );
+    const membership = {};
+    // LINE のレート制限に配慮し、少人数前提で直列に確認する
+    for (const s of rows) {
+      membership[s.id] = await lineClient.getGroupMembership(groupId, s.line_user_id);
+    }
+    return { groupConfigured: true, membership };
   }
 
   async function findStaffByLineUserId(lineUserId) {
@@ -167,6 +216,8 @@ export function createShiftService({ pool, lineClient, slack }) {
   return {
     issueLinkCode,
     linkStaffByCode,
+    linkStaffByName,
+    listStaffLineStatus,
     findStaffByLineUserId,
     createRequests,
     listRequests,

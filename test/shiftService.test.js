@@ -158,3 +158,68 @@ test('連携済みの LINE アカウントを別スタッフに付け替えな�
   await service.linkStaffByCode({ lineUserId: 'U1', code: '123456' });
   assert.match(f.pool.queries[0].sql, /NOT EXISTS \(SELECT 1 FROM staff o WHERE o\.line_user_id/);
 });
+
+// ---- グループでの名前による連携 / グループ参加の確認 ----
+
+test('名前でスタッフを特定して連携する', async () => {
+  const f = makeFakes([
+    [/SELECT id, name FROM staff/, { rows: [{ id: 3, name: '高橋' }] }],
+    [/UPDATE staff SET line_user_id/, { rows: [{ id: 3, name: '高橋' }] }],
+  ]);
+  const service = createShiftService(f);
+
+  const result = await service.linkStaffByName({ lineUserId: 'U1', name: '高橋' });
+
+  assert.deepEqual(result, { ok: true, staff: { id: 3, name: '高橋' } });
+  // 姓名の間の空白の入れ方が揺れても一致させる
+  assert.match(f.pool.queries[0].sql, /replace\(replace\(name, ' ', ''\), '　', ''\)/);
+});
+
+test('同名のスタッフが複数いるときは誤爆を避けて連携しない', async () => {
+  const f = makeFakes([
+    [/SELECT id, name FROM staff/, { rows: [{ id: 3, name: '佐藤' }, { id: 9, name: '佐藤' }] }],
+  ]);
+  const service = createShiftService(f);
+  assert.deepEqual(await service.linkStaffByName({ lineUserId: 'U1', name: '佐藤' }), {
+    ok: false, error: 'ambiguous',
+  });
+  assert.equal(f.pool.queries.length, 1, '更新まで進まない');
+});
+
+test('該当者がいなければ連携しない', async () => {
+  const f = makeFakes([[/SELECT id, name FROM staff/, { rows: [] }]]);
+  const service = createShiftService(f);
+  assert.deepEqual(await service.linkStaffByName({ lineUserId: 'U1', name: '誰か' }), {
+    ok: false, error: 'not_found',
+  });
+});
+
+test('他のスタッフに紐付いた LINE アカウントは奪わない', async () => {
+  const f = makeFakes([
+    [/SELECT id, name FROM staff/, { rows: [{ id: 3, name: '高橋' }] }],
+    [/UPDATE staff SET line_user_id/, { rows: [] }],
+  ]);
+  const service = createShiftService(f);
+  assert.deepEqual(await service.linkStaffByName({ lineUserId: 'U1', name: '高橋' }), {
+    ok: false, error: 'already_linked_to_other',
+  });
+});
+
+test('グループ未設定なら参加状況は判定しない', async () => {
+  const f = makeFakes();
+  const service = createShiftService({ ...f, settings: { get: async () => null }, config: {} });
+  assert.deepEqual(await service.listStaffLineStatus(), { groupConfigured: false, membership: {} });
+});
+
+test('連携済みスタッフのグループ参加状況を返す', async () => {
+  const f = makeFakes([
+    [/SELECT id, line_user_id FROM staff/, { rows: [{ id: 3, line_user_id: 'U3' }, { id: 4, line_user_id: 'U4' }] }],
+  ]);
+  f.lineClient.getGroupMembership = async (_g, u) => (u === 'U3' ? 'joined' : 'left');
+  const service = createShiftService({ ...f, settings: { get: async () => 'Cgroup' } });
+
+  const result = await service.listStaffLineStatus();
+
+  assert.equal(result.groupConfigured, true);
+  assert.deepEqual(result.membership, { 3: 'joined', 4: 'left' });
+});

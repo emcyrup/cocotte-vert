@@ -1,0 +1,160 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { createShiftService, formatShift } from '../src/shifts/service.js';
+
+function makePool(handlers = []) {
+  const queries = [];
+  return {
+    queries,
+    query: async (sql, params) => {
+      queries.push({ sql, params });
+      for (const [re, result] of handlers) {
+        if (re.test(sql)) return typeof result === 'function' ? result(params) : result;
+      }
+      return { rows: [], rowCount: 0 };
+    },
+  };
+}
+
+function makeFakes(handlers) {
+  const pushes = [];
+  const errors = [];
+  return {
+    pool: makePool(handlers),
+    pushes,
+    errors,
+    lineClient: {
+      pushStaff: async (to, text) => {
+        pushes.push({ to, text });
+        return { status: 'sent' };
+      },
+    },
+    slack: { notifyError: async (title, err) => errors.push({ title, message: err.message }) },
+  };
+}
+
+test('日付ラベルは JST の曜日で組み立てる', () => {
+  assert.equal(formatShift({ target_date: '2026-08-01', kind: 'yukyu' }), '8/1(土) 有休');
+  assert.equal(
+    formatShift({ target_date: '2026-07-31', kind: 'jikan', start_time: '10:00', end_time: '12:00' }),
+    '7/31(金) 時間休 10:00〜12:00'
+  );
+  assert.equal(formatShift({ target_date: '2026-12-25', kind: 'am' }), '12/25(金) AM半休');
+});
+
+test('申請を保存し、同じ日の承認待ちは置き換える', async () => {
+  const f = makeFakes([
+    [/DELETE FROM shift_requests/, { rows: [], rowCount: 1 }],
+    [/INSERT INTO shift_requests/, (p) => ({ rows: [{ id: 7, target_date: p[1], kind: p[2] }] })],
+  ]);
+  const service = createShiftService(f);
+
+  const result = await service.createRequests({
+    staffId: 3,
+    entries: [{ date: '2026-08-01', kind: 'yukyu', startTime: null, endTime: null, reason: '家庭の用事' }],
+    rawText: '8/1 有休お願いします',
+  });
+
+  assert.equal(result.created.length, 1);
+  assert.equal(result.replaced, 1, '同じ日の承認待ちを消してから入れる');
+  const del = f.pool.queries.find((q) => /DELETE FROM shift_requests/.test(q.sql));
+  assert.match(del.sql, /status = 'pending'/, '承認済みの履歴は消さない');
+  const insert = f.pool.queries.find((q) => /INSERT INTO shift_requests/.test(q.sql));
+  assert.equal(insert.params[6], '8/1 有休お願いします', '原文を必ず残す');
+});
+
+test('承認するとスタッフ本人へ LINE で通知する', async () => {
+  const f = makeFakes([
+    [/UPDATE shift_requests/, { rows: [{ id: 7 }] }],
+    [/SELECT[\s\S]*FROM shift_requests r JOIN staff/, {
+      rows: [{ id: 7, staff_id: 3, staff_name: '高橋', target_date: '2026-08-01', kind: 'yukyu',
+               start_time: null, end_time: null, status: 'approved', line_user_id: 'U-staff' }],
+    }],
+  ]);
+  const service = createShiftService(f);
+
+  const result = await service.decide({ id: 7, status: 'approved' });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.notified, true);
+  assert.equal(result.delivery, 'sent');
+  assert.equal(f.pushes[0].to, 'U-staff');
+  assert.match(f.pushes[0].text, /承認されました/);
+  assert.match(f.pushes[0].text, /8\/1\(土\) 有休/);
+  assert.equal(result.request.line_user_id, undefined, 'LINE userId は画面へ返さない');
+});
+
+test('却下でも本人へ理由が分かる形で通知する', async () => {
+  const f = makeFakes([
+    [/UPDATE shift_requests/, { rows: [{ id: 8 }] }],
+    [/SELECT[\s\S]*FROM shift_requests r JOIN staff/, {
+      rows: [{ id: 8, staff_id: 3, staff_name: '山本', target_date: '2026-07-31', kind: 'jikan',
+               start_time: '10:00', end_time: '12:00', status: 'rejected', line_user_id: 'U-staff' }],
+    }],
+  ]);
+  const service = createShiftService(f);
+  await service.decide({ id: 8, status: 'rejected' });
+
+  assert.match(f.pushes[0].text, /見送り/);
+  assert.match(f.pushes[0].text, /7\/31\(金\) 時間休 10:00〜12:00/);
+});
+
+test('通知に失敗しても承認は確定させ、Slack で知らせる', async () => {
+  const f = makeFakes([
+    [/UPDATE shift_requests/, { rows: [{ id: 7 }] }],
+    [/SELECT[\s\S]*FROM shift_requests r JOIN staff/, {
+      rows: [{ id: 7, staff_id: 3, staff_name: '高橋', target_date: '2026-08-01', kind: 'yukyu',
+               start_time: null, end_time: null, status: 'approved', line_user_id: 'U-staff' }],
+    }],
+  ]);
+  f.lineClient.pushStaff = async () => { throw new Error('LINE API down'); };
+  const service = createShiftService(f);
+
+  const result = await service.decide({ id: 7, status: 'approved' });
+
+  assert.equal(result.ok, true, '通知失敗で承認まで巻き戻さない');
+  assert.equal(result.notified, false);
+  assert.equal(result.delivery, 'failed');
+  assert.equal(f.errors.length, 1);
+});
+
+test('承認待ち以外は二重に処理しない', async () => {
+  const f = makeFakes([[/UPDATE shift_requests/, { rows: [] }]]);
+  const service = createShiftService(f);
+  const result = await service.decide({ id: 7, status: 'approved' });
+  assert.deepEqual(result, { ok: false, error: 'not_found' });
+  assert.equal(f.pushes.length, 0);
+});
+
+test('不正な状態は受け付けない', async () => {
+  const service = createShiftService(makeFakes());
+  assert.deepEqual(await service.decide({ id: 1, status: 'pending' }), { ok: false, error: 'invalid_status' });
+});
+
+test('連携コードは期限切れ・使用済みだと弾かれる', async () => {
+  const f = makeFakes([[/UPDATE staff/, { rows: [] }]]);
+  const service = createShiftService(f);
+  const result = await service.linkStaffByCode({ lineUserId: 'U1', code: '123456' });
+  assert.deepEqual(result, { ok: false, error: 'invalid_code' });
+  const q = f.pool.queries[0];
+  assert.match(q.sql, /link_code_expires_at > now\(\)/, '期限を SQL 側で判定する');
+});
+
+test('連携コードは6桁で発行し、有効期限を持たせる', async () => {
+  const f = makeFakes([[/UPDATE staff/, { rows: [{ id: 3, name: '高橋' }] }]]);
+  const service = createShiftService(f);
+
+  const result = await service.issueLinkCode(3);
+
+  assert.equal(result.ok, true);
+  assert.match(result.code, /^\d{6}$/);
+  assert.equal(f.pool.queries[0].params[1], result.code);
+  assert.match(f.pool.queries[0].sql, /link_code_expires_at = now\(\) \+ make_interval/);
+});
+
+test('連携済みの LINE アカウントを別スタッフに付け替えない', async () => {
+  const f = makeFakes([[/UPDATE staff/, { rows: [{ id: 3, name: '高橋' }] }]]);
+  const service = createShiftService(f);
+  await service.linkStaffByCode({ lineUserId: 'U1', code: '123456' });
+  assert.match(f.pool.queries[0].sql, /NOT EXISTS \(SELECT 1 FROM staff o WHERE o\.line_user_id/);
+});

@@ -18,6 +18,8 @@ import { createAfterVisitJob } from './jobs/afterVisit.js';
 import { createDormantJob } from './jobs/dormant.js';
 import { createBirthdayJob } from './jobs/birthday.js';
 import { createFollowupClassifier } from './ai/classifyFollowup.js';
+import { createShiftRequestParser } from './ai/parseShiftRequest.js';
+import { createShiftService } from './shifts/service.js';
 import { createReservationService } from './reservations/service.js';
 import { basicAuth, bearerAuth } from './http/auth.js';
 import { createAdminRouter } from './http/adminRoutes.js';
@@ -38,6 +40,9 @@ const slackChannel = config.slackWebhookUrl
 const slack = createStaffNotifier({ config, slack: slackChannel, lineClient, settings });
 const linkService = createLinkService({ pool, slack });
 const classifier = createFollowupClassifier({ apiKey: config.anthropicApiKey });
+// シフト変更申請（スタッフが公式LINE へ自由記述で送る）
+const shiftParser = createShiftRequestParser({ apiKey: config.anthropicApiKey });
+const shiftService = createShiftService({ pool, lineClient, slack });
 
 const app = express();
 
@@ -59,6 +64,8 @@ app.post(
     linkService,
     classifier,
     settings,
+    shiftService,
+    shiftParser,
     config,
     liffUrl: config.liffUrl,
   })
@@ -214,7 +221,7 @@ const adminGuard = basicAuth({ user: config.adminUser, password: config.adminPas
 // 旧管理画面（/admin/）はモック側の画面に統合した。ブックマーク・LINE内の旧リンク互換のためリダイレクトを残す
 app.get('/admin/customers.html', (_req, res) => res.redirect('/mock/#list'));
 app.get(['/admin', '/admin/index.html'], (_req, res) => res.redirect('/mock/#resv'));
-app.use('/api/admin', adminGuard, createAdminRouter({ pool, reservationService, lineClient, config }));
+app.use('/api/admin', adminGuard, createAdminRouter({ pool, reservationService, lineClient, config, shiftService }));
 
 // 店舗管理画面（モック統合版）。管理 API に疎通できる本番環境では実データで動き、
 // 単体で開いたときはサンプルデータのデモとして動く。

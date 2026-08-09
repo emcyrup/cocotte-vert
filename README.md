@@ -66,17 +66,24 @@ npm test
 取り込み API とスタッフ向け店舗管理画面（`/mock/`。メニュー登録・予約の承認・来店登録）の使い方は
 [docs/import-api.md](docs/import-api.md) を参照。
 
+## スタッフ勤怠（シフト変更申請）
+
+スタッフが公式LINE へ自由な文章でシフトの希望を送ると、申請として店長に届き、
+店舗管理画面で承認・却下すると本人へ LINE で自動通知される。申請文の解釈は Claude Haiku。
+連携の手順と書き方の例は [docs/shift-requests.md](docs/shift-requests.md) を参照。
+
 ## Instagram 投稿
 
 管理画面から店舗の Instagram へ写真を投稿できる（複数枚のカルーセル・11枚以上の自動2分割・
 予約投稿）。`IG_POST_MODE=dry_run` が既定で、`live` にするまで実投稿されない。
 Meta 側のセットアップは [docs/instagram.md](docs/instagram.md) を参照。
 
-## 画面モック
+## 店舗管理画面
 
-提案・要件確認用の画面モック（予約カレンダー・顧客カルテ・シフト・SNS投稿）を
-`/mock/` に置いている（管理画面と同じ Basic 認証の内側）。**サンプルデータのみで実データには
-つながらない。** 何が実装済みで何が構想かは [src/mock/README.md](src/mock/README.md) を参照。
+`/mock/` がスタッフ向けの店舗管理画面（Basic 認証の内側）。管理 API に届く本番環境では
+**実データで動き**、単体で開いたときは提案・要件確認用のデモとして動く。
+予約管理・顧客カルテ・シフト申請・SNS投稿は実装済みで、予約カレンダーと週次シフト表は構想。
+切り分けの詳細は [src/mock/README.md](src/mock/README.md) を参照。
 
 ## 運用中の公式アカウントへの接続
 

@@ -163,7 +163,7 @@ test('登録の無い名前は連携しない', async () => {
   assert.match(replies[0], /見つかりません/);
 });
 
-test('スタッフ通知先ではないグループでは連携コマンドに反応しない', async () => {
+test('対象外のグループでは連携せず、送り方を案内する（無言で終わらせない）', async () => {
   const { handler, replies, linkCalls } = makeDeps({
     stored: { staff_line_group_id: STAFF_GROUP },
     linkResult: { ok: true, staff: { id: 3, name: '高橋' } },
@@ -171,8 +171,66 @@ test('スタッフ通知先ではないグループでは連携コマンドに�
 
   const handled = await handler(groupEvent('スタッフ登録 高橋', 'C-other'), 'スタッフ登録 高橋');
 
-  assert.equal(handled, false, '通常の処理へ委ねる');
+  assert.equal(handled, true);
+  assert.equal(linkCalls.length, 0, '対象外のグループでは連携しない');
+  assert.match(replies[0], /設定されていない/);
+});
+
+test('スタッフ通知先が未設定でも、送り方を案内して無言にしない', async () => {
+  const { handler, replies, linkCalls } = makeDeps({
+    linkResult: { ok: true, staff: { id: 3, name: '高橋' } },
+  });
+
+  const handled = await handler(groupEvent('スタッフ登録 高橋'), 'スタッフ登録 高橋');
+
+  assert.equal(handled, true);
   assert.equal(linkCalls.length, 0);
+  assert.match(replies[0], /まだ設定されていません/);
+  assert.match(replies[0], /1対1のトーク/, '代わりの手段を示す');
+});
+
+test('送信者を特定できないグループ発言は、1:1 での登録を案内する', async () => {
+  const { handler, replies, linkCalls } = makeDeps({
+    stored: { staff_line_group_id: STAFF_GROUP },
+    codeResult: { ok: true, staff: { id: 3, name: '高橋' } },
+  });
+  const event = { source: { type: 'group', groupId: STAFF_GROUP }, replyToken: 'rt', message: { text: 'スタッフ登録 123456' } };
+
+  const handled = await handler(event, 'スタッフ登録 123456');
+
+  assert.equal(handled, true);
+  assert.equal(linkCalls.length, 0);
+  assert.match(replies[0], /特定できませんでした/);
+});
+
+test('全角数字の連携コードでも受け付ける（スマホ入力で起きやすい）', async () => {
+  const { handler, codeCalls } = makeDeps({
+    stored: { staff_line_group_id: STAFF_GROUP },
+    codeResult: { ok: true, staff: { id: 3, name: '高橋' } },
+  });
+
+  await handler(groupEvent('スタッフ登録　１２３４５６'), 'スタッフ登録　１２３４５６');
+
+  assert.deepEqual(codeCalls[0], { lineUserId: 'U-staff', code: '123456' });
+});
+
+test('区切りが無くてもコードとして受け付ける', async () => {
+  const { handler, codeCalls } = makeDeps({
+    stored: { staff_line_group_id: STAFF_GROUP },
+    codeResult: { ok: true, staff: { id: 3, name: '高橋' } },
+  });
+
+  await handler(groupEvent('スタッフ登録123456'), 'スタッフ登録123456');
+
+  assert.equal(codeCalls[0].code, '123456');
+});
+
+test('問い合わせ系のコマンドは対象外グループでは従来どおり黙る', async () => {
+  const { handler, replies } = makeDeps({ stored: { staff_line_group_id: STAFF_GROUP } });
+
+  const handled = await handler(groupEvent('配信結果', 'C-other'), '配信結果');
+
+  assert.equal(handled, false);
   assert.equal(replies.length, 0);
 });
 

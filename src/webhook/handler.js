@@ -19,10 +19,12 @@ export function createWebhookHandler({
   liffUrl = null,
 }) {
   const staffCommand = createStaffCommandHandler({ settings, lineClient, config });
+  // グループの「会員情報」コマンドで案内する顧客管理画面の URL
+  const adminUrl = config?.publicBaseUrl ? `${config.publicBaseUrl}/admin/#customers` : null;
   const handlers = {
     follow: createFollowHandler({ pool, lineClient, liffUrl }),
     unfollow: createUnfollowHandler({ pool }),
-    message: createMessageHandler({ pool, lineClient, slack, linkService, classifier, staffCommand, liffUrl }),
+    message: createMessageHandler({ pool, lineClient, slack, linkService, classifier, staffCommand, adminUrl }),
     postback: createPostbackHandler({ pool, lineClient, slack }),
     join: createJoinHandler({ lineClient, settings, slack }),
     leave: createLeaveHandler({ settings, slack }),

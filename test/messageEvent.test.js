@@ -55,66 +55,69 @@ function makeEvent(text) {
   };
 }
 
-// ---- お客様情報の呼び出し ----
+// ---- 顧客情報の呼び出し（グループのみ） ----
 
-test('「お客様情報」で LIFF への導線を返信し、分類には回さない', async () => {
+const ADMIN_URL = 'https://example.com/admin/#customers';
+
+test('グループ内の「会員情報」で管理画面（顧客管理）への導線を返す', async () => {
   const f = makeFakes();
-  const handler = createMessageHandler({ ...f, liffUrl: 'https://liff.line.me/123-abc' });
-
-  await handler({
-    type: 'message',
-    replyToken: 'r1',
-    source: { type: 'user', userId: 'U1' },
-    message: { type: 'text', text: 'お客様情報' },
-  });
-
-  assert.equal(f.replies.length, 1);
-  assert.match(f.replies[0].messages[0].text, /https:\/\/liff\.line\.me\/123-abc/);
-  assert.equal(f.classifyCalls.length, 0);
-  assert.equal(f.linkCalls.length, 0);
-});
-
-test('表記ゆれ（空白・記号つき）でも LIFF 導線を返す', async () => {
-  const f = makeFakes();
-  const handler = createMessageHandler({ ...f, liffUrl: 'https://liff.line.me/123-abc' });
-
-  await handler({
-    type: 'message',
-    replyToken: 'r1',
-    source: { type: 'user', userId: 'U1' },
-    message: { type: 'text', text: ' マイページ！ ' },
-  });
-  assert.equal(f.replies.length, 1);
-  assert.match(f.replies[0].messages[0].text, /liff/);
-});
-
-test('グループ内の「お客様情報」にも LIFF 導線を返す', async () => {
-  const f = makeFakes();
-  const handler = createMessageHandler({ ...f, liffUrl: 'https://liff.line.me/123-abc' });
+  const handler = createMessageHandler({ ...f, adminUrl: ADMIN_URL });
 
   await handler({
     type: 'message',
     replyToken: 'r1',
     source: { type: 'group', groupId: 'G1', userId: 'U1' },
-    message: { type: 'text', text: 'お客様情報' },
+    message: { type: 'text', text: '会員情報' },
   });
 
   assert.equal(f.replies.length, 1);
-  assert.match(f.replies[0].messages[0].text, /liff/);
+  assert.match(f.replies[0].messages[0].text, /admin\/#customers/);
   assert.equal(f.classifyCalls.length, 0);
+  assert.equal(f.linkCalls.length, 0);
 });
 
-test('liffUrl 未設定なら通常のフォロー回答として扱う', async () => {
+test('表記ゆれ（空白・記号つき）でも管理画面の導線を返す', async () => {
+  const f = makeFakes();
+  const handler = createMessageHandler({ ...f, adminUrl: ADMIN_URL });
+
+  await handler({
+    type: 'message',
+    replyToken: 'r1',
+    source: { type: 'group', groupId: 'G1', userId: 'U1' },
+    message: { type: 'text', text: ' お客様情報！ ' },
+  });
+  assert.equal(f.replies.length, 1);
+  assert.match(f.replies[0].messages[0].text, /admin/);
+});
+
+test('1:1 トークの「会員情報」には応答しない（分類にも回さない）', async () => {
+  const f = makeFakes();
+  const handler = createMessageHandler({ ...f, adminUrl: ADMIN_URL });
+
+  await handler({
+    type: 'message',
+    replyToken: 'r1',
+    source: { type: 'user', userId: 'U1' },
+    message: { type: 'text', text: '会員情報' },
+  });
+
+  assert.equal(f.replies.length, 0);
+  assert.equal(f.classifyCalls.length, 0);
+  assert.equal(f.linkCalls.length, 0);
+});
+
+test('adminUrl 未設定ならグループでも応答しない（分類にも回さない）', async () => {
   const f = makeFakes();
   const handler = createMessageHandler(f);
 
   await handler({
     type: 'message',
     replyToken: 'r1',
-    source: { type: 'user', userId: 'U1' },
-    message: { type: 'text', text: 'お客様情報' },
+    source: { type: 'group', groupId: 'G1', userId: 'U1' },
+    message: { type: 'text', text: '会員情報' },
   });
-  assert.equal(f.classifyCalls.length, 1, 'コマンド扱いせず分類に回る');
+  assert.equal(f.replies.length, 0);
+  assert.equal(f.classifyCalls.length, 0);
 });
 
 // ---- 電話番号（補助経路） ----

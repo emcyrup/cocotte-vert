@@ -129,6 +129,40 @@ export function createAdminRouter({ pool, reservationService, lineClient, config
     }
   });
 
+  // 顧客情報の編集（管理画面の顧客管理から）。
+  // phone は空を許す（LINE 経由で登録され電話未登録の顧客がいるため）
+  router.patch('/customers/:id', async (req, res, next) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'invalid_id' });
+      const { name, phone, birthday, optOut } = req.body ?? {};
+      if (!name?.trim()) return res.status(400).json({ error: 'invalid_name' });
+      let phoneNorm = null;
+      if (phone?.trim()) {
+        phoneNorm = normalizePhone(phone);
+        if (!phoneNorm) return res.status(400).json({ error: 'invalid_phone' });
+        const { rows: dup } = await pool.query(
+          `SELECT id FROM customers WHERE phone_norm = $1 AND id <> $2`,
+          [phoneNorm, id]
+        );
+        if (dup.length > 0) return res.status(409).json({ error: 'phone_exists' });
+      }
+      if (birthday && !/^\d{4}-\d{2}-\d{2}$/.test(birthday)) {
+        return res.status(400).json({ error: 'invalid_birthday' });
+      }
+      const { rowCount } = await pool.query(
+        `UPDATE customers
+         SET name = $2, phone_norm = $3, birthday = $4, opt_out = $5, updated_at = now()
+         WHERE id = $1`,
+        [id, name.trim(), phoneNorm, birthday || null, Boolean(optOut)]
+      );
+      if (rowCount === 0) return res.status(404).json({ error: 'not_found' });
+      res.json({ ok: true });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   // ---- 予約 ----
   router.get('/reservations', async (req, res, next) => {
     try {

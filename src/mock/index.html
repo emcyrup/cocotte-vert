@@ -374,6 +374,8 @@ button.trow2:focus-visible{outline:2px solid var(--accent); outline-offset:-2px}
 /* ---------- shift ---------- */
 .shift-note{font-size:12.5px; color:var(--muted); margin:0 0 12px}
 .sh td{padding:5px 4px}
+/* 横スクロールしてもスタッフ名が見えるように、名前の列を固定する */
+.sh th:first-child,.sh td:first-child{position:sticky; left:0; background:var(--surface); z-index:1}
 .shcell{width:100%; border:1px solid var(--line); background:var(--surface2); border-radius:7px; font:inherit; font-size:11.5px; font-weight:600; padding:7px 2px; cursor:pointer; color:var(--muted)}
 .shcell:focus-visible{outline:2px solid var(--accent); outline-offset:1px}
 .shcell.work{background:var(--accent-soft); color:var(--accent); border-color:transparent}
@@ -474,6 +476,34 @@ tr.await td{background:var(--warn-soft)}
   #s-resv .rowacts{margin-top:8px}
   #s-resv .sbtn{flex:1 1 auto; padding:7px 10px}
   .frow input,.frow select,.frow .btn{flex:1 1 100%}
+
+  /* 名前・状態・操作が1行に詰まると読めないため、縦に積む
+     （スタッフ情報／承認待ちの申請／シフト申請の各行） */
+  .sreq{grid-template-columns:1fr; gap:8px}
+  .sreq .acts2{flex-wrap:wrap}
+  .sreq .acts2 .sbtn,.sreq .acts2 .abtn{flex:1 1 auto}
+
+  /* 列の多い表は縮めると1文字ずつ折り返して読めなくなる。
+     最低幅を与えてカード内で横スクロールさせる */
+  #s-dash table{min-width:460px}
+
+  /* 期間指定の「〜」は、日付が縦に並ぶと意味をなさないので隠す */
+  #s-resv .frow>span{display:none}
+
+  /* シフトの期間指定。日付が折り返して「〜」が行末に残るのを防ぐ */
+  #shweek{display:grid; grid-template-columns:repeat(3,1fr); gap:8px}
+  #shweek .sbtn{width:100%}
+  #shweek input[type="date"]{grid-column:span 3; width:100%}
+  #shweek span{display:none}
+  #shweek #sh-apply{grid-column:span 3}
+
+  /* 顧客カルテの見出し。名前と操作ボタンが横に潰れないようにする */
+  .cust-hd{flex-wrap:wrap}
+  .cust-hd>div:last-child{margin-left:0; max-width:none; justify-content:flex-start}
+
+  /* 編集モーダルは画面いっぱいに使う */
+  .mback{padding:12px}
+  .mwin{width:100%; max-height:92vh}
 }
 @media (prefers-reduced-motion: reduce){ *{transition:none !important} }
 </style>
@@ -505,12 +535,12 @@ tr.await td{background:var(--warn-soft)}
 
 <!-- ================= ダッシュボード ================= -->
 <section class="screen on" id="s-dash">
-  <div class="crumb">2026年7月24日（金）</div>
+  <div class="crumb" id="dash-date">2026年7月24日（金）</div>
   <h1>ダッシュボード</h1>
   <p class="sub">よく使う機能へのショートカット。当月の新規・来店状況とトリマー実績もこの画面で確認できます。</p>
 
   <div class="search dsearch">
-    <input id="dq" type="search" placeholder="飼い主名・わんちゃん名・犬種で検索してカルテを開く" aria-label="わんちゃんを検索">
+    <input id="dq" type="search" placeholder="飼い主名・わんちゃん名で検索" aria-label="わんちゃんを検索">
     <span class="cnt" id="dcnt"></span>
   </div>
   <div id="dres" class="cres"></div>
@@ -525,14 +555,14 @@ tr.await td{background:var(--warn-soft)}
     <button class="qbtn" data-s="sns"><span class="qi">&#128247;</span><span class="qt">SNS投稿<span class="qd">写真14枚 未投稿</span></span></button>
   </div>
 
-  <div class="grid kpis">
+  <div class="grid kpis" id="kpis">
     <div class="kpi"><div class="k">当月の新規のわんちゃん</div><div class="v num">6<small> 頭</small></div><div class="d up">先月 +2</div></div>
     <button class="kpi" id="kpiTrial"><div class="k">初回ご来店</div><div class="v num">9<small> 頭</small></div><div class="d up">再来率 67%・タップで一覧</div></button>
     <div class="kpi"><div class="k">当月の来店数</div><div class="v num">182<small> 件</small></div><div class="d up">先月同日比 +11</div></div>
     <div class="kpi"><div class="k">失効した回数券</div><div class="v num">3<small> 回</small></div><div class="d dn">7月失効・対象 2頭（わんちゃん別に記録）</div></div>
   </div>
 
-  <div class="grid dash2">
+  <div class="grid dash2" id="dash2">
     <div class="card">
       <div class="hd"><h2>トリマー実績（7月）</h2><span class="pill mut">トリマーのみ表示</span></div>
       <div class="bd" style="padding-top:6px">
@@ -557,15 +587,15 @@ tr.await td{background:var(--warn-soft)}
   </div>
 
   <div class="card" style="margin-top:16px">
-    <div class="hd"><h2>本日の自動リマインド</h2><span class="pill acc">12件 送信予定</span></div>
+    <div class="hd"><h2>本日の自動リマインド</h2><span class="pill acc" id="dash-remind-pill">12件 送信予定</span></div>
     <div class="bd" style="padding-top:6px">
       <table>
         <tr><th>種別</th><th>対象</th><th>チャネル</th><th>時刻</th><th></th></tr>
-        <tr><td><span class="pill acc">前々日確認</span></td><td>7/26 ご予約の 5頭</td><td><span class="src line">LINE</span></td><td class="num">10:00</td><td><span class="pill good">実装済</span></td></tr>
-        <tr><td><span class="pill good">来店7日後フォロー</span></td><td>7/17 ご来店の 2頭</td><td><span class="src line">LINE</span></td><td class="num">10:00</td><td><span class="pill good">実装済</span></td></tr>
-        <tr><td><span class="pill acc">休眠フォロー</span></td><td>最終来店から90日の 3頭</td><td><span class="src line">LINE</span></td><td class="num">10:00</td><td><span class="pill good">実装済</span></td></tr>
-        <tr><td><span class="pill hny">誕生日メッセージ</span></td><td>本日お誕生日の 1頭</td><td><span class="src line">LINE</span></td><td class="num">10:00</td><td><span class="pill good">実装済</span></td></tr>
-        <tr><td><span class="pill warn">ワクチン更新</span></td><td>期限が近い 2頭（スタッフにも通知）</td><td><span class="src line">LINE</span></td><td class="num">15:00</td><td><span class="pill mut">構想</span></td></tr>
+        <tr><td><span class="pill acc">前々日確認</span></td><td id="dash-r1">7/26 ご予約の 5頭</td><td><span class="src line">LINE</span></td><td class="num">10:00</td><td><span class="pill good">実装済</span></td></tr>
+        <tr><td><span class="pill good">来店7日後フォロー</span></td><td id="dash-r2">7/17 ご来店の 2頭</td><td><span class="src line">LINE</span></td><td class="num">10:00</td><td><span class="pill good">実装済</span></td></tr>
+        <tr><td><span class="pill acc">休眠フォロー</span></td><td id="dash-r3">最終来店から90日の 3頭</td><td><span class="src line">LINE</span></td><td class="num">10:00</td><td><span class="pill good">実装済</span></td></tr>
+        <tr><td><span class="pill hny">誕生日メッセージ</span></td><td id="dash-r4">本日お誕生日の 1頭</td><td><span class="src line">LINE</span></td><td class="num">10:00</td><td><span class="pill good">実装済</span></td></tr>
+        <tr><td><span class="pill warn">ワクチン更新</span></td><td id="dash-r5">期限が近い 2頭（スタッフにも通知）</td><td><span class="src line">LINE</span></td><td class="num">15:00</td><td><span class="pill mut">構想</span></td></tr>
       </table>
     </div>
   </div>
@@ -810,7 +840,7 @@ tr.await td{background:var(--warn-soft)}
   <h1>顧客一覧</h1>
   <p class="sub">飼い主ごとにわんちゃんをまとめて管理します。名前をタップするとカルテが開きます。</p>
   <div class="search">
-    <input id="q" type="search" placeholder="飼い主名・わんちゃん名・犬種で検索" aria-label="顧客を検索">
+    <input id="q" type="search" placeholder="飼い主名・わんちゃん名で検索" aria-label="顧客を検索">
     <span class="cnt" id="cnt"></span>
   </div>
   <div class="owners" id="owners"></div>
@@ -819,7 +849,7 @@ tr.await td{background:var(--warn-soft)}
 <!-- ================= 顧客カルテ ================= -->
 <section class="screen" id="s-cust">
   <div class="search">
-    <input id="cq" type="search" placeholder="別のわんちゃんを検索（名前・飼い主・犬種）" aria-label="カルテを検索">
+    <input id="cq" type="search" placeholder="別のわんちゃんを検索" aria-label="カルテを検索">
     <span class="cnt" id="ccnt"></span>
   </div>
   <div id="cres" class="cres"></div>
@@ -846,8 +876,8 @@ tr.await td{background:var(--warn-soft)}
     </div>
   </div>
 
-  <h2 style="margin:22px 0 10px">初回ご来店後のフォロー状況</h2>
-  <div class="grid follow3">
+  <h2 style="margin:22px 0 10px" id="follow-head">初回ご来店後のフォロー状況</h2>
+  <div class="grid follow3" id="follow3">
     <div class="fcol p1">
       <div class="fh">パターン1｜次回のご予約あり <small>フォローのみ</small></div>
       <div class="fcard">
@@ -882,7 +912,7 @@ tr.await td{background:var(--warn-soft)}
       <p class="hint" id="stf-note">在職状況と、公式LINE との連携状況をここで管理します。
       連携すると、そのスタッフはBotとの1対1のトークからシフト変更を申請できます。</p>
       <div class="frow" style="margin-bottom:12px">
-        <input type="text" id="ns-name" placeholder="スタッフ名">
+        <input type="text" id="ns-name" placeholder="スタッフ名" style="max-width:320px">
         <button class="btn" id="ns-add" type="button">追加</button>
       </div>
       <div id="stflist"></div>
@@ -1042,6 +1072,15 @@ async function testSend(payload) {
     showToast(messages[err.message] || 'エラー: ' + err.message);
   }
 }
+// 保存値はハイフン無し。画面ではハイフン区切りにして読み取りやすくする
+function telJp(v){
+  if (!v) return null;
+  const s = String(v).replace(/[^0-9]/g, '');
+  if (/^0[789]0\d{8}$/.test(s)) return s.slice(0, 3) + '-' + s.slice(3, 7) + '-' + s.slice(7);
+  if (/^0\d{9}$/.test(s)) return s.slice(0, 2) + '-' + s.slice(2, 6) + '-' + s.slice(6);
+  return v;
+}
+
 // pg の DATE は UTC の ISO 文字列（前日 15:00Z）で返るため、単純な slice だと1日ずれる。
 // JST の日付として取り出す
 function dateOnly(v) {
@@ -1207,7 +1246,10 @@ function renderOwners(q = ''){
     c.innerHTML = '<div class="oinfo"><div class="oh"><span class="on">' + o.name + ' 様</span>'
       + (o.members.length > 1 ? '<span class="pill mut">' + o.members.length + '頭</span>' : '')
       + (o.line ? '<span class="pill good">LINE</span>' : '<span class="pill mut">LINE未連携</span>') + '</div>'
-      + '<div class="om">' + o.tel + '<br>経路: ' + o.source + '｜初回 ' + o.since + '</div></div>';
+      + '<div class="om">' + o.tel
+      // 経路・初回来店は実データを持たない環境では出さない（「未登録」が並ぶだけになるため）
+      + (o.source || o.since ? '<br>経路: ' + (o.source || '—') + '｜初回 ' + (o.since || '—') : '')
+      + '</div></div>';
     const list = document.createElement('div'); list.className = 'dogs';
     members.forEach(d => {
       const b = document.createElement('button'); b.className = 'dogbtn';
@@ -1221,6 +1263,7 @@ function renderOwners(q = ''){
     if (adminLive) {   // 実運用モードでは一覧から直接編集・追加できる
       const eb = document.createElement('button');
       eb.className = 'sbtn mut'; eb.textContent = '編集';
+      eb.style.marginLeft = 'auto';   // バッジの数で位置がばらつかないよう右端へ寄せる
       eb.addEventListener('click', () => editOwner(o));
       c.querySelector('.oh').appendChild(eb);
       const ab = document.createElement('button');
@@ -1288,18 +1331,31 @@ function remCard(d, o){
   const rows = REMINDERS.filter(r => r.need(d)).map(r => {
     const ov = custRem[d.n] && custRem[d.n][r.id] !== undefined;
     const on = ov ? custRem[d.n][r.id] : true;
+    // 実運用モードでは、配信のON/OFFは飼い主様単位の「配信停止」で行う。
+    // 触れるトグルのままだと「OFFにした＝止まった」と誤解されるため状態表示にする
+    const control = adminLive
+      ? '<span class="pill ' + (o.optOut ? 'crit' : 'good') + '">' + (o.optOut ? '停止中' : '稼働中') + '</span>'
+      : '<button class="sw crem" data-member="' + d.n + '" data-id="' + r.id + '" role="switch" aria-checked="' + on + '" aria-label="' + r.n + '"><i></i></button>';
     return '<div class="row"><span class="rid">' + r.id + '</span>'
-      + '<div><div class="nm">' + r.n + (ov ? ' <span class="pill hny">個別設定</span>' : '') + '</div>'
+      + '<div><div class="nm">' + r.n + (!adminLive && ov ? ' <span class="pill hny">個別設定</span>' : '') + '</div>'
       + '<div class="cond">' + r.c + '</div></div>'
-      + '<span class="src ' + (o.line ? 'line' : 'tel') + '">' + (o.line ? 'LINE' : 'メール') + '</span>'
-      + '<button class="sw crem" data-member="' + d.n + '" data-id="' + r.id + '" role="switch" aria-checked="' + on + '" aria-label="' + r.n + '"><i></i></button></div>';
+      + '<span class="src ' + (o.line ? 'line' : 'tel') + '">' + (o.line ? 'LINE' : '未連携') + '</span>'
+      + control + '</div>';
   }).join('');
   const off = REMINDERS.filter(r => !r.need(d)).map(r => r.n).join('・');
-  return '<div class="card"><div class="hd"><h2>この子へのリマインド設定</h2><span class="pill mut">店舗設定を引き継ぎ</span></div>'
+  const note = adminLive
+    ? (o.optOut
+        ? 'この飼い主様は<b>配信停止</b>に設定されているため、自動配信は送られません。'
+          + '再開するには「飼い主様情報を編集」で配信停止のチェックを外してください。'
+        : '配信を止めたいときは「飼い主様情報を編集」の<b>配信停止</b>にチェックを入れてください。'
+          + '（この飼い主様宛の自動配信がすべて止まります）')
+    : '個別にOFFにすると、店舗全体の設定にかかわらずこの子だけ送信を止められます（配信停止のご要望などに使用）。'
+      + (off ? '<br>現在の対象外: ' + off + '（条件を満たすと自動で表示されます）' : '');
+  return '<div class="card"><div class="hd"><h2>この子へのリマインド設定</h2>'
+    + '<span class="pill mut">' + (adminLive ? '飼い主様ごとの設定' : '店舗設定を引き継ぎ') + '</span></div>'
     + '<div class="rem">' + rows + '</div>'
     + '<div class="bd" style="border-top:1px solid var(--line)"><p style="font-size:12px;color:var(--muted);margin:0">'
-    + '個別にOFFにすると、店舗全体の設定にかかわらずこの子だけ送信を止められます（配信停止のご要望などに使用）。'
-    + (off ? '<br>現在の対象外: ' + off + '（条件を満たすと自動で表示されます）' : '')
+    + note
     + '<br>送信先: ' + o.name + ' 様' + (o.line ? '（LINE連携済み）' : '（LINE未連携のため送信されません）')
     + '</p></div></div>';
 }
@@ -1334,7 +1390,8 @@ function openCarte(d, o){
     + (d.plan.carry ? '<div style="display:flex;justify-content:space-between;font-size:12.5px;margin-top:8px"><span>先月からの繰越分</span><b class="num">' + d.plan.carry + ' 回（' + d.plan.carryLimit + '）</b></div><div class="meter"><i style="width:0%;background:var(--honey)"></i></div>' : '')
     + '<p style="font-size:12px;color:var(--muted);margin:8px 0 0">当月分を優先消化 → その後に繰越分を消化。1週間ご来店がない場合は残回数をご案内します。</p></div></div>' : '';
 
-  const lapsed = '<div class="card"><div class="hd"><h2>失効した回数</h2><span class="pill ' + (lapsedTotal ? 'crit' : 'good') + ' num">累計 ' + lapsedTotal + ' 回</span></div><div class="bd">'
+  // 回数券の失効は実データを持たないため、実運用モードでは出さない
+  const lapsed = adminLive && !d.lapsed.length ? '' : '<div class="card"><div class="hd"><h2>失効した回数</h2><span class="pill ' + (lapsedTotal ? 'crit' : 'good') + ' num">累計 ' + lapsedTotal + ' 回</span></div><div class="bd">'
     + (lapsedTotal
       ? '<table style="table-layout:fixed"><tr><th style="width:78px">失効日</th><th>内訳</th><th class="r" style="width:56px;white-space:nowrap">回数</th></tr>'
         + d.lapsed.map(x => '<tr><td class="num">' + x[0] + '</td><td>' + x[1] + '<span style="display:block;font-size:11.5px;color:var(--muted)">' + x[2] + '</span></td><td class="r num">' + x[3] + '</td></tr>').join('')
@@ -1346,7 +1403,8 @@ function openCarte(d, o){
     '<div class="crumb"><a href="#" id="bklist" style="color:var(--accent)">顧客管理 / 顧客一覧</a> /</div>'
     + '<div class="cust-hd"><div class="avatar">' + d.n.charAt(0) + '</div><div>'
     + '<h1 style="margin-bottom:0">' + d.n + ' <span style="font-size:13px;color:var(--muted);font-weight:600">' + dogSub(d) + '</span></h1>'
-    + '<div style="font-size:12.5px;color:var(--muted)">飼い主: ' + o.name + ' 様｜初回来店: ' + o.since + '（経路: ' + o.source + '）'
+    + '<div style="font-size:12.5px;color:var(--muted)">飼い主: ' + o.name + ' 様'
+    + (o.since ? '｜初回来店: ' + o.since + '（経路: ' + o.source + '）' : '')
     + (o.members.length > 1 ? '｜同伴: ' + o.members.filter(x => x !== d).map(x => x.n).join('・') : '') + '</div>'
     + (adminLive
       ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">'
@@ -1365,17 +1423,17 @@ function openCarte(d, o){
     // 誕生日メッセージは飼い主様の誕生日に送られるため、実運用モードでは分けて表示する
     + (adminLive ? '<dt>飼い主様 誕生日</dt><dd>'
         + (o.obd ? dateJp(o.obd) + (o.optOut ? '' : '<span class="pill mut">自動メッセージON</span>') : '未登録') + '</dd>' : '')
-    + '<dt>来店経路</dt><dd>' + o.source + '</dd>'
-    + '<dt>かかりつけ</dt><dd>' + o.stylist + '</dd>'
+    + (o.source ? '<dt>来店経路</dt><dd>' + o.source + '</dd>' : '')
+    + (o.stylist ? '<dt>かかりつけ</dt><dd>' + o.stylist + '</dd>' : '')
     + (d.notes ? '<dt>メモ</dt><dd>' + d.notes + '</dd>' : '')
     + '</dl></div></div>'
-    + '<div class="card"><div class="hd"><h2>ワクチン</h2></div><div class="bd">'
+    + (adminLive && !d.patch ? '' : '<div class="card"><div class="hd"><h2>ワクチン</h2></div><div class="bd">'
     + (d.patch
       ? '<dl class="kv"><dt>混合</dt><dd>' + d.patch.date + ' 接種 <span class="pill ' + d.patch.state[0] + '">' + d.patch.state[1] + '</span></dd>'
         + '<dt>狂犬病</dt><dd>' + d.patch.allergy + ' 接種 <span class="pill good">有効</span></dd></dl>'
         + '<p style="font-size:12px;color:var(--muted);margin:8px 0 0">お預かりの前に期限切れが分かるよう、期限が近い方へ自動でご案内します（スタッフにも通知）。</p>'
-      : '<p style="font-size:12.5px;color:var(--muted);margin:0">ワクチン情報は未登録です<span class="pill mut">構想</span></p>')
-    + '</div></div>'
+      : '')
+    + '</div></div>')
     + school + lapsed + '</div>'
     + '<div style="display:grid;gap:16px;align-content:start">'
     + remCard(d, o)
@@ -1854,6 +1912,94 @@ async function renderStaffInfo(){
     listEl.insertAdjacentHTML('beforeend',
       '<p style="font-size:12px;color:var(--muted);margin:10px 0 0">' + note + '</p>');
   }
+}
+
+// ---- リマインド設定（実運用モードでの見せ方）----
+// 実装済みの4種は常時動いており、この画面から止める仕組みはまだ無い。
+// 触れるトグルのままだと「OFF にした＝止まった」と誤解されるため、状態表示に置き換える。
+function renderRemindLive(){
+  document.querySelectorAll('#remrows .row').forEach(row => {
+    const done = row.querySelector('.nm .pill.good');   // 「実装済」バッジの有無で判別
+    const sw = row.querySelector('.sw');
+    if (!sw) return;
+    const state = document.createElement('span');
+    state.className = 'pill ' + (done ? 'good' : 'mut');
+    state.textContent = done ? '稼働中' : '未実装';
+    sw.replaceWith(state);
+    // 右端の状態と同じ意味なので、名前の後ろのバッジは落とす
+    row.querySelector('.nm .pill')?.remove();
+  });
+  document.querySelector('#s-rem .sub').innerHTML =
+    'こちらは<b>店舗全体の設定</b>です。<span class="pill good">稼働中</span> の4種は毎朝10:00に自動送信されています。'
+    + '<span class="pill mut">未実装</span> は今後の候補です。'
+    + '<b>お客様ごとの停止</b>は、顧客カルテの「この子へのリマインド設定」または'
+    + '「飼い主様情報を編集」の配信停止で行えます。';
+
+  // 初回フォローの状況は実データを持っていないため、カードごと出さない
+  document.getElementById('follow3')?.remove();
+  document.getElementById('follow-head')?.remove();
+}
+
+// ---- ダッシュボード（実運用モードのみ実データ）----
+// サンプルの数字を「実運用モード」の画面に残すと実績と誤解されるため、
+// 実データで出せるものだけを出し、出せないカードは消す。
+async function renderDashboardLive(){
+  const d = await adminApi('/dashboard');
+
+  const today = new Date();
+  document.getElementById('dash-date').textContent =
+    new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', year: 'numeric', month: 'long',
+      day: 'numeric', weekday: 'short' }).format(today);
+
+  const kpi = (label, value, unit, note) =>
+    '<div class="kpi"><div class="k">' + label + '</div>'
+    + '<div class="v num">' + value + '<small> ' + unit + '</small></div>'
+    + '<div class="d">' + note + '</div></div>';
+  document.getElementById('kpis').innerHTML =
+    kpi('本日のご予約', d.today_reservations, '件', '確定・来店済の合計')
+    + kpi('承認待ちのご予約', d.pending_reservations, '件', d.pending_reservations ? '予約管理から承認してください' : '対応漏れはありません')
+    + kpi('今月のご来店', d.visits_this_month, '件', '来店済にした予約の数')
+    + kpi('今月の新規のお客様', d.new_customers, '世帯', '登録は全' + d.customers + '世帯 / ' + d.pets + '頭');
+
+  // 売上・来店経路・トリマー実績は持っていないため、カードごと出さない
+  const dash2 = document.getElementById('dash2');
+  if (dash2) dash2.remove();
+
+  // ショートカットの補足も実データに合わせる
+  const quickNotes = {
+    resv: d.pending_reservations ? '承認待ち ' + d.pending_reservations + '件' : '承認待ちなし',
+    list: d.customers + '世帯 / ' + d.pets + '頭',
+    cust: '来店履歴・基本情報',
+    shift: d.pending_shift_requests ? 'シフト申請 ' + d.pending_shift_requests + '件' : 'LINE連携・シフト入力',
+    cal: '構想（サンプル表示）',
+    rem: '毎朝10:00に自動送信',
+    sns: '写真投稿・予約投稿',
+  };
+  Object.entries(quickNotes).forEach(([screen, note]) => {
+    const el = document.querySelector('#quick [data-s="' + screen + '"] .qd');
+    if (el) el.textContent = note;
+  });
+
+  // 当日の配信対象数は数えていないため、件数ではなく条件を示す
+  const sub = document.querySelector('#s-dash .sub');
+  if (sub) {
+    sub.innerHTML = 'よく使う機能へのショートカットと、本日・今月の状況です。'
+      + '売上や来店経路はこのシステムでは扱っていないため表示していません。';
+  }
+
+  const pill = document.getElementById('dash-remind-pill');
+  if (pill) { pill.textContent = '毎朝10:00に自動送信'; pill.className = 'pill good'; }
+  const conditions = {
+    'dash-r1': '2日後にご予約のあるお客様',
+    'dash-r2': '7日前にご来店のお客様',
+    'dash-r3': '最終来店から90日のお客様',
+    'dash-r4': '本日お誕生日のお客様',
+    'dash-r5': 'ワクチンの期限が近いお客様（スタッフにも通知）',
+  };
+  Object.entries(conditions).forEach(([id, text]) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
+  });
 }
 
 // ---- 週次シフト表（実運用モードのみ実データ）----
@@ -3023,9 +3169,10 @@ async function loadFamiliesLive(){
     const visits = rs.map(r => [snsFmtJst(r.reserved_at), (r.menu || 'ご予約') + (RV_SUFFIX[r.status] || ''), 'sys', r.staff_name || '', r.note || '']);
     const visited = rs.filter(r => r.status === 'visited').length;
     return {
-      id: c.id, name: c.name, tel: c.phone_norm || '電話未登録', line: c.line_linked,
+      id: c.id, name: c.name, tel: telJp(c.phone_norm) || '電話未登録', line: c.line_linked,
       obd: dateOnly(c.birthday), optOut: c.opt_out,
-      source: '未登録', since: '—', stylist: '未登録',
+      // 来店経路・初回来店日・かかりつけは持っていない。空にしてカルテ側で行ごと出さない
+      source: null, since: null, stylist: null,
       members: pets.map(p => ({
         id: p.id, n: p.name, menu: p.breed || '犬種未登録', age: ageOf(p.birthday), sex: '',
         bd: dateJp(p.birthday), pbd: dateOnly(p.birthday), notes: p.notes,
@@ -3067,8 +3214,9 @@ async function loadFamiliesLive(){
   try {
     await Promise.all([
       loadStaffLive(), loadMenusLive(), rvReload(), loadFamiliesLive(),
-      loadShiftReqs(), renderStaffInfo(), renderShiftTable(),
+      loadShiftReqs(), renderStaffInfo(), renderShiftTable(), renderDashboardLive(),
     ]);
+    renderRemindLive();
   } catch (err) {
     showToast('データの読み込みに失敗しました: ' + err.message);
   }
@@ -3082,6 +3230,13 @@ async function loadFamiliesLive(){
     + 'AI の読み違いがないか、各行の「原文」を確かめてから承認してください。';
   document.querySelector('.foot').innerHTML =
     'ここっとベール 管理システム<br><b>実運用モード</b><br>実データに接続しています';
+  // 実運用モードの選択は飼い主様（顧客）単位。初期表示の文言もそろえる
+  document.querySelectorAll('#nr-cust option, #ts-cust option').forEach(o => {
+    if (o.value === '') o.textContent = '飼い主様を選択';
+  });
+  document.getElementById('nr-q').placeholder = '飼い主名・わんちゃん名 or 電話番号で検索';
+  document.getElementById('ts-q').placeholder = '飼い主名・わんちゃん名 or 電話番号で検索';
+
   document.getElementById('shweek').style.display = '';
   document.querySelector('#s-shift .shift-note').innerHTML =
     'マスをクリックすると「出勤 → AM半休 → PM半休 → 公休 → 有休 → 時間休 → 未入力」の順に切り替わり、'

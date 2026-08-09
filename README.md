@@ -63,7 +63,7 @@ npm test
 
 予約の入口は3つ（LIFF 予約フォーム / 外部予約システムの取り込み API / 管理画面での手入力）で、
 書き込みは `src/reservations/service.js` に集約している。
-取り込み API とスタッフ向け管理画面（`/admin/`。メニュー登録・予約の承認・来店登録）の使い方は
+取り込み API とスタッフ向け店舗管理画面（`/mock/`。メニュー登録・予約の承認・来店登録）の使い方は
 [docs/import-api.md](docs/import-api.md) を参照。
 
 ## Instagram 投稿

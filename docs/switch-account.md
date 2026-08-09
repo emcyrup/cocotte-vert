@@ -176,7 +176,7 @@ docker compose exec db psql -U postgres -d cocotte_vert -c \
 docker compose --profile standalone up -d
 ```
 
-管理画面（`/admin/`）の「配信メッセージのテスト送信」で4種類とも自分に届くことを確認する。
+店舗管理画面（`/mock/` の予約管理）の「配信メッセージのテスト送信」で4種類とも自分に届くことを確認する。
 宛先は `TEST_LINE_USER_ID` に固定されるため、**この段階でもお客様には届かない**。
 
 ### Step 7. リッチメニュー（お客様の画面が変わる最初の操作）

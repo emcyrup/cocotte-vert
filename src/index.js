@@ -212,11 +212,14 @@ app.post('/liff/reserve', async (req, res) => {
 // 管理画面（Basic 認証。ADMIN_USER / ADMIN_PASSWORD 未設定なら無効）
 const adminGuard = basicAuth({ user: config.adminUser, password: config.adminPassword });
 const adminDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'admin');
+// 旧予約管理画面はモック側の画面に統合した。ブックマーク互換のためリダイレクトを残す
+app.get(['/admin', '/admin/index.html'], (_req, res) => res.redirect('/mock/#resv'));
 app.use('/admin', adminGuard, express.static(adminDir, noStaleCache));
 app.use('/api/admin', adminGuard, createAdminRouter({ pool, reservationService, lineClient, config }));
 
-// 提案・要件確認用の画面モック（サンプルデータのみ。実データには一切つながらない）。
-// 実在の顧客データと混同されないよう、管理画面と同じ Basic 認証の内側に置く
+// 店舗管理画面（モック統合版）。管理 API に疎通できる本番環境では実データで動き、
+// 単体で開いたときはサンプルデータのデモとして動く。
+// 実在の顧客データを扱うため、管理 API と同じ Basic 認証の内側に置く
 const mockDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'mock');
 app.use('/mock', adminGuard, express.static(mockDir, noStaleCache));
 

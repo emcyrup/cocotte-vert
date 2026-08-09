@@ -129,7 +129,7 @@ docker compose exec app node scripts/setup-richmenu.js --image=/path/to/richmenu
 
 # 管理画面
 
-`https://<ドメイン>/admin/` でスタッフ向けの簡易管理画面が使える（Basic 認証。`.env` の `ADMIN_USER` / `ADMIN_PASSWORD`）。
+`https://<ドメイン>/mock/` でスタッフ向けの店舗管理画面が使える（旧 `/admin/` はリダイレクト）（Basic 認証。`.env` の `ADMIN_USER` / `ADMIN_PASSWORD`）。
 
 - 予約一覧（期間指定。画面の最下部）と、来店 / 取消 / 無断キャンセルの操作（来店で `last_visit_at` が自動更新）
 - LINE からの予約リクエストの **承認 / 見送り**（承認待ちは常に一覧の先頭に表示）

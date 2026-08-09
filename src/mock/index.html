@@ -698,8 +698,8 @@ tr.await td{background:var(--warn-soft)}
           <select id="ts-cust"><option value="">わんちゃんを選択</option></select>
         </div>
         <div class="frow">
-          <button class="btn sub" data-test="休眠フォロー" type="button">&#128233; 休眠フォロー</button>
-          <button class="btn sub" data-test="誕生日" type="button">&#128233; 誕生日</button>
+          <button class="btn sub" data-test="休眠フォロー" data-type="dormant" type="button">&#128233; 休眠フォロー</button>
+          <button class="btn sub" data-test="誕生日" data-type="birthday" type="button">&#128233; 誕生日</button>
         </div>
       </div>
     </div>
@@ -998,6 +998,50 @@ tr.await td{background:var(--warn-soft)}
 <script>
 // ================= 顧客データ（ダミー） =================
 // 飼い主（世帯）→ わんちゃんの2階層。同じ飼い主の複数頭を1枚のカードにまとめる。
+// ================= 管理APIとの接続（実運用モード） =================
+// 管理 API（/api/admin）に届く環境では、この画面がそのまま実データの管理画面になる。
+// モックを単体で開いた場合など API に届かないときは、従来どおりのデモ動作にフォールバックする。
+// （SNS投稿の実投稿モードと同じ方式。初期化はファイル末尾の即時関数で行う）
+const ADMIN_API = '/api/admin';
+let adminLive = false;
+async function adminApi(path, options = {}) {
+  const res = await fetch(ADMIN_API + path, { headers: { 'Content-Type': 'application/json' }, ...options });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || ('HTTP ' + res.status));
+  return body;
+}
+// 配信メッセージのテスト送信。宛先はサーバ側で常にテスト用アカウントに固定される
+async function testSend(payload) {
+  try {
+    const { mode } = await adminApi('/test-message', { method: 'POST', body: JSON.stringify(payload) });
+    showToast(mode === 'dry_run'
+      ? 'dry_run のため送信せずログに出力しました（受け取るには SEND_MODE=test にしてください）'
+      : 'テスト用アカウントへ送信しました（飼い主様には届きません）');
+  } catch (err) {
+    const messages = {
+      live_mode: 'SEND_MODE=live ではテスト送信できません（誤配信防止）',
+      reservation_not_found: '予約が見つかりません',
+      customer_not_found: '顧客が見つかりません',
+    };
+    showToast(messages[err.message] || 'エラー: ' + err.message);
+  }
+}
+// pg の DATE は ISO 文字列で返るため、日付部分だけ取り出して表示用に整える
+function dateOnly(v) { return v ? String(v).slice(0, 10) : null; }
+function dateJp(v) { const d = dateOnly(v); return d ? d.replace(/-/g, '/') : null; }
+function ageOf(v) {
+  const d = dateOnly(v);
+  if (!d) return null;
+  const b = new Date(d + 'T00:00:00+09:00'), n = new Date();
+  let a = n.getFullYear() - b.getFullYear();
+  if (n.getMonth() < b.getMonth() || (n.getMonth() === b.getMonth() && n.getDate() < b.getDate())) a--;
+  return a;
+}
+// 「犬種・年齢・性別」の表示。実データでは未登録の項目があるため、あるものだけ並べる
+function dogSub(d) {
+  return [d.menu, d.age != null ? d.age + '歳' : null, d.sex || null].filter(Boolean).join('・');
+}
+
 const FAMILIES = [
   { name:'田中 里奈', tel:'090-1234-5678', line:true, source:'EPARK', since:'2024/03', stylist:'北区どうぶつ病院', members:[
     { n:'マロン', menu:'トイプードル', age:5, sex:'♀', bd:'2021/02/14', total:24, last:'7/22',
@@ -1122,7 +1166,7 @@ function memberTags(d){
   const t = [];
   if (d.plan) t.push('<span class="pill acc">' + d.plan.label.replace('スクール ', '') + '</span>');
   if (d.ticket) t.push('<span class="pill hny">回数券 残' + d.ticket.left + '</span>');
-  if (d.patch.state[0] !== 'good') t.push('<span class="pill ' + d.patch.state[0] + '">ワクチン</span>');
+  if (d.patch && d.patch.state[0] !== 'good') t.push('<span class="pill ' + d.patch.state[0] + '">ワクチン</span>');
   if (d.lapsed.length) t.push('<span class="pill crit">失効' + d.lapsed.reduce((a, x) => a + x[3], 0) + '</span>');
   return t.join('');
 }
@@ -1132,7 +1176,9 @@ function renderOwners(q = ''){
   let dogCount = 0, ownerCount = 0;
   FAMILIES.forEach(o => {
     const members = o.members.filter(d => !k || (o.name + d.n + d.menu).toLowerCase().includes(k));
-    if (!members.length) return;
+    // わんちゃん未登録の飼い主様も一覧に出す（実データでは登録直後にあり得るため）
+    const selfHit = !k || o.name.toLowerCase().includes(k);
+    if (!members.length && !(o.members.length === 0 && selfHit)) return;
     ownerCount++; dogCount += members.length;
     const c = document.createElement('div'); c.className = 'ocard';
     c.innerHTML = '<div class="oinfo"><div class="oh"><span class="on">' + o.name + ' 様</span>'
@@ -1143,11 +1189,12 @@ function renderOwners(q = ''){
     members.forEach(d => {
       const b = document.createElement('button'); b.className = 'dogbtn';
       b.innerHTML = '<span class="dav">' + d.n.charAt(0) + '</span>'
-        + '<span class="dname"><span class="dn">' + d.n + '</span><span class="db">' + d.menu + '・' + d.age + '歳・' + d.sex + '</span></span>'
+        + '<span class="dname"><span class="dn">' + d.n + '</span><span class="db">' + dogSub(d) + '</span></span>'
         + '<span class="dtags">' + memberTags(d) + '</span>';
       b.addEventListener('click', () => openCarte(d, o));
       list.appendChild(b);
     });
+    if (!o.members.length) list.innerHTML = '<p style="font-size:12px;color:var(--muted);margin:4px 0">わんちゃん未登録</p>';
     c.appendChild(list); ownersEl.appendChild(c);
   });
   cntEl.textContent = ownerCount + ' 世帯 / ' + dogCount + ' 頭';
@@ -1177,7 +1224,7 @@ function bindSearch(inputId, resId, cntId){
       const b = document.createElement('button'); b.className = 'dogbtn';
       b.innerHTML = '<span class="dav">' + d.n.charAt(0) + '</span>'
         + '<span class="dname"><span class="dn">' + d.n + '</span>'
-        + '<span class="db">' + d.menu + '・' + d.age + '歳・' + d.sex + '</span>'
+        + '<span class="db">' + dogSub(d) + '</span>'
         + '<span class="owner">' + o.name + ' 様</span></span>'
         + '<span class="dtags">' + memberTags(d) + '</span>';
       b.addEventListener('click', () => { openCarte(d, o); clear(); });
@@ -1242,7 +1289,7 @@ function openCarte(d, o){
   const tags = [];
   if (d.plan) tags.push('<span class="pill acc">' + d.plan.label + '</span>');
   if (d.ticket) tags.push('<span class="pill hny">回数券 残' + d.ticket.left + '回（期限 ' + d.ticket.exp + '）</span>');
-  tags.push('<span class="pill ' + d.patch.state[0] + '">ワクチン ' + d.patch.state[1] + '</span>');
+  if (d.patch) tags.push('<span class="pill ' + d.patch.state[0] + '">ワクチン ' + d.patch.state[1] + '</span>');
   if (lapsedTotal) tags.push('<span class="pill crit">失効 累計' + lapsedTotal + '回</span>');
   if (d.first) tags.push('<span class="pill ' + d.first[1] + '">初回後: ' + d.first[0] + '</span>');
 
@@ -1263,33 +1310,43 @@ function openCarte(d, o){
   custbody.innerHTML =
     '<div class="crumb"><a href="#" id="bklist" style="color:var(--accent)">顧客管理 / 顧客一覧</a> /</div>'
     + '<div class="cust-hd"><div class="avatar">' + d.n.charAt(0) + '</div><div>'
-    + '<h1 style="margin-bottom:0">' + d.n + ' <span style="font-size:13px;color:var(--muted);font-weight:600">' + d.menu + '・' + d.age + '歳・' + d.sex + '</span></h1>'
+    + '<h1 style="margin-bottom:0">' + d.n + ' <span style="font-size:13px;color:var(--muted);font-weight:600">' + dogSub(d) + '</span></h1>'
     + '<div style="font-size:12.5px;color:var(--muted)">飼い主: ' + o.name + ' 様｜初回来店: ' + o.since + '（経路: ' + o.source + '）'
     + (o.members.length > 1 ? '｜同伴: ' + o.members.filter(x => x !== d).map(x => x.n).join('・') : '') + '</div></div>'
     + '<div style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;max-width:520px">' + tags.join('') + '</div></div>'
     + '<div class="grid cust2"><div style="display:grid;gap:16px;align-content:start">'
-    + '<div class="card"><div class="hd"><h2>基本情報</h2></div><div class="bd"><dl class="kv">'
+    + '<div class="card"><div class="hd"><h2>基本情報</h2>'
+    + (adminLive ? '<a class="pill mut" href="/admin/customers.html" target="_blank" rel="noopener" style="text-decoration:none">情報の編集</a>' : '')
+    + '</div><div class="bd"><dl class="kv">'
     + '<dt>飼い主</dt><dd>' + o.name + ' 様</dd>'
     + '<dt>連絡先</dt><dd>' + o.tel + '</dd>'
     + '<dt>LINE</dt><dd>' + (o.line ? '<span class="pill good">連携済み</span>' : '<span class="pill mut">未連携（配信対象外）</span>') + '</dd>'
-    + '<dt>誕生日</dt><dd>' + d.bd + '<span class="pill mut">自動メッセージON</span></dd>'
+    + '<dt>誕生日</dt><dd>' + (d.bd ? d.bd + '<span class="pill mut">自動メッセージON</span>' : '未登録') + '</dd>'
     + '<dt>来店経路</dt><dd>' + o.source + '</dd>'
     + '<dt>かかりつけ</dt><dd>' + o.stylist + '</dd>'
+    + (d.notes ? '<dt>メモ</dt><dd>' + d.notes + '</dd>' : '')
     + '</dl></div></div>'
-    + '<div class="card"><div class="hd"><h2>ワクチン</h2></div><div class="bd"><dl class="kv">'
-    + '<dt>混合</dt><dd>' + d.patch.date + ' 接種 <span class="pill ' + d.patch.state[0] + '">' + d.patch.state[1] + '</span></dd>'
-    + '<dt>狂犬病</dt><dd>' + d.patch.allergy + ' 接種 <span class="pill good">有効</span></dd></dl>'
-    + '<p style="font-size:12px;color:var(--muted);margin:8px 0 0">お預かりの前に期限切れが分かるよう、期限が近い方へ自動でご案内します（スタッフにも通知）。</p></div></div>'
+    + '<div class="card"><div class="hd"><h2>ワクチン</h2></div><div class="bd">'
+    + (d.patch
+      ? '<dl class="kv"><dt>混合</dt><dd>' + d.patch.date + ' 接種 <span class="pill ' + d.patch.state[0] + '">' + d.patch.state[1] + '</span></dd>'
+        + '<dt>狂犬病</dt><dd>' + d.patch.allergy + ' 接種 <span class="pill good">有効</span></dd></dl>'
+        + '<p style="font-size:12px;color:var(--muted);margin:8px 0 0">お預かりの前に期限切れが分かるよう、期限が近い方へ自動でご案内します（スタッフにも通知）。</p>'
+      : '<p style="font-size:12.5px;color:var(--muted);margin:0">ワクチン情報は未登録です<span class="pill mut">構想</span></p>')
+    + '</div></div>'
     + school + lapsed + '</div>'
     + '<div style="display:grid;gap:16px;align-content:start">'
     + remCard(d, o)
     + '<div class="card"><div class="hd"><h2>来店履歴・カルテ</h2><span class="pill mut">全 ' + d.total + ' 件</span></div>'
-    + '<div class="bd" style="padding-top:4px"><ul class="tl">'
-    + d.visits.map(v => '<li><span class="dt num">' + v[0] + '</span><div class="tt"><b>' + v[1] + '</b>'
-        + '<span class="src ' + v[2] + '">' + ({ line:'LINE', epark:'EPARK', tel:'電話' })[v[2]] + '</span>'
-        + (v[3] ? ' 担当: ' + v[3] : '')
-        + (v[4] ? '<div class="memo">' + v[4] + '</div>' : '') + '</div></li>').join('')
-    + '</ul></div></div></div></div>';
+    + '<div class="bd" style="padding-top:4px">'
+    + (d.visits.length
+      ? '<ul class="tl">'
+        + d.visits.map(v => '<li><span class="dt num">' + v[0] + '</span><div class="tt"><b>' + v[1] + '</b>'
+            + '<span class="src ' + v[2] + '">' + ({ line:'LINE', epark:'EPARK', tel:'電話', sys:'予約' })[v[2]] + '</span>'
+            + (v[3] ? ' 担当: ' + v[3] : '')
+            + (v[4] ? '<div class="memo">' + v[4] + '</div>' : '') + '</div></li>').join('')
+        + '</ul>'
+      : '<p style="font-size:12.5px;color:var(--muted);margin:10px 0">来店履歴はまだありません。</p>')
+    + '</div></div></div></div>';
 
   document.getElementById('bklist').addEventListener('click', e => { e.preventDefault(); go('list'); });
   go('cust');
@@ -1299,6 +1356,8 @@ const nav = document.getElementById('nav');
 function go(s){
   nav.querySelectorAll('button').forEach(x => { const on = x.dataset.s === s; x.classList.toggle('on', on); x.querySelector('.ic').innerHTML = on ? '&#9632;' : '&#9633;'; });
   document.querySelectorAll('.screen').forEach(sec => sec.classList.toggle('on', sec.id === 's' + '-' + s));
+  // URL に画面名を残し、#resv などで直接その画面を開けるようにする（履歴は増やさない）
+  history.replaceState(null, '', '#' + s);
   window.scrollTo(0, 0);
 }
 nav.addEventListener('click', e => {
@@ -1310,7 +1369,13 @@ document.getElementById('quick').addEventListener('click', e => {   // ダッシ
   if (b) go(b.dataset.s);
 });
 openCarte(FAMILIES[0].members[0], FAMILIES[0]);   // 初期表示用にカルテを組み立て
-go('dash');
+// URL の #画面名 があればその画面から開く（LINE のリッチメニュー等からの直リンク用）
+const initialScreen = location.hash.slice(1);
+go(document.getElementById('s-' + initialScreen) ? initialScreen : 'dash');
+window.addEventListener('hashchange', () => {
+  const s = location.hash.slice(1);
+  if (document.getElementById('s-' + s)) go(s);
+});
 
 // ---- 予約カレンダー（横タイムライン 7:00-22:00） ----
 const DAY_START = 8, DAY_HOURS = 13;                // 8:00-21:00
@@ -2081,8 +2146,8 @@ document.getElementById('sns-later').addEventListener('click', () => {
 })();
 
 // ================= 予約管理 =================
-// 管理画面（/admin/）と同じ操作をモックでも試せるようにしたもの。
-// 実データには一切つながらないため、承認や来店登録を押しても本番には影響しない。
+// 実運用モードでは管理 API の実データを表示し、承認・来店登録・テスト送信もすべて本物が動く。
+// API に届かないときは下記のサンプルデータでデモ動作する。
 const RESV = [
   { id:101, at:'7/26(日) 11:00', name:'ルナ',     menu:'シャンプー＆カットコース', staff:'',     status:'requested', note:'はじめてなので、短くしすぎない仕上がりを希望します。' },
   { id:102, at:'7/29(水) 14:30', name:'ラテ',     menu:'シャンプーコース',         staff:'伊藤', status:'requested', note:'' },
@@ -2111,6 +2176,35 @@ function rvSetStatus(r, status, msg){
   renderResv();
   showUndoToast(msg, () => { r.status = before; renderResv(); });
 }
+// 実運用モードの予約読み込み。日時表示は SNS と同じ JST 整形を使う
+function rvMap(r){
+  return { id: r.id, at: snsFmtJst(r.reserved_at), name: r.customer_name, menu: r.menu || '—',
+    staff: r.staff_name || '', status: r.status, note: r.note || '', ok: r.confirmed_by_customer };
+}
+async function rvReload(){
+  const params = new URLSearchParams();
+  const from = document.getElementById('rv-from').value, to = document.getElementById('rv-to').value;
+  if (from) params.set('from', from);
+  if (to) params.set('to', to);
+  const { reservations } = await adminApi('/reservations?' + params);
+  RESV.length = 0;
+  reservations.forEach(r => RESV.push(rvMap(r)));
+  renderResv();
+}
+// 状態変更。実運用モードでは取り消しできないため、実行前に confirm で確認する
+async function rvAct(r, status, demoMsg, confirmMsg){
+  if (!adminLive) { rvSetStatus(r, status, demoMsg); return; }
+  if (!confirm(confirmMsg)) return;
+  try {
+    const { notifiedCustomer } = await adminApi('/reservations/' + r.id, {
+      method: 'PATCH', body: JSON.stringify({ status }),
+    });
+    showToast(notifiedCustomer ? '更新し、飼い主様へLINEで通知しました' : '更新しました');
+    await rvReload();
+  } catch (err) {
+    showToast('エラー: ' + err.message);
+  }
+}
 function renderResv(){
   // 承認待ちは対応漏れを防ぐため、期間の指定に関わらず常に先頭へ出す
   const list = [...RESV].sort((a, b) => (a.status === 'requested' ? 0 : 1) - (b.status === 'requested' ? 0 : 1));
@@ -2137,16 +2231,30 @@ function renderResv(){
       td.appendChild(b);
     };
     if (r.status === 'requested') {
-      mk('承認', 'pri', () => rvSetStatus(r, 'confirmed', r.name + 'の予約を確定し、飼い主様へLINEで確定通知を送りました'));
-      mk('見送り', 'mut', () => rvSetStatus(r, 'cancelled', r.name + 'の飼い主様へ、今回は見送る旨をLINEで送りました'));
+      mk('承認', 'pri', () => rvAct(r, 'confirmed',
+        r.name + 'の予約を確定し、飼い主様へLINEで確定通知を送りました',
+        '「' + r.name + '」の予約を確定し、飼い主様へ確定通知を送りますか？'));
+      mk('見送り', 'mut', () => rvAct(r, 'cancelled',
+        r.name + 'の飼い主様へ、今回は見送る旨をLINEで送りました',
+        '「' + r.name + '」の予約リクエストを見送り、飼い主様へその旨を送りますか？'));
     } else if (r.status === 'confirmed') {
-      mk('来店', '', () => rvSetStatus(r, 'visited', r.name + 'を来店済にしました（最終来店日も更新）'));
-      mk('取消', 'mut', () => rvSetStatus(r, 'cancelled', r.name + 'の予約をキャンセルにしました'));
-      mk('無断', 'warn', () => rvSetStatus(r, 'no_show', r.name + 'の予約を無断キャンセルにしました'));
+      mk('来店', '', () => rvAct(r, 'visited',
+        r.name + 'を来店済にしました（最終来店日も更新）',
+        '「' + r.name + '」を来店済にしますか？（最終来店日も更新されます）'));
+      mk('取消', 'mut', () => rvAct(r, 'cancelled',
+        r.name + 'の予約をキャンセルにしました',
+        '「' + r.name + '」の予約をキャンセルにしますか？'));
+      mk('無断', 'warn', () => rvAct(r, 'no_show',
+        r.name + 'の予約を無断キャンセルにしました',
+        '「' + r.name + '」の予約を無断キャンセルにしますか？'));
     }
     if (r.status === 'confirmed' || r.status === 'visited') {
-      mk('&#128233;前々日', 'mut', () => showToast('前々日確認のメッセージをテスト用アカウントへ送りました'));
-      mk('&#128233;フォロー', 'mut', () => showToast('来店7日後フォローのメッセージをテスト用アカウントへ送りました'));
+      mk('&#128233;前々日', 'mut', () => adminLive
+        ? testSend({ type: 'preReminder', reservationId: r.id })
+        : showToast('前々日確認のメッセージをテスト用アカウントへ送りました'));
+      mk('&#128233;フォロー', 'mut', () => adminLive
+        ? testSend({ type: 'afterVisit', reservationId: r.id })
+        : showToast('来店7日後フォローのメッセージをテスト用アカウントへ送りました'));
     }
     tr.appendChild(td);
     rvrows.appendChild(tr);
@@ -2157,12 +2265,17 @@ function renderResv(){
 }
 renderResv();
 document.getElementById('rv-reload').addEventListener('click', () => {
+  if (adminLive) {
+    rvReload().then(() => showToast('予約を読み込みました')).catch(err => showToast('エラー: ' + err.message));
+    return;
+  }
   const from = document.getElementById('rv-from').value, to = document.getElementById('rv-to').value;
   showToast(from + ' 〜 ' + to + ' の予約を表示しました（モックのため一覧は変わりません）');
 });
 
 // ---- メニュー管理 ----
-// 公式サイト（cocotte-vert.me）のコース構成に合わせている。
+// デモ用の初期値は公式サイト（cocotte-vert.me）のコース構成に合わせている。
+// 実運用モードでは起動時にサーバのメニューへ差し替わる。
 // 料金は犬種によって変わるため、ここでは所要時間のみ持たせる
 const MENUS = [
   { name:'シャンプーコース', min:60, active:true },
@@ -2186,7 +2299,12 @@ function renderMenus(){
     const b = document.createElement('button');
     b.className = 'sbtn' + (m.active ? ' mut' : ' pri');
     b.textContent = m.active ? '停止' : '再開';
-    b.addEventListener('click', () => {
+    b.addEventListener('click', async () => {
+      if (adminLive) {
+        try {
+          await adminApi('/menus/' + m.id, { method: 'PATCH', body: JSON.stringify({ active: !m.active }) });
+        } catch (err) { showToast('エラー: ' + err.message); return; }
+      }
       m.active = !m.active;
       renderMenus(); fillMenuSelect();
       showToast('「' + m.name + '」を' + (m.active ? '再開' : '停止') + 'しました');
@@ -2203,20 +2321,45 @@ function fillMenuSelect(){
   });
 }
 renderMenus(); fillMenuSelect();
-document.getElementById('mn-add').addEventListener('click', () => {
+document.getElementById('mn-add').addEventListener('click', async () => {
   const name = document.getElementById('mn-name').value.trim();
   if (!name) { showToast('メニュー名を入力してください'); return; }
   const min = Number(document.getElementById('mn-min').value) || null;
-  MENUS.push({ name, min, active:true });
+  if (adminLive) {
+    try {
+      const { menu } = await adminApi('/menus', { method: 'POST', body: JSON.stringify({ name, durationMinutes: min }) });
+      MENUS.push({ id: menu.id, name: menu.name, min: menu.duration_minutes, active: menu.active });
+    } catch (err) { showToast('エラー: ' + err.message); return; }
+  } else {
+    MENUS.push({ name, min, active:true });
+  }
   document.getElementById('mn-name').value = ''; document.getElementById('mn-min').value = '';
   renderMenus(); fillMenuSelect();
   showToast('「' + name + '」を追加しました（予約フォームの選択肢に入ります）');
 });
 
 // ---- わんちゃん検索（新規予約・テスト送信で共通） ----
-function fillCustomers(query, selectId){
-  const k = query.trim().toLowerCase();
+// 実運用モードでは管理 API で検索する。予約・配信は飼い主（顧客）単位のため、値は顧客 id
+async function fillCustomers(query, selectId){
   const sel = document.getElementById(selectId);
+  if (adminLive) {
+    sel.innerHTML = '<option value="">飼い主様を選択</option>';
+    try {
+      const { customers } = await adminApi('/customers?q=' + encodeURIComponent(query.trim()));
+      customers.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.id;
+        opt.dataset.dog = c.name + ' 様';   // 登録完了トーストの表示名に使う
+        opt.textContent = c.name + ' 様（' + (c.phone_norm || '電話なし')
+          + (c.line_linked ? '｜LINE連携済' : '｜LINE未連携') + '）'
+          + (c.pet_names ? '｜' + c.pet_names : '');
+        sel.appendChild(opt);
+      });
+      showToast(customers.length ? customers.length + ' 件見つかりました' : '該当する飼い主様が見つかりません');
+    } catch (err) { showToast('エラー: ' + err.message); }
+    return;
+  }
+  const k = query.trim().toLowerCase();
   sel.innerHTML = '<option value="">わんちゃんを選択</option>';
   let n = 0;
   FAMILIES.forEach(o => o.members.forEach(d => {
@@ -2232,12 +2375,28 @@ function fillCustomers(query, selectId){
 document.getElementById('nr-search').addEventListener('click', () => fillCustomers(document.getElementById('nr-q').value, 'nr-cust'));
 document.getElementById('ts-search').addEventListener('click', () => fillCustomers(document.getElementById('ts-q').value, 'ts-cust'));
 
-document.getElementById('nr-submit').addEventListener('click', () => {
+document.getElementById('nr-submit').addEventListener('click', async () => {
   const opt = document.getElementById('nr-cust').selectedOptions[0];
   const at = document.getElementById('nr-at').value;
   const menu = document.getElementById('nr-menu').selectedOptions[0]?.textContent;
   const name = opt?.dataset.dog;
   if (!name || !at || !menu || menu === 'コースを選択') { showToast('わんちゃん・日時・コースを指定してください'); return; }
+  if (adminLive) {
+    try {
+      await adminApi('/reservations', {
+        method: 'POST',
+        body: JSON.stringify({
+          customerId: Number(opt.value),
+          reservedAt: at + ':00+09:00',   // datetime-local は JST 前提なのでオフセットを明示する
+          menu,
+          staffId: document.getElementById('nr-staff').value || null,
+        }),
+      });
+      showToast(name + 'の予約を登録しました（スタッフ入力のため承認は不要です）');
+      await rvReload();
+    } catch (err) { showToast('登録に失敗しました: ' + err.message); }
+    return;
+  }
   const [date, time] = at.split('T');
   const [, mo, da] = date.split('-');
   const w = '日月火水木金土'[new Date(date + 'T00:00:00+09:00').getDay()];
@@ -2250,24 +2409,128 @@ document.getElementById('nr-submit').addEventListener('click', () => {
 document.querySelectorAll('[data-test]').forEach(b => {
   b.addEventListener('click', () => {
     const sel = document.getElementById('ts-cust');
-    if (!sel.selectedIndex) { showToast('先にわんちゃんを選択してください'); return; }
+    if (!sel.selectedIndex) { showToast('先に送信対象を選択してください'); return; }
+    if (adminLive) { testSend({ type: b.dataset.type, customerId: Number(sel.value) }); return; }
     showToast(b.dataset.test + 'のメッセージをテスト用アカウントへ送りました（飼い主様には届きません）');
   });
 });
 
-document.getElementById('nc-add').addEventListener('click', () => {
+document.getElementById('nc-add').addEventListener('click', async () => {
   const name = document.getElementById('nc-name').value.trim();
   const tel = document.getElementById('nc-tel').value.trim();
   if (!name || !tel) { showToast('お名前と電話番号を入力してください'); return; }
+  if (adminLive) {
+    try {
+      await adminApi('/customers', {
+        method: 'POST',
+        body: JSON.stringify({ name, phone: tel, birthday: document.getElementById('nc-bd').value || null }),
+      });
+    } catch (err) {
+      const messages = { phone_exists: 'この電話番号は登録済みです', invalid_phone: '電話番号の形式が不正です' };
+      showToast(messages[err.message] || 'エラー: ' + err.message);
+      return;
+    }
+    loadFamiliesLive().then(() => renderOwners(qEl.value)).catch(() => {});   // 顧客一覧にも反映
+  }
   document.getElementById('nc-name').value = ''; document.getElementById('nc-tel').value = '';
+  document.getElementById('nc-bd').value = '';
   showToast(name + ' 様を登録しました（LINE未連携のため配信対象外です）');
 });
-document.getElementById('ns-add').addEventListener('click', () => {
+document.getElementById('ns-add').addEventListener('click', async () => {
   const name = document.getElementById('ns-name').value.trim();
   if (!name) { showToast('スタッフ名を入力してください'); return; }
+  if (adminLive) {
+    try {
+      await adminApi('/staff', { method: 'POST', body: JSON.stringify({ name }) });
+      await loadStaffLive();
+    } catch (err) { showToast('エラー: ' + err.message); return; }
+  }
   document.getElementById('ns-name').value = '';
   showToast(name + ' さんを追加しました');
 });
+
+// ================= 実運用モードの初期化 =================
+// 管理 API に疎通できたら、この画面全体を実データの管理画面として動かす。
+async function loadStaffLive(){
+  const { staff } = await adminApi('/staff');
+  const sel = document.getElementById('nr-staff');
+  sel.innerHTML = '<option value="">担当（任意）</option>';
+  staff.forEach(s => {
+    const o = document.createElement('option');
+    o.value = s.id; o.textContent = s.name;
+    sel.appendChild(o);
+  });
+}
+async function loadMenusLive(){
+  const { menus } = await adminApi('/menus');
+  MENUS.length = 0;
+  menus.forEach(m => MENUS.push({ id: m.id, name: m.name, min: m.duration_minutes, active: m.active }));
+}
+// 顧客＋ペット＋予約履歴を、モックの顧客一覧・カルテと同じ形（FAMILIES）に組み立てる。
+// 予約は飼い主単位のため、来店履歴は同じ世帯のわんちゃん全員のカルテに共通で表示される
+const RV_SUFFIX = { requested: '（承認待ち）', confirmed: '（ご予約）', cancelled: '（キャンセル）', no_show: '（無断キャンセル）' };
+async function loadFamiliesLive(){
+  const [{ customers }, { reservations }] = await Promise.all([
+    adminApi('/customers'),
+    adminApi('/reservations?from=2020-01-01&to=2100-01-01'),
+  ]);
+  const byCustomer = {};
+  reservations.forEach(r => { (byCustomer[r.customer_id] = byCustomer[r.customer_id] || []).push(r); });
+  const fams = await Promise.all(customers.map(async c => {
+    const { pets } = await adminApi('/customers/' + c.id + '/pets');
+    const rs = (byCustomer[c.id] || []).sort((a, b) => new Date(b.reserved_at) - new Date(a.reserved_at));
+    const visits = rs.map(r => [snsFmtJst(r.reserved_at), (r.menu || 'ご予約') + (RV_SUFFIX[r.status] || ''), 'sys', r.staff_name || '', r.note || '']);
+    const visited = rs.filter(r => r.status === 'visited').length;
+    return {
+      id: c.id, name: c.name, tel: c.phone_norm || '電話未登録', line: c.line_linked,
+      source: '未登録', since: '—', stylist: '未登録',
+      members: pets.map(p => ({
+        id: p.id, n: p.name, menu: p.breed || '犬種未登録', age: ageOf(p.birthday), sex: '',
+        bd: dateJp(p.birthday), notes: p.notes,
+        total: visited, last: '—', plan: null, ticket: null, patch: null, lapsed: [], visits,
+      })),
+    };
+  }));
+  FAMILIES.length = 0;
+  fams.forEach(f => FAMILIES.push(f));
+}
+(async () => {
+  try {
+    await adminApi('/staff');   // Basic 認証込みで疎通確認
+    adminLive = true;
+  } catch { return; }           // 届かなければデモ動作のまま
+
+  // 日付の初期値をデモ用の固定日から実際の今日に差し替える
+  const pad = n => String(n).padStart(2, '0');
+  const iso = dt => dt.getFullYear() + '-' + pad(dt.getMonth() + 1) + '-' + pad(dt.getDate());
+  const today = new Date(), week = new Date(Date.now() + 7 * 86400 * 1000);
+  document.getElementById('rv-from').value = iso(today);
+  document.getElementById('rv-to').value = iso(week);
+  document.getElementById('nr-at').value = iso(today) + 'T10:00';
+
+  try {
+    await Promise.all([loadStaffLive(), loadMenusLive(), rvReload(), loadFamiliesLive()]);
+  } catch (err) {
+    showToast('データの読み込みに失敗しました: ' + err.message);
+  }
+  renderMenus(); fillMenuSelect();
+  renderOwners(qEl.value);
+
+  // 実運用モードであることを画面上でも分かるようにする
+  document.title = 'ここっとベール 店舗管理';
+  const tag = document.querySelector('.mocktag');
+  if (tag) tag.textContent = '実運用モード（実データに接続中）';
+  for (const sel of ['#s-dash .sub', '#s-resv .sub', '#s-list .sub']) {
+    document.querySelector(sel)?.insertAdjacentHTML('afterbegin',
+      '<span class="pill good" style="margin-right:6px">実運用モード</span>');
+  }
+
+  // カルテの初期表示を実データで組み直す（開いている画面は変えない）
+  const cur = document.querySelector('.screen.on');
+  const fam = FAMILIES.find(f => f.members.length);
+  if (fam) openCarte(fam.members[0], fam);
+  if (cur) go(cur.id.slice(2));
+})();
 </script>
 </body>
 </html>

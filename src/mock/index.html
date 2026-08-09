@@ -1823,6 +1823,15 @@ async function renderStaffInfo(){
     note = status.groupConfigured
       ? ''
       : 'スタッフ通知先の LINE グループが未設定のため、グループ参加は判定できません。';
+    const stateEl = document.getElementById('shift-group-state');
+    if (stateEl) {
+      // ②が使えるかどうかは、この設定の有無で決まる。原因を画面で切り分けられるようにする
+      stateEl.innerHTML = status.groupConfigured
+        ? '<span class="pill good">スタッフ用グループ 設定済み</span> ②のグループでの連携が使えます。'
+        : '<span class="pill warn">スタッフ用グループ 未設定</span> '
+          + '②は使えません（グループで送っても連携されません）。①か③をお使いください。'
+          + 'グループを設定するには、Botをスタッフ用のLINEグループに招待してください。';
+    }
   }
   listEl.innerHTML = '';
   if (!staff.length) {
@@ -2866,11 +2875,13 @@ async function loadFamiliesLive(){
     + '申請として右の一覧に届きます。文章は自由で、日付と種別が読み取れれば受け付けます'
     + '（例：<b>8/1 有休お願いします</b> ／ <b>7/31 10時から12時まで時間休</b>）。'
     + '連携していない相手の発言は、これまでどおり顧客からのメッセージとして扱われます。</p>'
-    + '<p class="hint"><b>連携のしかたは2通りです。</b><br>'
-    + '① 上の「スタッフ情報」で<b>連携コード発行</b>を押し、'
-    + '本人がBotとの1対1のトークへ「スタッフ登録 123456」と送る<br>'
-    + '② スタッフ用のLINEグループで、本人が「<b>スタッフ登録 高橋</b>」と自分の名前を送る<br>'
-    + 'LINE ID が分かっている場合は、「編集」から直接入力しても連携できます。</p>';
+    + '<p class="hint"><b>連携のしかたは3通りです。</b><br>'
+    + '① 上の「スタッフ情報」で<b>連携コード発行</b>を押し、本人が'
+    + '<b>Botとの1対1のトーク</b>へ「スタッフ登録 123456」と送る（確実）<br>'
+    + '② スタッフ用のLINEグループで、本人が「<b>スタッフ登録 高橋</b>」と自分の名前、'
+    + 'または発行したコードを送る<br>'
+    + '③ LINE ID が分かっていれば「編集」から直接入力する</p>'
+    + '<p class="hint" id="shift-group-state"></p>';
 
   try {
     await Promise.all([

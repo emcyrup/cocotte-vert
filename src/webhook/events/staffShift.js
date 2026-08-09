@@ -6,12 +6,7 @@
 // 未連携の相手の発言は false を返し、従来どおり顧客向けの処理へ委ねる。
 
 import { formatShift } from '../../shifts/service.js';
-
-// 連携の合言葉。顧客が偶然送る文面と衝突しないよう、接頭辞を必須にする。
-// 1:1 では6桁の連携コードだけを受け付ける。名前での連携を許すと、名前さえ知っていれば
-// 誰でもそのスタッフに成りすませてしまうため、名前はスタッフグループ限定にしている
-const LINK_COMMAND_RE = /^(?:スタッフ(?:登録|連携)|shift\s*link)[\s　:：]*(.+)$/i;
-const LINK_CODE_RE = /^\d{6}$/;
+import { parseLinkCommand } from './linkCommand.js';
 
 const jstDateFmt = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Asia/Tokyo',
@@ -27,8 +22,10 @@ export function createStaffShiftHandler({ shiftService, shiftParser, lineClient,
     }
   }
 
-  async function handleLink(event, arg) {
-    if (!LINK_CODE_RE.test(arg)) {
+  // 1:1 では6桁の連携コードだけを受け付ける。名前での連携を許すと、名前さえ知っていれば
+  // 誰でもそのスタッフに成りすませてしまうため、名前はスタッフグループ限定にしている
+  async function handleLink(event, { arg, isCode }) {
+    if (!isCode) {
       // 名前で送られた場合。ここで黙って落とすと顧客向けの処理に流れ、
       // 送った本人には何も返らないため、送り方を案内する
       await replyText(
@@ -44,6 +41,8 @@ export function createStaffShiftHandler({ shiftService, shiftParser, lineClient,
       lineUserId: event.source.userId,
       code: arg,
     });
+    // 原因を追えるようにするが、LINE userId は残さない
+    console.log(`[staff-link] source=user by=code ok=${result.ok}`);
     if (!result.ok) {
       await replyText(
         event,
@@ -66,8 +65,8 @@ export function createStaffShiftHandler({ shiftService, shiftParser, lineClient,
   return async function handleStaffShift(event, text) {
     if (event.source?.type !== 'user' || !event.source.userId) return false;
 
-    const linkMatch = LINK_COMMAND_RE.exec(text.trim());
-    if (linkMatch) return handleLink(event, linkMatch[1]);
+    const link = parseLinkCommand(text);
+    if (link) return handleLink(event, link);
 
     const staff = await shiftService.findStaffByLineUserId(event.source.userId);
     if (!staff) return false;

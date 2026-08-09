@@ -98,7 +98,7 @@ Claude Code の作業ではなく、事前に人手で済ませておく項目�
    店舗の承認（`requested` → `confirmed`）で確定する
 2. **外部予約 SaaS 連携** — `POST /api/import/reservations` に `external_id` で冪等 upsert。
    EPARK など CSV しかない場合は `scripts/import-csv.js` で変換して投入
-3. **スタッフ手入力** — 管理画面（`/admin/`）から登録
+3. **スタッフ手入力** — 店舗管理画面（`/mock/`）から登録
 
 来店実績は、管理画面の「来店」ボタンまたは取り込み API の `status: "visited"` で更新し、
 `customers.last_visit_at` へ自動反映される（Phase 4・5 のジョブはこれを起点に動く）。

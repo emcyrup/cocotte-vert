@@ -1,6 +1,6 @@
 # Instagram 投稿の設定
 
-管理画面（`/admin/`）の「Instagram 投稿」から、店舗の Instagram アカウントへ写真を投稿できる。
+店舗管理画面（`/mock/` の「SNS投稿」）から、店舗の Instagram アカウントへ写真を投稿できる。
 11枚以上は自動で2投稿に分割し、予約投稿にも対応する。
 
 LINE の配信と同じく **`IG_POST_MODE=dry_run` が既定**で、`live` にするまで実投稿されない。
@@ -83,7 +83,7 @@ import('./src/config.js').then(async ({loadConfig}) => {
 
 ## 使い方
 
-1. 管理画面 `/admin/` の「Instagram 投稿」で写真を選ぶ（複数可・最大20枚）
+1. 店舗管理画面 `/mock/` の「SNS投稿」で写真を選ぶ（複数可・最大20枚）
 2. キャプションを書く
 3. 「今すぐ投稿」または日時を指定して「予約投稿」
 

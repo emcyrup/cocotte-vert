@@ -9,6 +9,37 @@ import { buildBirthdayMessage } from '../line/messages/birthday.js';
 export function createAdminRouter({ pool, reservationService, lineClient, config, shiftService = null }) {
   const router = express.Router();
 
+  // ---- ダッシュボードの集計 ----
+  // 画面にサンプルの数字を残すと実績と誤解されるため、出せる数だけをここで返す。
+  // 売上・来店経路は持っていないので返さない（画面側でもカードごと出さない）
+  router.get('/dashboard', async (_req, res, next) => {
+    try {
+      const { rows } = await pool.query(
+        `WITH jst AS (SELECT (now() AT TIME ZONE 'Asia/Tokyo')::date AS today)
+         SELECT
+           (SELECT count(*) FROM customers) AS customers,
+           (SELECT count(*) FROM pets) AS pets,
+           (SELECT count(*) FROM customers
+             WHERE (created_at AT TIME ZONE 'Asia/Tokyo')::date
+                   >= date_trunc('month', (SELECT today FROM jst))::date) AS new_customers,
+           (SELECT count(*) FROM reservations
+             WHERE status = 'visited'
+               AND (reserved_at AT TIME ZONE 'Asia/Tokyo')::date
+                   >= date_trunc('month', (SELECT today FROM jst))::date) AS visits_this_month,
+           (SELECT count(*) FROM reservations
+             WHERE status = 'requested' AND reserved_at > now()) AS pending_reservations,
+           (SELECT count(*) FROM reservations
+             WHERE (reserved_at AT TIME ZONE 'Asia/Tokyo')::date = (SELECT today FROM jst)
+               AND status IN ('confirmed', 'visited')) AS today_reservations,
+           (SELECT count(*) FROM shift_requests WHERE status = 'pending') AS pending_shift_requests`
+      );
+      // count() は bigint で文字列になるため、画面で扱いやすい数値へ揃える
+      res.json(Object.fromEntries(Object.entries(rows[0]).map(([k, v]) => [k, Number(v)])));
+    } catch (err) {
+      next(err);
+    }
+  });
+
   // ---- スタッフ ----
   // 予約フォームの担当選択にも使うため、既定では在職者のみ。
   // スタッフ情報画面は ?all=1 で退職者も含めて取得する

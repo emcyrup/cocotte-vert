@@ -8,7 +8,7 @@ import { looksLikePhone } from '../../customers/phone.js';
 // フォロー送信からこの日数以内の返信をフォロー回答とみなす
 const FOLLOWUP_WINDOW_DAYS = 14;
 
-// リッチメニュー未設定でもテキストで LIFF を呼び出せるようにする（1:1 トークのみ）
+// リッチメニュー未設定でもテキストで LIFF を呼び出せるようにする（1:1・グループどちらでも）
 const INFO_COMMANDS = new Set(['お客様情報', '登録情報', '会員情報', 'マイページ']);
 const normalizeInfoCommand = (text) => text.replace(/[\s　]/g, '').replace(/[?？!！。、]/g, '');
 
@@ -100,15 +100,9 @@ export function createMessageHandler({
     // スタッフグループからのコマンドを先に処理する（顧客向けの分類には回さない）
     if (staffCommand && (await staffCommand(event, text))) return;
 
-    if (!event.source?.userId) return;
-
-    // お客様情報の呼び出し。分類（Haiku）に回す前に処理する
-    if (
-      liffUrl &&
-      event.source?.type === 'user' &&
-      INFO_COMMANDS.has(normalizeInfoCommand(text)) &&
-      event.replyToken
-    ) {
+    // お客様情報の呼び出し。グループでも動くよう userId の有無より先に処理し、
+    // 分類（Haiku）にも回さない。開いた本人の情報だけが表示されるため導線自体は無害
+    if (liffUrl && INFO_COMMANDS.has(normalizeInfoCommand(text)) && event.replyToken) {
       await lineClient.reply(event.replyToken, [
         {
           type: 'text',
@@ -117,6 +111,8 @@ export function createMessageHandler({
       ]);
       return;
     }
+
+    if (!event.source?.userId) return;
 
     if (looksLikePhone(text)) {
       await handlePhoneText(event, text);

@@ -88,6 +88,22 @@ test('表記ゆれ（空白・記号つき）でも LIFF 導線を返す', async
   assert.match(f.replies[0].messages[0].text, /liff/);
 });
 
+test('グループ内の「お客様情報」にも LIFF 導線を返す', async () => {
+  const f = makeFakes();
+  const handler = createMessageHandler({ ...f, liffUrl: 'https://liff.line.me/123-abc' });
+
+  await handler({
+    type: 'message',
+    replyToken: 'r1',
+    source: { type: 'group', groupId: 'G1', userId: 'U1' },
+    message: { type: 'text', text: 'お客様情報' },
+  });
+
+  assert.equal(f.replies.length, 1);
+  assert.match(f.replies[0].messages[0].text, /liff/);
+  assert.equal(f.classifyCalls.length, 0);
+});
+
 test('liffUrl 未設定なら通常のフォロー回答として扱う', async () => {
   const f = makeFakes();
   const handler = createMessageHandler(f);

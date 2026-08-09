@@ -462,26 +462,33 @@ tr.await td{background:var(--warn-soft)}
   .mcell .closed{font-size:10px; letter-spacing:0}
 }
 @media (max-width:640px){
-  /* 7列の表は潰れて読めないため、1予約=1カードに組み替える（管理画面と同じ方針） */
-  #s-resv .card .bd{overflow-x:visible}
-  #s-resv table,#s-resv tbody,#s-resv tr,#s-resv td{display:block}
-  #s-resv thead{display:none}
-  #s-resv tr{border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:10px}
-  #s-resv tr.await{background:var(--warn-soft)}
-  #s-resv tr.await td{background:none}
-  #s-resv td{border:0; padding:2px 0; white-space:normal}
-  #s-resv td::before{content:attr(data-label)"： "; color:var(--muted); font-size:11px}
-  #s-resv td.rvat{font-weight:700; font-size:14px; margin-bottom:2px}
-  #s-resv td.rvat::before,#s-resv td.rowacts::before{content:none}
-  #s-resv .rowacts{margin-top:8px}
-  #s-resv .sbtn{flex:1 1 auto; padding:7px 10px}
-  .frow input,.frow select,.frow .btn{flex:1 1 100%}
+  /* 7列の予約一覧は潰れて読めないため、1予約=1カードに組み替える。
+     同じ画面にある料金表・店舗情報まで組み替えると逆に読めなくなるので、
+     対象は予約一覧のテーブルだけに限る */
+  .rvtable,.rvtable tbody,.rvtable tr,.rvtable td{display:block}
+  .rvtable thead{display:none}
+  .rvtable tr{border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:10px}
+  .rvtable tr.await{background:var(--warn-soft)}
+  .rvtable tr.await td{background:none}
+  .rvtable td{border:0; padding:2px 0; white-space:normal}
+  .rvtable td::before{content:attr(data-label)"： "; color:var(--muted); font-size:11px}
+  .rvtable td.rvat{font-weight:700; font-size:14px; margin-bottom:2px}
+  .rvtable td.rvat::before,.rvtable td.rowacts::before{content:none}
+  .rvtable .rowacts{margin-top:8px}
+  /* 操作ボタンは文字幅に収める。横いっぱいに伸ばすと画面が間延びして、
+     一度に見える情報が減ってしまう */
+  .rvtable .sbtn{flex:0 0 auto; padding:5px 9px}
+  /* 期間の指定は日付を2つ横に並べて1行に収める */
+  .frow input[type="date"]{flex:1 1 44%}
+  /* 入力欄だけ全幅にし、ボタンは隣に小さく置く */
+  .frow input,.frow select{flex:1 1 100%}
+  .frow .btn{flex:0 0 auto; padding:7px 14px; font-size:12.5px}
 
   /* 名前・状態・操作が1行に詰まると読めないため、縦に積む
      （スタッフ情報／承認待ちの申請／シフト申請の各行） */
-  .sreq{grid-template-columns:1fr; gap:8px}
+  .sreq{grid-template-columns:1fr; gap:6px}
   .sreq .acts2{flex-wrap:wrap}
-  .sreq .acts2 .sbtn,.sreq .acts2 .abtn{flex:1 1 auto}
+  .sreq .acts2 .sbtn,.sreq .acts2 .abtn{flex:0 0 auto}
 
   /* 列の多い表は縮めると1文字ずつ折り返して読めなくなる。
      最低幅を与えてカード内で横スクロールさせる */
@@ -490,12 +497,12 @@ tr.await td{background:var(--warn-soft)}
   /* 期間指定の「〜」は、日付が縦に並ぶと意味をなさないので隠す */
   #s-resv .frow>span{display:none}
 
-  /* シフトの期間指定。日付が折り返して「〜」が行末に残るのを防ぐ */
-  #shweek{display:grid; grid-template-columns:repeat(3,1fr); gap:8px}
-  #shweek .sbtn{width:100%}
-  #shweek input[type="date"]{grid-column:span 3; width:100%}
+  /* シフトの期間指定。日付の行と操作の行に分けて2行に収める
+     （全幅にすると4行を占めて表が画面から押し出される） */
+  #shweek{gap:6px}
+  #shweek input[type="date"]{order:0; flex:1 1 44%; width:auto; padding:6px 8px; font-size:12.5px}
+  #shweek .sbtn{order:1; flex:0 0 auto}
   #shweek span{display:none}
-  #shweek #sh-apply{grid-column:span 3}
 
   /* 顧客カルテの見出し。名前と操作ボタンが横に潰れないようにする */
   .cust-hd{flex-wrap:wrap}
@@ -679,7 +686,7 @@ tr.await td{background:var(--warn-soft)}
       </div>
       <p class="hint">承認待ちは対応漏れを防ぐため、期間の指定に関わらず常に先頭へ表示します。
       📩ボタンはテスト送信で、宛先はテスト用アカウントに固定されます（飼い主様には届きません）。</p>
-      <table>
+      <table class="rvtable">
         <thead>
           <tr><th>日時</th><th>わんちゃん</th><th>コース</th><th>担当</th><th>状態</th><th>ご要望</th><th>操作</th></tr>
         </thead>

@@ -7,8 +7,11 @@
 
 import { formatShift } from '../../shifts/service.js';
 
-// 連携の合言葉。顧客が偶然送る文面と衝突しないよう、接頭辞を必須にする
-const LINK_COMMAND_RE = /^(?:スタッフ(?:登録|連携)|shift\s*link)[\s　:：]*(\d{6})$/i;
+// 連携の合言葉。顧客が偶然送る文面と衝突しないよう、接頭辞を必須にする。
+// 1:1 では6桁の連携コードだけを受け付ける。名前での連携を許すと、名前さえ知っていれば
+// 誰でもそのスタッフに成りすませてしまうため、名前はスタッフグループ限定にしている
+const LINK_COMMAND_RE = /^(?:スタッフ(?:登録|連携)|shift\s*link)[\s　:：]*(.+)$/i;
+const LINK_CODE_RE = /^\d{6}$/;
 
 const jstDateFmt = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Asia/Tokyo',
@@ -24,10 +27,22 @@ export function createStaffShiftHandler({ shiftService, shiftParser, lineClient,
     }
   }
 
-  async function handleLink(event, code) {
+  async function handleLink(event, arg) {
+    if (!LINK_CODE_RE.test(arg)) {
+      // 名前で送られた場合。ここで黙って落とすと顧客向けの処理に流れ、
+      // 送った本人には何も返らないため、送り方を案内する
+      await replyText(
+        event,
+        'このトークでは6桁の連携コードで登録できます。\n' +
+          '例：スタッフ登録 123456\n' +
+          'コードは店長が店舗管理画面から発行できます。\n' +
+          'お名前での登録は、スタッフ用のLINEグループでのみ受け付けています。'
+      );
+      return true;
+    }
     const result = await shiftService.linkStaffByCode({
       lineUserId: event.source.userId,
-      code,
+      code: arg,
     });
     if (!result.ok) {
       await replyText(

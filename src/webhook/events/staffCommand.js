@@ -15,9 +15,10 @@ const COMMANDS = {
   実行結果: 'jobSummary',
 };
 
-// グループでの LINE 連携。名前で本人のアカウントを紐付ける
-// （1:1 の合言葉方式より手数が少なく、スタッフ全員が同じ場で完結する）
+// グループでの LINE 連携。名前でも、管理画面で発行した6桁の連携コードでも紐付けられる
+// （どちらを送るか迷わせないため、同じ言い回しで両方を受け付ける）
 const LINK_COMMAND_RE = /^(?:スタッフ(?:登録|連携)|シフト登録)[\s　:：]+(.+)$/;
+const LINK_CODE_RE = /^\d{6}$/;
 
 function normalize(text) {
   return text.replace(/[\s　]/g, '').replace(/[?？!！。、]/g, '');
@@ -33,14 +34,18 @@ export function createStaffCommandHandler({ settings, lineClient, config, shiftS
    * スタッフグループからのコマンドなら処理して true を返す。
    * それ以外（顧客の発言・未設定のグループ）は false を返し、通常の処理へ委ねる。
    */
-  async function handleLink(event, name) {
-    const result = await shiftService.linkStaffByName({
-      lineUserId: event.source.userId,
-      name,
-    });
+  async function handleLink(event, arg) {
+    const lineUserId = event.source.userId;
+    // 6桁の数字は管理画面で発行した連携コード。名前と取り違えないよう先に判定する
+    const byCode = LINK_CODE_RE.test(arg);
+    const result = byCode
+      ? await shiftService.linkStaffByCode({ lineUserId, code: arg })
+      : await shiftService.linkStaffByName({ lineUserId, name: arg });
+
     const messages = {
-      not_found: `「${name}」というスタッフが見つかりません。店舗管理画面に登録された名前で送ってください。`,
-      ambiguous: `「${name}」に当てはまるスタッフが複数います。店舗管理画面から LINE ID を直接設定してください。`,
+      invalid_code: '連携コードを確認できませんでした。\n有効期限が切れている可能性があります。店長に再発行をご依頼ください。',
+      not_found: `「${arg}」というスタッフが見つかりません。店舗管理画面に登録された名前で送ってください。`,
+      ambiguous: `「${arg}」に当てはまるスタッフが複数います。店舗管理画面から LINE ID を直接設定してください。`,
       already_linked_to_other: 'この LINE アカウントは既に別のスタッフに紐付いています。',
     };
     const body = result.ok

@@ -113,3 +113,15 @@ test('6桁の数字だけの発言は連携コマンドにしない（顧客の�
   const handler = createStaffShiftHandler(f);
   assert.equal(await handler(userEvent('123456'), '123456'), false);
 });
+
+test('1:1 で名前を送られたら、コードでの登録方法を案内する', async () => {
+  const f = makeFakes({ staff: null, link: { ok: true, staff: { id: 3, name: '高橋' } } });
+  const handler = createStaffShiftHandler(f);
+
+  const handled = await handler(userEvent('スタッフ登録 高橋'), 'スタッフ登録 高橋');
+
+  assert.equal(handled, true, '黙って顧客向けの処理へ落とさない');
+  assert.match(f.replies[0].text, /6桁の連携コード/);
+  // 名前だけで成りすませないよう、1:1 では名前による連携を行わない
+  assert.equal(f.created.length, 0);
+});

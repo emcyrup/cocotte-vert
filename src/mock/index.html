@@ -323,7 +323,7 @@ button.trow2:focus-visible{outline:2px solid var(--accent); outline-offset:-2px}
 .search{display:flex; gap:8px; align-items:center; margin-bottom:14px}
 .search input{flex:1; max-width:340px; border:1px solid var(--line); border-radius:9px; background:var(--surface); color:var(--ink); font:inherit; font-size:13px; padding:9px 12px}
 .search input:focus-visible{outline:2px solid var(--accent); outline-offset:-1px}
-.search .cnt{font-size:12.5px; color:var(--muted)}
+.search .cnt{font-size:12.5px; color:var(--muted); white-space:nowrap; flex:0 0 auto}
 .owners{display:grid; grid-template-columns:1fr; gap:10px}
 .ocard{background:var(--surface); border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow);
   padding:12px 16px; display:flex; align-items:center; gap:20px}
@@ -480,6 +480,8 @@ tr.await td{background:var(--warn-soft)}
   .rvtable .sbtn{flex:0 0 auto; padding:5px 9px}
   /* 期間の指定は日付を2つ横に並べて1行に収める */
   .frow input[type="date"]{flex:1 1 44%}
+  /* 検索欄が広がりすぎて件数がはみ出すのを防ぐ */
+  .search input{max-width:none; min-width:0}
   /* 入力欄だけ全幅にし、ボタンは隣に小さく置く */
   .frow input,.frow select{flex:1 1 100%}
   .frow .btn{flex:0 0 auto; padding:7px 14px; font-size:12.5px}
@@ -544,7 +546,7 @@ tr.await td{background:var(--warn-soft)}
 <section class="screen on" id="s-dash">
   <div class="crumb" id="dash-date">2026年7月24日（金）</div>
   <h1>ダッシュボード</h1>
-  <p class="sub">よく使う機能へのショートカット。当月の新規・来店状況とトリマー実績もこの画面で確認できます。</p>
+  <p class="sub">よく使う機能へのショートカットと、本日・今月の状況です。</p>
 
   <div class="search dsearch">
     <input id="dq" type="search" placeholder="飼い主名・わんちゃん名で検索" aria-label="わんちゃんを検索">
@@ -672,8 +674,7 @@ tr.await td{background:var(--warn-soft)}
 <section class="screen" id="s-resv">
   <div class="crumb">予約管理</div>
   <h1>予約管理</h1>
-  <p class="sub">日々の予約操作をこの1画面で行います。LINEの予約フォームから届いたリクエストは
-  <b>承認するまで確定しません</b>。承認・見送りのどちらでも飼い主様へ自動でお知らせします。</p>
+  <p class="sub">LINEから届いたご予約は<b>承認するまで確定しません</b>。結果は飼い主様へ自動で届きます。</p>
 
   <div class="card">
     <div class="hd"><h2>予約一覧</h2><span class="pill warn" id="awaitcnt">承認待ち 2件</span></div>
@@ -684,8 +685,7 @@ tr.await td{background:var(--warn-soft)}
         <input type="date" id="rv-to" value="2026-07-31" aria-label="終了日">
         <button class="btn sub" id="rv-reload" type="button">表示</button>
       </div>
-      <p class="hint">承認待ちは対応漏れを防ぐため、期間の指定に関わらず常に先頭へ表示します。
-      📩ボタンはテスト送信で、宛先はテスト用アカウントに固定されます（飼い主様には届きません）。</p>
+      <p class="hint">承認待ちは期間に関わらず先頭に出ます。📩はテスト送信（飼い主様には届きません）。</p>
       <table class="rvtable">
         <thead>
           <tr><th>日時</th><th>わんちゃん</th><th>コース</th><th>担当</th><th>状態</th><th>ご要望</th><th>操作</th></tr>
@@ -699,7 +699,7 @@ tr.await td{background:var(--warn-soft)}
     <div class="card">
       <div class="hd"><h2>新規予約</h2><span class="pill mut">スタッフ入力</span></div>
       <div class="bd">
-        <p class="hint">お電話やご来店時のご予約をここで登録します。この経路で入れた予約は承認不要で確定します。</p>
+        <p class="hint">お電話・ご来店時のご予約用。承認不要で確定します。</p>
         <div class="frow" style="margin-bottom:8px">
           <input type="text" id="nr-q" placeholder="飼い主名・わんちゃん名 or 電話番号で検索">
           <button class="btn sub" id="nr-search" type="button">検索</button>
@@ -724,9 +724,7 @@ tr.await td{background:var(--warn-soft)}
     <div class="card">
       <div class="hd"><h2>配信メッセージのテスト送信</h2><span class="pill good">誤爆しません</span></div>
       <div class="bd">
-        <p class="hint">日付の条件を待たずに実物のメッセージを確認できます。宛先は常にテスト用アカウントで、
-        配信ログにも残らないため本番の配信には影響しません。予約に紐づく「前々日確認」「来店フォロー」は
-        一覧の📩ボタンから送れます。</p>
+        <p class="hint">実物のメッセージを確認できます。宛先はテスト用アカウント固定で、本番の配信には影響しません。</p>
         <div class="frow" style="margin-bottom:8px">
           <input type="text" id="ts-q" placeholder="飼い主名・わんちゃん名 or 電話番号で検索">
           <button class="btn sub" id="ts-search" type="button">検索</button>
@@ -746,9 +744,7 @@ tr.await td{background:var(--warn-soft)}
     <div class="card">
       <div class="hd"><h2>コース・メニュー管理</h2></div>
       <div class="bd">
-        <p class="hint">ここで登録したコースが、LINEの予約フォームの選択肢になります。
-        過去の予約に名前が残るため削除はできません。使わなくなったものは「停止」してください。
-        <b>料金は犬種によって変わる</b>ため、予約フォームでは金額を出さず、ご来店時にご案内する想定です。</p>
+        <p class="hint">LINEの予約フォームの選択肢になります。使わなくなったものは「停止」してください。</p>
         <div class="frow">
           <input type="text" id="mn-name" placeholder="コース名（例：シャンプーコース）">
           <input type="number" id="mn-min" placeholder="所要分" min="5" step="5" style="flex:0 0 110px">
@@ -762,9 +758,8 @@ tr.await td{background:var(--warn-soft)}
       <div class="card">
         <div class="hd"><h2>料金表</h2><span class="pill mut">公式サイト掲載分</span></div>
         <div class="bd">
-          <p class="hint">トリミングは犬種ごとに料金が変わるため、予約フォームには金額を出さず
-          ご来店時にご案内する想定です（税込・全29犬種）。「—」は取り扱いなし。
-          ミックス犬・その他の犬種は、近いサイズ・毛量の犬種の料金になります。</p>
+          <p class="hint">税込・全29犬種。「—」は取り扱いなし。ミックス犬は近いサイズ・毛量の犬種の料金です。
+          <b>予約フォームには金額を出しません</b>（ご来店時にご案内）。</p>
           <div style="max-height:380px;overflow-y:auto" tabindex="0" aria-label="犬種別の料金表（スクロールできます）">
             <table>
               <tr><th>犬種</th><th class="r">シャンプー</th><th class="r">シャンプー＆カット</th></tr>
@@ -824,19 +819,6 @@ tr.await td{background:var(--warn-soft)}
           </dl>
         </div>
       </div>
-      <div class="card">
-        <div class="hd"><h2>飼い主様の登録</h2><span class="pill mut">LINE未連携</span></div>
-        <div class="bd">
-          <p class="hint">お電話でのご予約などLINEと連携していない飼い主様を登録します。
-          あとからLINEでご登録いただくと、電話番号が一致した時点で自動的に同じ方として紐づきます。</p>
-          <div class="frow">
-            <input type="text" id="nc-name" placeholder="飼い主様のお名前">
-            <input type="tel" id="nc-tel" placeholder="電話番号">
-            <input type="date" id="nc-bd" aria-label="誕生日（任意）" style="flex:0 0 150px">
-            <button class="btn" id="nc-add" type="button">登録</button>
-          </div>
-        </div>
-      </div>
     </div>
   </div>
 </section>
@@ -845,7 +827,21 @@ tr.await td{background:var(--warn-soft)}
 <section class="screen" id="s-list">
   <div class="crumb">顧客管理</div>
   <h1>顧客一覧</h1>
-  <p class="sub">飼い主ごとにわんちゃんをまとめて管理します。名前をタップするとカルテが開きます。</p>
+  <p class="sub">名前をタップするとカルテが開きます。</p>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="hd"><h2>飼い主様の登録</h2><span class="pill mut">LINE未連携</span></div>
+    <div class="bd">
+      <p class="hint">LINE未連携の方を登録します。あとからLINE登録されると電話番号で自動的に紐づきます。</p>
+      <div class="frow">
+        <input type="text" id="nc-name" placeholder="飼い主様のお名前">
+        <input type="tel" id="nc-tel" placeholder="電話番号">
+        <input type="date" id="nc-bd" aria-label="誕生日（任意）" style="flex:0 0 150px">
+        <button class="btn" id="nc-add" type="button">登録</button>
+      </div>
+    </div>
+  </div>
+
   <div class="search">
     <input id="q" type="search" placeholder="飼い主名・わんちゃん名で検索" aria-label="顧客を検索">
     <span class="cnt" id="cnt"></span>
@@ -867,8 +863,7 @@ tr.await td{background:var(--warn-soft)}
 <section class="screen" id="s-rem">
   <div class="crumb">自動化</div>
   <h1>リマインド設定</h1>
-  <p class="sub">こちらは<b>店舗全体の設定</b>です。条件を満たすと自動で送信されます。<b>わんちゃんごとのON/OFFは各カルテの「この子へのリマインド設定」</b>で個別に変更できます。
-  <span class="pill good">実装済</span> は現行システムで既に動いている配信、<span class="pill mut">構想</span> は今後の候補です。</p>
+  <p class="sub">条件を満たすと自動で送信されます。<span class="pill good">実装済</span> は稼働中、<span class="pill mut">構想</span> は今後の候補です。</p>
 
   <div class="card">
     <div class="rem" id="remrows">
@@ -916,8 +911,7 @@ tr.await td{background:var(--warn-soft)}
   <div class="card" style="margin-bottom:16px">
     <div class="hd"><h2>スタッフ情報</h2><span class="pill mut" id="stfcnt"></span></div>
     <div class="bd">
-      <p class="hint" id="stf-note">在職状況と、公式LINE との連携状況をここで管理します。
-      連携すると、そのスタッフはBotとの1対1のトークからシフト変更を申請できます。</p>
+      <p class="hint" id="stf-note">連携すると、そのスタッフは公式LINEからシフト変更を申請できます。</p>
       <div class="frow" style="margin-bottom:12px">
         <input type="text" id="ns-name" placeholder="スタッフ名" style="max-width:320px">
         <button class="btn" id="ns-add" type="button">追加</button>
@@ -927,7 +921,7 @@ tr.await td{background:var(--warn-soft)}
   </div>
 
   <h2 style="font-size:15px;margin:22px 0 6px">シフト入力</h2>
-  <p class="shift-note">マスをクリックするだけで「出勤 → AM半休 → PM半休 → 公休 → 有休 → 時間休」の順に切り替わります（実際に触ってみてください）。入力したシフトはそのまま予約カレンダーに反映されます。名前の横の☆をタップすると<b>新人マーク&#11088;</b>を付与でき、カレンダーにも反映されます。</p>
+  <p class="shift-note">マスをクリックすると「出勤 → AM半休 → PM半休 → 公休 → 有休 → 時間休」の順に切り替わります。</p>
 
   <div class="frow" id="shweek" style="margin-bottom:10px; display:none">
     <button class="sbtn" id="sh-prev" type="button">&larr; 前へ</button>
@@ -988,8 +982,7 @@ tr.await td{background:var(--warn-soft)}
 <section class="screen" id="s-sns">
   <div class="crumb">集客</div>
   <h1>SNS投稿</h1>
-  <p class="sub">写真投稿（自動2分割・予約投稿）は <span class="pill good">実装済</span>（実物は管理画面の「Instagram 投稿」）。
-  リール動画は <span class="pill mut">構想</span>。11枚以上を選ぶと Instagram の1投稿10枚上限に合わせて自動で2つに分割されます。</p>
+  <p class="sub">11枚以上を選ぶと、自動で2つの投稿に分割されます。リール動画は <span class="pill mut">構想</span>。</p>
 
   <div class="grid snswrap">
     <div class="card">
@@ -1352,12 +1345,10 @@ function remCard(d, o){
   const off = REMINDERS.filter(r => !r.need(d)).map(r => r.n).join('・');
   const note = adminLive
     ? (o.optOut
-        ? 'この飼い主様は<b>配信停止</b>に設定されているため、自動配信は送られません。'
-          + '再開するには「飼い主様情報を編集」で配信停止のチェックを外してください。'
-        : '配信を止めたいときは「飼い主様情報を編集」の<b>配信停止</b>にチェックを入れてください。'
-          + '（この飼い主様宛の自動配信がすべて止まります）')
-    : '個別にOFFにすると、店舗全体の設定にかかわらずこの子だけ送信を止められます（配信停止のご要望などに使用）。'
-      + (off ? '<br>現在の対象外: ' + off + '（条件を満たすと自動で表示されます）' : '');
+        ? '<b>配信停止中</b>のため送られません。再開は「飼い主様情報を編集」から。'
+        : '止めるときは「飼い主様情報を編集」の<b>配信停止</b>にチェックを入れてください。')
+    : '個別にOFFにすると、この子だけ送信を止められます。'
+      + (off ? '<br>現在の対象外: ' + off : '');
   return '<div class="card"><div class="hd"><h2>この子へのリマインド設定</h2>'
     + '<span class="pill mut">' + (adminLive ? '飼い主様ごとの設定' : '店舗設定を引き継ぎ') + '</span></div>'
     + '<div class="rem">' + rows + '</div>'
@@ -1902,10 +1893,9 @@ async function renderStaffInfo(){
     if (stateEl) {
       // ②が使えるかどうかは、この設定の有無で決まる。原因を画面で切り分けられるようにする
       stateEl.innerHTML = status.groupConfigured
-        ? '<span class="pill good">スタッフ用グループ 設定済み</span> ②のグループでの連携が使えます。'
-        : '<span class="pill warn">スタッフ用グループ 未設定</span> '
-          + '②は使えません（グループで送っても連携されません）。①か③をお使いください。'
-          + 'グループを設定するには、Botをスタッフ用のLINEグループに招待してください。';
+        ? '<span class="pill good">スタッフ用グループ 設定済み</span> ②が使えます。'
+        : '<span class="pill warn">スタッフ用グループ 未設定</span> ②は使えません。'
+          + '①か③をお使いください（Botをグループに招待すると②も使えます）。';
     }
   }
   listEl.innerHTML = '';
@@ -1937,10 +1927,8 @@ function renderRemindLive(){
     row.querySelector('.nm .pill')?.remove();
   });
   document.querySelector('#s-rem .sub').innerHTML =
-    'こちらは<b>店舗全体の設定</b>です。<span class="pill good">稼働中</span> の4種は毎朝10:00に自動送信されています。'
-    + '<span class="pill mut">未実装</span> は今後の候補です。'
-    + '<b>お客様ごとの停止</b>は、顧客カルテの「この子へのリマインド設定」または'
-    + '「飼い主様情報を編集」の配信停止で行えます。';
+    '<span class="pill good">稼働中</span> の4種は毎朝10:00に自動送信されています。'
+    + 'お客様ごとに止めるときは、カルテの「飼い主様情報を編集」で配信停止にしてください。';
 
   // 初回フォローの状況は実データを持っていないため、カードごと出さない
   document.getElementById('follow3')?.remove();
@@ -1990,8 +1978,7 @@ async function renderDashboardLive(){
   // 当日の配信対象数は数えていないため、件数ではなく条件を示す
   const sub = document.querySelector('#s-dash .sub');
   if (sub) {
-    sub.innerHTML = 'よく使う機能へのショートカットと、本日・今月の状況です。'
-      + '売上や来店経路はこのシステムでは扱っていないため表示していません。';
+    sub.innerHTML = 'よく使う機能へのショートカットと、本日・今月の状況です。';
   }
 
   const pill = document.getElementById('dash-remind-pill');
@@ -2681,8 +2668,8 @@ document.getElementById('sns-later').addEventListener('click', () => {
     document.getElementById('sns-at').value =
       `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T19:00`;
     const sub = document.querySelector('#s-sns .sub');
-    if (sub) sub.innerHTML = '写真投稿（自動2分割・予約投稿）は <span class="pill good">実投稿モード</span> — この画面から実際に Instagram へ投稿されます。'
-      + 'リール動画は <span class="pill mut">構想</span>。11枚以上を選ぶと Instagram の1投稿10枚上限に合わせて自動で2つに分割されます。';
+    if (sub) sub.innerHTML = '<span class="pill good">実投稿モード</span> この画面から実際に Instagram へ投稿されます。'
+      + '11枚以上は自動で2投稿に分割されます。';
   } catch { /* デモ動作のまま */ }
   renderSnsPhotos();
   renderSnsHist();
@@ -3206,15 +3193,11 @@ async function loadFamiliesLive(){
 
   // シフト申請のカードを、デモの会話例からスタッフ連携の操作 UI に差し替える
   document.getElementById('shift-line-bd').innerHTML =
-    '<p class="hint">連携したスタッフが公式LINEのトークにシフトの希望を送ると、'
-    + '申請として右の一覧に届きます。文章は自由で、日付と種別が読み取れれば受け付けます'
-    + '（例：<b>8/1 有休お願いします</b> ／ <b>7/31 10時から12時まで時間休</b>）。'
-    + '連携していない相手の発言は、これまでどおり顧客からのメッセージとして扱われます。</p>'
-    + '<p class="hint"><b>連携のしかたは3通りです。</b><br>'
-    + '① 上の「スタッフ情報」で<b>連携コード発行</b>を押し、本人が公式LINEへ'
-    + '<b>その6桁の数字を送る</b>だけ（1対1のトークでもグループでも可）<br>'
-    + '② スタッフ用のLINEグループで、本人が「<b>スタッフ登録 高橋</b>」と自分の名前、'
-    + 'または発行したコードを送る<br>'
+    '<p class="hint">連携したスタッフが公式LINEに希望を送ると、申請として右に届きます。'
+    + '文章は自由です（例：<b>8/1 有休お願いします</b>）。</p>'
+    + '<p class="hint"><b>連携のしかた</b><br>'
+    + '① 上の「連携コード発行」を押し、本人が公式LINEへ<b>その6桁を送る</b><br>'
+    + '② スタッフ用グループで、本人が「<b>スタッフ登録 高橋</b>」と名前を送る<br>'
     + '③ LINE ID が分かっていれば「編集」から直接入力する</p>'
     + '<p class="hint" id="shift-group-state"></p>';
 
@@ -3232,9 +3215,8 @@ async function loadFamiliesLive(){
 
   // 週のシフト表そのものはまだ実データを持たないため、承認結果は下の一覧に出ることを明示する
   document.getElementById('shift-approve-note').innerHTML =
-    '「承認」「却下」を押すと、申請したスタッフへ LINE で結果が自動通知されます。'
-    + '<b>承認すると上のシフト表にも反映されます。</b>'
-    + 'AI の読み違いがないか、各行の「原文」を確かめてから承認してください。';
+    '承認すると<b>シフト表に反映</b>され、スタッフへLINEで通知されます。'
+    + 'AI の読み違いがないか「原文」を確かめてから承認してください。';
   document.querySelector('.foot').innerHTML =
     'ここっとベール 管理システム<br><b>実運用モード</b><br>実データに接続しています';
   // 実運用モードの選択は飼い主様（顧客）単位。初期表示の文言もそろえる
@@ -3246,9 +3228,7 @@ async function loadFamiliesLive(){
 
   document.getElementById('shweek').style.display = '';
   document.querySelector('#s-shift .shift-note').innerHTML =
-    'マスをクリックすると「出勤 → AM半休 → PM半休 → 公休 → 有休 → 時間休 → 未入力」の順に切り替わり、'
-    + '<b>その都度保存されます</b>。スタッフを追加すると、この表に行が自動で増えます。'
-    + '公式LINE からの申請を承認すると、該当のマスにも反映されます。'
+    'マスをクリックすると区分が切り替わり、<b>その都度保存されます</b>。'
     + '<span class="pill mut">構想</span> 予約カレンダーへの反映はまだです。';
 
   // 実運用モードであることを画面上でも分かるようにする

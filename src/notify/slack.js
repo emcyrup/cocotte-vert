@@ -23,7 +23,10 @@ export function createSlackNotifier({ webhookUrl, fetchFn = fetch }) {
   /** ジョブ異常終了など、エラー内容とスタックトレースを送る */
   async function notifyError(context, err) {
     const stack = err?.stack || String(err);
-    return notify(`:rotating_light: *${context}*\n\`\`\`${stack.slice(0, 2800)}\`\`\``);
+    // LINE SDK の HTTPFetchError は原因（例: Invalid reply token）が body に入っており、
+    // スタックだけでは「400 - Bad Request」しか分からないため本文も添える
+    const body = typeof err?.body === 'string' && err.body ? `\nresponse: ${err.body.slice(0, 600)}` : '';
+    return notify(`:rotating_light: *${context}*\n\`\`\`${(stack + body).slice(0, 2800)}\`\`\``);
   }
 
   return { notify, notifyError };

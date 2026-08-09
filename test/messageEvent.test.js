@@ -55,6 +55,52 @@ function makeEvent(text) {
   };
 }
 
+// ---- お客様情報の呼び出し ----
+
+test('「お客様情報」で LIFF への導線を返信し、分類には回さない', async () => {
+  const f = makeFakes();
+  const handler = createMessageHandler({ ...f, liffUrl: 'https://liff.line.me/123-abc' });
+
+  await handler({
+    type: 'message',
+    replyToken: 'r1',
+    source: { type: 'user', userId: 'U1' },
+    message: { type: 'text', text: 'お客様情報' },
+  });
+
+  assert.equal(f.replies.length, 1);
+  assert.match(f.replies[0].messages[0].text, /https:\/\/liff\.line\.me\/123-abc/);
+  assert.equal(f.classifyCalls.length, 0);
+  assert.equal(f.linkCalls.length, 0);
+});
+
+test('表記ゆれ（空白・記号つき）でも LIFF 導線を返す', async () => {
+  const f = makeFakes();
+  const handler = createMessageHandler({ ...f, liffUrl: 'https://liff.line.me/123-abc' });
+
+  await handler({
+    type: 'message',
+    replyToken: 'r1',
+    source: { type: 'user', userId: 'U1' },
+    message: { type: 'text', text: ' マイページ！ ' },
+  });
+  assert.equal(f.replies.length, 1);
+  assert.match(f.replies[0].messages[0].text, /liff/);
+});
+
+test('liffUrl 未設定なら通常のフォロー回答として扱う', async () => {
+  const f = makeFakes();
+  const handler = createMessageHandler(f);
+
+  await handler({
+    type: 'message',
+    replyToken: 'r1',
+    source: { type: 'user', userId: 'U1' },
+    message: { type: 'text', text: 'お客様情報' },
+  });
+  assert.equal(f.classifyCalls.length, 1, 'コマンド扱いせず分類に回る');
+});
+
 // ---- 電話番号（補助経路） ----
 
 test('電話番号らしきテキストは突合を試行し、成功なら完了を返信する', async () => {

@@ -22,7 +22,7 @@ export function createWebhookHandler({
   const handlers = {
     follow: createFollowHandler({ pool, lineClient, liffUrl }),
     unfollow: createUnfollowHandler({ pool }),
-    message: createMessageHandler({ pool, lineClient, slack, linkService, classifier, staffCommand }),
+    message: createMessageHandler({ pool, lineClient, slack, linkService, classifier, staffCommand, liffUrl }),
     postback: createPostbackHandler({ pool, lineClient, slack }),
     join: createJoinHandler({ lineClient, settings, slack }),
     leave: createLeaveHandler({ settings, slack }),

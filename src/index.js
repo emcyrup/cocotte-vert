@@ -42,7 +42,7 @@ const linkService = createLinkService({ pool, slack });
 const classifier = createFollowupClassifier({ apiKey: config.anthropicApiKey });
 // シフト変更申請（スタッフが公式LINE へ自由記述で送る）
 const shiftParser = createShiftRequestParser({ apiKey: config.anthropicApiKey });
-const shiftService = createShiftService({ pool, lineClient, slack });
+const shiftService = createShiftService({ pool, lineClient, slack, settings, config });
 
 const app = express();
 

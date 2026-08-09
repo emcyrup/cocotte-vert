@@ -21,7 +21,7 @@ export function createWebhookHandler({
   config = null,
   liffUrl = null,
 }) {
-  const staffCommand = createStaffCommandHandler({ settings, lineClient, config });
+  const staffCommand = createStaffCommandHandler({ settings, lineClient, config, shiftService });
   const staffShift =
     shiftService && shiftParser
       ? createStaffShiftHandler({ shiftService, shiftParser, lineClient, slack })

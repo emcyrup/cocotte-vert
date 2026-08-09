@@ -495,7 +495,7 @@ tr.await td{background:var(--warn-soft)}
     <button data-s="list"><span class="ic">&#9633;</span>顧客一覧</button>
     <button data-s="cust"><span class="ic">&#9633;</span>顧客カルテ</button>
     <button data-s="rem"><span class="ic">&#9633;</span>リマインド</button>
-    <button data-s="shift"><span class="ic">&#9633;</span>シフト入力</button>
+    <button data-s="shift"><span class="ic">&#9633;</span>スタッフ情報・シフト</button>
     <button data-s="sns"><span class="ic">&#9633;</span>SNS投稿</button>
   </nav>
   <div class="foot">ここっとベール 管理システム<br>モック <b>v1.0</b>（更新 2026-08-06）<br>サンプルデータのみ・実データ未接続</div>
@@ -521,7 +521,7 @@ tr.await td{background:var(--warn-soft)}
     <button class="qbtn" data-s="list"><span class="qi">&#128100;</span><span class="qt">顧客一覧<span class="qd">10世帯 / 14頭</span></span></button>
     <button class="qbtn" data-s="cust"><span class="qi">&#128203;</span><span class="qt">顧客カルテ<span class="qd">来店履歴・ワクチン</span></span></button>
     <button class="qbtn" data-s="rem"><span class="qi">&#128276;</span><span class="qt">リマインド<span class="qd">本日 12件 送信予定</span></span></button>
-    <button class="qbtn" data-s="shift"><span class="qi">&#128337;</span><span class="qt">シフト入力<span class="qd">来週分 未確定</span></span></button>
+    <button class="qbtn" data-s="shift"><span class="qi">&#128337;</span><span class="qt">スタッフ情報・シフト<span class="qd">LINE連携・シフト申請</span></span></button>
     <button class="qbtn" data-s="sns"><span class="qi">&#128247;</span><span class="qt">SNS投稿<span class="qd">写真14枚 未投稿</span></span></button>
   </div>
 
@@ -800,15 +800,6 @@ tr.await td{background:var(--warn-soft)}
           </div>
         </div>
       </div>
-      <div class="card">
-        <div class="hd"><h2>スタッフ追加</h2></div>
-        <div class="bd">
-          <div class="frow">
-            <input type="text" id="ns-name" placeholder="スタッフ名">
-            <button class="btn" id="ns-add" type="button">追加</button>
-          </div>
-        </div>
-      </div>
     </div>
   </div>
 </section>
@@ -880,10 +871,25 @@ tr.await td{background:var(--warn-soft)}
   </div>
 </section>
 
-<!-- ================= シフト入力 ================= -->
+<!-- ================= スタッフ情報・シフト入力 ================= -->
 <section class="screen" id="s-shift">
   <div class="crumb">スタッフ管理</div>
-  <h1>シフト入力</h1>
+  <h1>スタッフ情報・シフト入力</h1>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="hd"><h2>スタッフ情報</h2><span class="pill mut" id="stfcnt"></span></div>
+    <div class="bd">
+      <p class="hint" id="stf-note">在職状況と、公式LINE との連携状況をここで管理します。
+      連携すると、そのスタッフはBotとの1対1のトークからシフト変更を申請できます。</p>
+      <div class="frow" style="margin-bottom:12px">
+        <input type="text" id="ns-name" placeholder="スタッフ名">
+        <button class="btn" id="ns-add" type="button">追加</button>
+      </div>
+      <div id="stflist"></div>
+    </div>
+  </div>
+
+  <h2 style="font-size:15px;margin:22px 0 6px">シフト入力</h2>
   <p class="shift-note">マスをクリックするだけで「出勤 → AM半休 → PM半休 → 公休 → 有休 → 時間休」の順に切り替わります（実際に触ってみてください）。入力したシフトはそのまま予約カレンダーに反映されます。名前の横の☆をタップすると<b>新人マーク&#11088;</b>を付与でき、カレンダーにも反映されます。</p>
 
   <div class="card">
@@ -1743,37 +1749,110 @@ function renderShiftReqs(){
 }
 renderShiftReqs();
 
-// ---- スタッフの LINE 連携（実運用モードのみ）----
-// LINE の userId は本人からは見えないため、管理画面で発行した合言葉を本人に送ってもらう
-async function renderStaffLink(){
-  const { staff } = await adminApi('/staff');
-  const ul = document.getElementById('stafflink');
-  ul.innerHTML = '';
-  if (!staff.length) {
-    ul.innerHTML = '<li class="off">スタッフが未登録です（予約管理の「スタッフ追加」から登録してください）</li>';
-    return;
+// ---- スタッフ情報（照会・編集・LINE連携）----
+// デモモードではシフト表と同じ5人を、それらしい状態で見せる
+const DEMO_STAFF = [
+  { id:1, name:'佐藤', active:true,  line_linked:true,  membership:'joined', line_user_id:'U1111111111111111111111111111111a' },
+  { id:2, name:'高橋', active:true,  line_linked:true,  membership:'joined', line_user_id:'U2222222222222222222222222222222b' },
+  { id:3, name:'伊藤', active:true,  line_linked:true,  membership:'left',   line_user_id:'U3333333333333333333333333333333c' },
+  { id:4, name:'中村', active:true,  line_linked:false, membership:null },
+  { id:5, name:'山本', active:false, line_linked:false, membership:null },
+];
+const MEMBERSHIP_LABELS = {
+  joined: ['グループ参加中', 'good'],
+  left:   ['グループ未参加', 'warn'],
+  unknown:['グループ参加 不明', 'mut'],
+};
+
+function staffRow(s, { live }){
+  const row = document.createElement('div');
+  row.className = 'sreq';
+  const line = s.line_linked
+    ? '<span class="pill good">LINE連携済み</span>'
+    : '<span class="pill mut">LINE未連携</span>';
+  // グループ参加は連携済みでないと調べようがない
+  const mem = s.line_linked && s.membership
+    ? '<span class="pill ' + MEMBERSHIP_LABELS[s.membership][1] + '">'
+      + MEMBERSHIP_LABELS[s.membership][0] + '</span>'
+    : '';
+  row.innerHTML = '<div><div class="sn">' + s.name + ' '
+    + (s.active ? '<span class="pill acc">在職</span>' : '<span class="pill mut">退職</span>')
+    + ' ' + line + ' ' + mem + '</div>'
+    + '<div class="sd">' + (s.line_user_id ? 'LINE ID: ' + s.line_user_id.slice(0, 8) + '…' : 'LINE ID 未設定')
+    + '</div></div>';
+
+  const acts = document.createElement('div');
+  acts.className = 'acts2';
+  const edit = document.createElement('button');
+  edit.className = 'sbtn'; edit.textContent = '編集';
+  edit.addEventListener('click', () => live ? editStaff(s)
+    : showToast('モックのため編集内容は保存されません'));
+  const code = document.createElement('button');
+  code.className = 'sbtn mut';
+  code.textContent = s.line_linked ? 'コード再発行' : '連携コード発行';
+  code.addEventListener('click', async () => {
+    if (!live) { showToast('モックのため連携コードは発行されません'); return; }
+    try {
+      const { code: issued, expiresInHours } = await adminApi('/staff/' + s.id + '/link-code', { method: 'POST' });
+      // トーストは消えてしまうため、コードは画面に残す
+      code.outerHTML = '<b class="num" style="font-size:15px;letter-spacing:.08em">' + issued + '</b>'
+        + '<span class="pill mut">' + expiresInHours + '時間有効</span>';
+      showToast(s.name + 'さんに「スタッフ登録 ' + issued + '」と公式LINEへ送ってもらってください');
+    } catch (err) { showToast('エラー: ' + err.message); }
+  });
+  acts.append(edit, code);
+  row.appendChild(acts);
+  return row;
+}
+
+async function renderStaffInfo(){
+  const listEl = document.getElementById('stflist');
+  let staff = DEMO_STAFF;
+  let note = '';
+  if (adminLive) {
+    const [{ staff: rows }, status] = await Promise.all([
+      adminApi('/staff?all=1'),
+      // グループ参加の確認は LINE への問い合わせを伴うため、失敗しても一覧は出す
+      adminApi('/staff/line-status').catch(() => ({ groupConfigured: false, membership: {} })),
+    ]);
+    staff = rows.map(s => ({
+      ...s,
+      membership: status.groupConfigured ? status.membership[s.id] || 'unknown' : null,
+    }));
+    note = status.groupConfigured
+      ? ''
+      : 'スタッフ通知先の LINE グループが未設定のため、グループ参加は判定できません。';
   }
-  staff.forEach(s => {
-    const li = document.createElement('li');
-    if (!s.line_linked) li.className = 'off';
-    li.innerHTML = '<span>' + s.name
-      + (s.line_linked ? ' <span class="pill good">連携済み</span>' : ' <span class="pill mut">未連携</span>') + '</span>';
-    const b = document.createElement('button');
-    b.className = 'sbtn' + (s.line_linked ? ' mut' : ' pri');
-    b.textContent = s.line_linked ? 'コード再発行' : '連携コード発行';
-    b.addEventListener('click', async () => {
-      try {
-        const { code, expiresInHours } = await adminApi('/staff/' + s.id + '/link-code', { method: 'POST' });
-        // トーストは消えてしまうため、コードは画面に残す
-        b.outerHTML = '<b class="num" style="font-size:14px;letter-spacing:.08em">' + code + '</b>'
-          + '<span class="pill mut">' + expiresInHours + '時間有効</span>';
-        showToast(s.name + 'さんに「スタッフ登録 ' + code + '」と公式LINEへ送ってもらってください');
-      } catch (err) { showToast('エラー: ' + err.message); }
-    });
-    li.appendChild(b);
-    ul.appendChild(li);
+  listEl.innerHTML = '';
+  if (!staff.length) {
+    listEl.innerHTML = '<p style="font-size:12.5px;color:var(--muted);margin:0">'
+      + 'スタッフが未登録です。上の入力欄から追加してください。</p>';
+  }
+  staff.forEach(s => listEl.appendChild(staffRow(s, { live: adminLive })));
+  document.getElementById('stfcnt').textContent = staff.filter(s => s.active).length + '名 在職';
+  if (note) {
+    listEl.insertAdjacentHTML('beforeend',
+      '<p style="font-size:12px;color:var(--muted);margin:10px 0 0">' + note + '</p>');
+  }
+}
+
+function editStaff(s){
+  openEditModal(s.name + ' さんの情報を編集', [
+    { key: 'name', label: 'スタッフ名', value: s.name },
+    { key: 'active', label: '在職中（外すと予約の担当候補から消えます）', type: 'checkbox', value: s.active },
+    { key: 'lineUserId', label: 'LINE ID（U から始まる33文字。空にすると連携を解除）', value: s.line_user_id || '' },
+  ], {
+    onSave: v => adminApi('/staff/' + s.id, {
+      method: 'PATCH',
+      body: JSON.stringify({ name: v.name, active: v.active, lineUserId: v.lineUserId || null }),
+    }),
+    after: async () => {
+      await renderStaffInfo();
+      await loadStaffLive();   // 予約管理の担当プルダウンにも反映する
+    },
   });
 }
+renderStaffInfo();   // デモモードはこの1回だけ。実運用モードは初期化で実データに差し替わる
 
 // ---- 初回ご来店の一覧モーダル（ダッシュボードのKPIから） ----
 const TRIALS = [
@@ -2565,11 +2644,11 @@ document.getElementById('ns-add').addEventListener('click', async () => {
   if (adminLive) {
     try {
       await adminApi('/staff', { method: 'POST', body: JSON.stringify({ name }) });
-      await loadStaffLive();
+      await Promise.all([loadStaffLive(), renderStaffInfo()]);
     } catch (err) { showToast('エラー: ' + err.message); return; }
   }
   document.getElementById('ns-name').value = '';
-  showToast(name + ' さんを追加しました');
+  showToast(name + ' さんを追加しました（続けて「連携コード発行」でLINEと紐付けられます）');
 });
 
 // ================= 顧客・ペット情報の編集（実運用モードのみ） =================
@@ -2617,6 +2696,8 @@ function openEditModal(title, rows, { onSave, onDelete, after }){
     invalid_phone: '電話番号の形式が不正です',
     phone_exists: 'この電話番号は別のお客様で登録済みです',
     invalid_birthday: '誕生日の形式が不正です',
+    invalid_line_user_id: 'LINE ID の形式が違います（U から始まる33文字）',
+    line_user_id_exists: 'この LINE ID は別のスタッフに設定済みです',
   };
   if (onDelete) {
     const del = document.createElement('button');
@@ -2765,14 +2846,16 @@ async function loadFamiliesLive(){
     + '申請として右の一覧に届きます。文章は自由で、日付と種別が読み取れれば受け付けます'
     + '（例：<b>8/1 有休お願いします</b> ／ <b>7/31 10時から12時まで時間休</b>）。'
     + '連携していない相手の発言は、これまでどおり顧客からのメッセージとして扱われます。</p>'
-    + '<ul class="chips" id="stafflink"></ul>'
-    + '<p class="hint">「連携コード発行」を押すと6桁のコードが出ます。'
-    + '<b>スタッフ本人</b>が公式LINEのトークへ「スタッフ登録 123456」と送ると連携完了です。</p>';
+    + '<p class="hint"><b>連携のしかたは2通りです。</b><br>'
+    + '① 上の「スタッフ情報」で<b>連携コード発行</b>を押し、'
+    + '本人がBotとの1対1のトークへ「スタッフ登録 123456」と送る<br>'
+    + '② スタッフ用のLINEグループで、本人が「<b>スタッフ登録 高橋</b>」と自分の名前を送る<br>'
+    + 'LINE ID が分かっている場合は、「編集」から直接入力しても連携できます。</p>';
 
   try {
     await Promise.all([
       loadStaffLive(), loadMenusLive(), rvReload(), loadFamiliesLive(),
-      loadShiftReqs(), renderStaffLink(),
+      loadShiftReqs(), renderStaffInfo(),
     ]);
   } catch (err) {
     showToast('データの読み込みに失敗しました: ' + err.message);

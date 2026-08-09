@@ -10,13 +10,57 @@ export function createAdminRouter({ pool, reservationService, lineClient, config
   const router = express.Router();
 
   // ---- スタッフ ----
-  router.get('/staff', async (_req, res, next) => {
+  // 予約フォームの担当選択にも使うため、既定では在職者のみ。
+  // スタッフ情報画面は ?all=1 で退職者も含めて取得する
+  router.get('/staff', async (req, res, next) => {
     try {
       const { rows } = await pool.query(
-        `SELECT id, name, (line_user_id IS NOT NULL) AS line_linked
-         FROM staff WHERE active = true ORDER BY id`
+        `SELECT id, name, active, line_user_id, (line_user_id IS NOT NULL) AS line_linked
+         FROM staff WHERE ($1 = '1' OR active = true) ORDER BY id`,
+        [req.query.all === '1' ? '1' : '0']
       );
       res.json({ staff: rows });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // スタッフグループへの参加状況。LINE への問い合わせを伴うため一覧とは分けている
+  router.get('/staff/line-status', async (_req, res, next) => {
+    try {
+      if (!shiftService) return res.status(503).json({ error: 'shift_disabled' });
+      res.json(await shiftService.listStaffLineStatus());
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // スタッフ情報の編集。LINE ID は連携コードを使わず直接設定・解除もできる
+  router.patch('/staff/:id', async (req, res, next) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'invalid_id' });
+      const { name, active, lineUserId } = req.body ?? {};
+      if (!name?.trim()) return res.status(400).json({ error: 'invalid_name' });
+
+      let userId = null;
+      if (lineUserId?.trim()) {
+        userId = lineUserId.trim();
+        // LINE の userId は U + 16進32桁。取り違えると別人へ通知が飛ぶため形式を検証する
+        if (!/^U[0-9a-f]{32}$/.test(userId)) return res.status(400).json({ error: 'invalid_line_user_id' });
+        const { rows: dup } = await pool.query(
+          `SELECT id FROM staff WHERE line_user_id = $1 AND id <> $2`,
+          [userId, id]
+        );
+        if (dup.length > 0) return res.status(409).json({ error: 'line_user_id_exists' });
+      }
+
+      const { rowCount } = await pool.query(
+        `UPDATE staff SET name = $2, active = $3, line_user_id = $4 WHERE id = $1`,
+        [id, name.trim(), active !== false, userId]
+      );
+      if (rowCount === 0) return res.status(404).json({ error: 'not_found' });
+      res.json({ ok: true });
     } catch (err) {
       next(err);
     }

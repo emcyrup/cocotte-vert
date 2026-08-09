@@ -19,8 +19,8 @@ export function createWebhookHandler({
   liffUrl = null,
 }) {
   const staffCommand = createStaffCommandHandler({ settings, lineClient, config });
-  // グループの「会員情報」コマンドで案内する顧客管理画面の URL
-  const adminUrl = config?.publicBaseUrl ? `${config.publicBaseUrl}/admin/#customers` : null;
+  // グループの「会員情報」コマンドで案内する顧客管理ページ（顧客＋ペットの参照・編集）の URL
+  const adminUrl = config?.publicBaseUrl ? `${config.publicBaseUrl}/admin/customers.html` : null;
   const handlers = {
     follow: createFollowHandler({ pool, lineClient, liffUrl }),
     unfollow: createUnfollowHandler({ pool }),

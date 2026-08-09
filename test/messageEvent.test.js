@@ -57,7 +57,7 @@ function makeEvent(text) {
 
 // ---- 顧客情報の呼び出し（グループのみ） ----
 
-const ADMIN_URL = 'https://example.com/admin/#customers';
+const ADMIN_URL = 'https://example.com/admin/customers.html';
 
 test('グループ内の「会員情報」で管理画面（顧客管理）への導線を返す', async () => {
   const f = makeFakes();
@@ -71,7 +71,7 @@ test('グループ内の「会員情報」で管理画面（顧客管理）へ�
   });
 
   assert.equal(f.replies.length, 1);
-  assert.match(f.replies[0].messages[0].text, /admin\/#customers/);
+  assert.match(f.replies[0].messages[0].text, /admin\/customers\.html/);
   assert.equal(f.classifyCalls.length, 0);
   assert.equal(f.linkCalls.length, 0);
 });

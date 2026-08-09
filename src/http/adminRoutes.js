@@ -89,11 +89,13 @@ export function createAdminRouter({ pool, reservationService, lineClient, config
       const q = (req.query.q ?? '').trim();
       const phoneNorm = normalizePhone(q);
       const { rows } = await pool.query(
-        `SELECT id, name, phone_norm, birthday, last_visit_at, opt_out, is_blocked,
-                (line_user_id IS NOT NULL) AS line_linked
-         FROM customers
-         WHERE ($1 = '' OR name ILIKE '%' || $1 || '%' OR ($2::text IS NOT NULL AND phone_norm LIKE $2 || '%'))
-         ORDER BY id DESC
+        `SELECT c.id, c.name, c.phone_norm, c.birthday, c.last_visit_at, c.opt_out, c.is_blocked,
+                (c.line_user_id IS NOT NULL) AS line_linked,
+                (SELECT string_agg(p.name, '・' ORDER BY p.id) FROM pets p WHERE p.customer_id = c.id) AS pet_names
+         FROM customers c
+         WHERE ($1 = '' OR c.name ILIKE '%' || $1 || '%' OR ($2::text IS NOT NULL AND c.phone_norm LIKE $2 || '%')
+                OR EXISTS (SELECT 1 FROM pets p WHERE p.customer_id = c.id AND p.name ILIKE '%' || $1 || '%'))
+         ORDER BY c.id DESC
          LIMIT 30`,
         [q, phoneNorm]
       );
@@ -156,6 +158,75 @@ export function createAdminRouter({ pool, reservationService, lineClient, config
          WHERE id = $1`,
         [id, name.trim(), phoneNorm, birthday || null, Boolean(optOut)]
       );
+      if (rowCount === 0) return res.status(404).json({ error: 'not_found' });
+      res.json({ ok: true });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // ---- ペット ----
+  const validatePet = (body) => {
+    const { name, breed, birthday, notes } = body ?? {};
+    if (!name?.trim()) return { error: 'invalid_name' };
+    if (birthday && !/^\d{4}-\d{2}-\d{2}$/.test(birthday)) return { error: 'invalid_birthday' };
+    return {
+      name: name.trim(),
+      breed: breed?.trim() || null,
+      birthday: birthday || null,
+      notes: notes?.trim() || null,
+    };
+  };
+
+  router.get('/customers/:id/pets', async (req, res, next) => {
+    try {
+      const { rows } = await pool.query(
+        `SELECT id, name, breed, birthday, notes FROM pets WHERE customer_id = $1 ORDER BY id`,
+        [Number(req.params.id)]
+      );
+      res.json({ pets: rows });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.post('/customers/:id/pets', async (req, res, next) => {
+    try {
+      const customerId = Number(req.params.id);
+      const pet = validatePet(req.body);
+      if (pet.error) return res.status(400).json({ error: pet.error });
+      const { rows: exists } = await pool.query(`SELECT 1 FROM customers WHERE id = $1`, [customerId]);
+      if (exists.length === 0) return res.status(404).json({ error: 'customer_not_found' });
+      const { rows } = await pool.query(
+        `INSERT INTO pets (customer_id, name, breed, birthday, notes)
+         VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+        [customerId, pet.name, pet.breed, pet.birthday, pet.notes]
+      );
+      res.json({ ok: true, petId: rows[0].id });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.patch('/pets/:id', async (req, res, next) => {
+    try {
+      const pet = validatePet(req.body);
+      if (pet.error) return res.status(400).json({ error: pet.error });
+      const { rowCount } = await pool.query(
+        `UPDATE pets SET name = $2, breed = $3, birthday = $4, notes = $5, updated_at = now()
+         WHERE id = $1`,
+        [Number(req.params.id), pet.name, pet.breed, pet.birthday, pet.notes]
+      );
+      if (rowCount === 0) return res.status(404).json({ error: 'not_found' });
+      res.json({ ok: true });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.delete('/pets/:id', async (req, res, next) => {
+    try {
+      const { rowCount } = await pool.query(`DELETE FROM pets WHERE id = $1`, [Number(req.params.id)]);
       if (rowCount === 0) return res.status(404).json({ error: 'not_found' });
       res.json({ ok: true });
     } catch (err) {

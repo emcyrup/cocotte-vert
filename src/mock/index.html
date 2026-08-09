@@ -1026,8 +1026,15 @@ async function testSend(payload) {
     showToast(messages[err.message] || 'エラー: ' + err.message);
   }
 }
-// pg の DATE は ISO 文字列で返るため、日付部分だけ取り出して表示用に整える
-function dateOnly(v) { return v ? String(v).slice(0, 10) : null; }
+// pg の DATE は UTC の ISO 文字列（前日 15:00Z）で返るため、単純な slice だと1日ずれる。
+// JST の日付として取り出す
+function dateOnly(v) {
+  if (!v) return null;
+  const s = String(v);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit' })
+    .format(new Date(s));   // en-CA ロケール → YYYY-MM-DD
+}
 function dateJp(v) { const d = dateOnly(v); return d ? d.replace(/-/g, '/') : null; }
 function ageOf(v) {
   const d = dateOnly(v);
@@ -1195,6 +1202,17 @@ function renderOwners(q = ''){
       list.appendChild(b);
     });
     if (!o.members.length) list.innerHTML = '<p style="font-size:12px;color:var(--muted);margin:4px 0">わんちゃん未登録</p>';
+    if (adminLive) {   // 実運用モードでは一覧から直接編集・追加できる
+      const eb = document.createElement('button');
+      eb.className = 'sbtn mut'; eb.textContent = '編集';
+      eb.addEventListener('click', () => editOwner(o));
+      c.querySelector('.oh').appendChild(eb);
+      const ab = document.createElement('button');
+      ab.className = 'sbtn mut'; ab.textContent = '＋ わんちゃん';
+      ab.style.alignSelf = 'center';
+      ab.addEventListener('click', () => editPet(o, null));
+      list.appendChild(ab);
+    }
     c.appendChild(list); ownersEl.appendChild(c);
   });
   cntEl.textContent = ownerCount + ' 世帯 / ' + dogCount + ' 頭';
@@ -1292,6 +1310,7 @@ function openCarte(d, o){
   if (d.patch) tags.push('<span class="pill ' + d.patch.state[0] + '">ワクチン ' + d.patch.state[1] + '</span>');
   if (lapsedTotal) tags.push('<span class="pill crit">失効 累計' + lapsedTotal + '回</span>');
   if (d.first) tags.push('<span class="pill ' + d.first[1] + '">初回後: ' + d.first[0] + '</span>');
+  if (o.optOut) tags.push('<span class="pill crit">配信停止中</span>');
 
   const school = d.plan ? '<div class="card"><div class="hd"><h2>保育コースの利用（7月）</h2></div><div class="bd">'
     + '<div style="display:flex;justify-content:space-between;font-size:12.5px"><span>当月分（' + d.plan.label.replace('保育コース ', '') + '）</span><b class="num">' + d.plan.used + ' / ' + d.plan.quota + ' 回</b></div>'
@@ -1312,16 +1331,24 @@ function openCarte(d, o){
     + '<div class="cust-hd"><div class="avatar">' + d.n.charAt(0) + '</div><div>'
     + '<h1 style="margin-bottom:0">' + d.n + ' <span style="font-size:13px;color:var(--muted);font-weight:600">' + dogSub(d) + '</span></h1>'
     + '<div style="font-size:12.5px;color:var(--muted)">飼い主: ' + o.name + ' 様｜初回来店: ' + o.since + '（経路: ' + o.source + '）'
-    + (o.members.length > 1 ? '｜同伴: ' + o.members.filter(x => x !== d).map(x => x.n).join('・') : '') + '</div></div>'
+    + (o.members.length > 1 ? '｜同伴: ' + o.members.filter(x => x !== d).map(x => x.n).join('・') : '') + '</div>'
+    + (adminLive
+      ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">'
+        + '<button class="sbtn" id="ed-pet">この子の情報を編集</button>'
+        + '<button class="sbtn mut" id="ed-owner">飼い主様情報を編集</button>'
+        + '<button class="sbtn mut" id="ed-addpet">＋ わんちゃんを追加</button></div>'
+      : '')
+    + '</div>'
     + '<div style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;max-width:520px">' + tags.join('') + '</div></div>'
     + '<div class="grid cust2"><div style="display:grid;gap:16px;align-content:start">'
-    + '<div class="card"><div class="hd"><h2>基本情報</h2>'
-    + (adminLive ? '<a class="pill mut" href="/admin/customers.html" target="_blank" rel="noopener" style="text-decoration:none">情報の編集</a>' : '')
-    + '</div><div class="bd"><dl class="kv">'
+    + '<div class="card"><div class="hd"><h2>基本情報</h2></div><div class="bd"><dl class="kv">'
     + '<dt>飼い主</dt><dd>' + o.name + ' 様</dd>'
     + '<dt>連絡先</dt><dd>' + o.tel + '</dd>'
     + '<dt>LINE</dt><dd>' + (o.line ? '<span class="pill good">連携済み</span>' : '<span class="pill mut">未連携（配信対象外）</span>') + '</dd>'
-    + '<dt>誕生日</dt><dd>' + (d.bd ? d.bd + '<span class="pill mut">自動メッセージON</span>' : '未登録') + '</dd>'
+    + '<dt>誕生日</dt><dd>' + (d.bd ? d.bd + (adminLive ? '' : '<span class="pill mut">自動メッセージON</span>') : '未登録') + '</dd>'
+    // 誕生日メッセージは飼い主様の誕生日に送られるため、実運用モードでは分けて表示する
+    + (adminLive ? '<dt>飼い主様 誕生日</dt><dd>'
+        + (o.obd ? dateJp(o.obd) + (o.optOut ? '' : '<span class="pill mut">自動メッセージON</span>') : '未登録') + '</dd>' : '')
     + '<dt>来店経路</dt><dd>' + o.source + '</dd>'
     + '<dt>かかりつけ</dt><dd>' + o.stylist + '</dd>'
     + (d.notes ? '<dt>メモ</dt><dd>' + d.notes + '</dd>' : '')
@@ -1349,6 +1376,11 @@ function openCarte(d, o){
     + '</div></div></div></div>';
 
   document.getElementById('bklist').addEventListener('click', e => { e.preventDefault(); go('list'); });
+  if (adminLive) {
+    document.getElementById('ed-pet').addEventListener('click', () => editPet(o, d));
+    document.getElementById('ed-owner').addEventListener('click', () => editOwner(o));
+    document.getElementById('ed-addpet').addEventListener('click', () => editPet(o, null));
+  }
   go('cust');
 }
 // ---- タブ切替 ----
@@ -1368,9 +1400,10 @@ document.getElementById('quick').addEventListener('click', e => {   // ダッシ
   const b = e.target.closest('button[data-s]');
   if (b) go(b.dataset.s);
 });
-openCarte(FAMILIES[0].members[0], FAMILIES[0]);   // 初期表示用にカルテを組み立て
-// URL の #画面名 があればその画面から開く（LINE のリッチメニュー等からの直リンク用）
+// URL の #画面名 があればその画面から開く（LINE のリッチメニュー等からの直リンク用）。
+// openCarte が go('cust') でハッシュを上書きするため、必ず先に読み取っておく
 const initialScreen = location.hash.slice(1);
+openCarte(FAMILIES[0].members[0], FAMILIES[0]);   // 初期表示用にカルテを組み立て
 go(document.getElementById('s-' + initialScreen) ? initialScreen : 'dash');
 window.addEventListener('hashchange', () => {
   const s = location.hash.slice(1);
@@ -2449,6 +2482,133 @@ document.getElementById('ns-add').addEventListener('click', async () => {
   showToast(name + ' さんを追加しました');
 });
 
+// ================= 顧客・ペット情報の編集（実運用モードのみ） =================
+// LINE の「会員情報」コマンドからもこの画面（#list → カルテ）へ誘導される。
+// 保存後は一覧・カルテを実データで組み直す
+let editBack = null;
+function closeEdit(){ if (editBack) { editBack.remove(); editBack = null; } }
+function openEditModal(title, rows, { onSave, onDelete, after }){
+  closeEdit();
+  const back = document.createElement('div'); back.className = 'mback';
+  back.addEventListener('click', e => { if (e.target === back) closeEdit(); });
+  const win = document.createElement('div'); win.className = 'mwin';
+  win.innerHTML = '<div class="mhd"><h2></h2><button class="mx" aria-label="閉じる">&#10005;</button></div>';
+  win.querySelector('h2').textContent = title;
+  win.querySelector('.mx').addEventListener('click', closeEdit);
+
+  const bd = document.createElement('div');
+  bd.style.cssText = 'padding:14px 18px;display:grid;gap:10px;overflow-y:auto';
+  const inputs = {};
+  rows.forEach(r => {
+    const lab = document.createElement('label');
+    let inp;
+    if (r.type === 'checkbox') {
+      lab.style.cssText = 'display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer';
+      inp = document.createElement('input'); inp.type = 'checkbox'; inp.checked = !!r.value;
+      lab.append(inp, r.label);
+    } else {
+      lab.style.cssText = 'display:grid;gap:4px;font-size:12px;color:var(--muted)';
+      inp = document.createElement(r.type === 'textarea' ? 'textarea' : 'input');
+      if (r.type === 'textarea') inp.rows = 3; else inp.type = r.type || 'text';
+      inp.value = r.value || '';
+      inp.style.cssText = 'border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);font:inherit;font-size:13px;padding:9px 10px;resize:vertical';
+      lab.append(r.label, inp);
+    }
+    inputs[r.key] = inp;
+    bd.appendChild(lab);
+  });
+
+  const acts = document.createElement('div');
+  acts.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;padding:0 0 4px';
+  const collect = () => Object.fromEntries(Object.entries(inputs).map(([k, el2]) =>
+    [k, el2.type === 'checkbox' ? el2.checked : el2.value.trim()]));
+  const ERRORS = {
+    invalid_name: 'お名前を入力してください',
+    invalid_phone: '電話番号の形式が不正です',
+    phone_exists: 'この電話番号は別のお客様で登録済みです',
+    invalid_birthday: '誕生日の形式が不正です',
+  };
+  if (onDelete) {
+    const del = document.createElement('button');
+    del.className = 'sbtn warn'; del.textContent = '削除';
+    del.style.marginRight = 'auto';
+    del.addEventListener('click', async () => {
+      del.disabled = true;
+      try {
+        if (await onDelete() === false) { del.disabled = false; return; }   // confirm でキャンセル
+        closeEdit(); showToast('削除しました');
+        if (after) await after();
+      } catch (err) { showToast(ERRORS[err.message] || 'エラー: ' + err.message); del.disabled = false; }
+    });
+    acts.appendChild(del);
+  }
+  const save = document.createElement('button');
+  save.className = 'btn'; save.textContent = '保存';
+  save.addEventListener('click', async () => {
+    save.disabled = true;
+    try {
+      await onSave(collect());
+      closeEdit(); showToast('保存しました');
+      if (after) await after();
+    } catch (err) { showToast(ERRORS[err.message] || 'エラー: ' + err.message); save.disabled = false; }
+  });
+  acts.appendChild(save);
+  bd.appendChild(acts);
+  win.appendChild(bd);
+  back.appendChild(win);
+  document.body.appendChild(back);
+  editBack = back;
+  const first = Object.values(inputs)[0];
+  if (first) first.focus();
+}
+window.addEventListener('keydown', e => { if (e.key === 'Escape') closeEdit(); });
+
+// 保存後の再読み込み。編集していた世帯のカルテを開き直す（世帯ごと消えたら一覧へ）
+async function refreshAfterEdit(custId, petId){
+  try { await loadFamiliesLive(); } catch (err) { showToast('再読み込みに失敗しました: ' + err.message); return; }
+  renderOwners(qEl.value);
+  const o = FAMILIES.find(f => String(f.id) === String(custId));
+  if (!o) { go('list'); return; }
+  const d = (petId != null && o.members.find(m => String(m.id) === String(petId))) || o.members[0];
+  if (d) openCarte(d, o); else go('list');
+}
+
+function editOwner(o){
+  openEditModal(o.name + ' 様の情報を編集', [
+    { key: 'name', label: 'お名前', value: o.name },
+    { key: 'phone', label: '電話番号（LINE登録時の自動ひも付けに使われます）', type: 'tel', value: o.tel === '電話未登録' ? '' : o.tel },
+    { key: 'birthday', label: '誕生日', type: 'date', value: o.obd },
+    { key: 'optOut', label: '配信停止（この方への自動配信をすべて止める）', type: 'checkbox', value: o.optOut },
+  ], {
+    onSave: v => adminApi('/customers/' + o.id, {
+      method: 'PATCH',
+      body: JSON.stringify({ name: v.name, phone: v.phone || null, birthday: v.birthday || null, optOut: v.optOut }),
+    }),
+    after: () => refreshAfterEdit(o.id),
+  });
+}
+
+function editPet(o, p){   // p が null なら追加
+  openEditModal(p ? p.n + ' の情報を編集' : o.name + ' 様のわんちゃんを追加', [
+    { key: 'name', label: 'お名前', value: p && p.n },
+    { key: 'breed', label: '犬種', value: p && p.menu !== '犬種未登録' ? p.menu : '' },
+    { key: 'birthday', label: '誕生日', type: 'date', value: p && p.pbd },
+    { key: 'notes', label: 'メモ（カットの好み・注意点など）', type: 'textarea', value: p && p.notes },
+  ], {
+    onSave: v => {
+      const body = JSON.stringify({ name: v.name, breed: v.breed || null, birthday: v.birthday || null, notes: v.notes || null });
+      return p
+        ? adminApi('/pets/' + p.id, { method: 'PATCH', body })
+        : adminApi('/customers/' + o.id + '/pets', { method: 'POST', body });
+    },
+    onDelete: p ? async () => {
+      if (!confirm(p.n + ' の情報を削除しますか？（元に戻せません）')) return false;
+      await adminApi('/pets/' + p.id, { method: 'DELETE' });
+    } : null,
+    after: () => refreshAfterEdit(o.id, p && p.id),
+  });
+}
+
 // ================= 実運用モードの初期化 =================
 // 管理 API に疎通できたら、この画面全体を実データの管理画面として動かす。
 async function loadStaffLive(){
@@ -2483,10 +2643,11 @@ async function loadFamiliesLive(){
     const visited = rs.filter(r => r.status === 'visited').length;
     return {
       id: c.id, name: c.name, tel: c.phone_norm || '電話未登録', line: c.line_linked,
+      obd: dateOnly(c.birthday), optOut: c.opt_out,
       source: '未登録', since: '—', stylist: '未登録',
       members: pets.map(p => ({
         id: p.id, n: p.name, menu: p.breed || '犬種未登録', age: ageOf(p.birthday), sex: '',
-        bd: dateJp(p.birthday), notes: p.notes,
+        bd: dateJp(p.birthday), pbd: dateOnly(p.birthday), notes: p.notes,
         total: visited, last: '—', plan: null, ticket: null, patch: null, lapsed: [], visits,
       })),
     };

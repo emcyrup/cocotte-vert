@@ -209,12 +209,11 @@ app.post('/liff/reserve', async (req, res) => {
   }
 });
 
-// 管理画面（Basic 認証。ADMIN_USER / ADMIN_PASSWORD 未設定なら無効）
+// 管理 API（Basic 認証。ADMIN_USER / ADMIN_PASSWORD 未設定なら無効）
 const adminGuard = basicAuth({ user: config.adminUser, password: config.adminPassword });
-const adminDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'admin');
-// 旧予約管理画面はモック側の画面に統合した。ブックマーク互換のためリダイレクトを残す
+// 旧管理画面（/admin/）はモック側の画面に統合した。ブックマーク・LINE内の旧リンク互換のためリダイレクトを残す
+app.get('/admin/customers.html', (_req, res) => res.redirect('/mock/#list'));
 app.get(['/admin', '/admin/index.html'], (_req, res) => res.redirect('/mock/#resv'));
-app.use('/admin', adminGuard, express.static(adminDir, noStaleCache));
 app.use('/api/admin', adminGuard, createAdminRouter({ pool, reservationService, lineClient, config }));
 
 // 店舗管理画面（モック統合版）。管理 API に疎通できる本番環境では実データで動き、

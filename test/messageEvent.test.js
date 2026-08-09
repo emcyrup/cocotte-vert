@@ -57,9 +57,9 @@ function makeEvent(text) {
 
 // ---- 顧客情報の呼び出し（グループのみ） ----
 
-const ADMIN_URL = 'https://example.com/admin/customers.html';
+const ADMIN_URL = 'https://example.com/mock/#list';
 
-test('グループ内の「会員情報」で管理画面（顧客管理）への導線を返す', async () => {
+test('グループ内の「会員情報」で店舗管理画面（顧客一覧）への導線を返す', async () => {
   const f = makeFakes();
   const handler = createMessageHandler({ ...f, adminUrl: ADMIN_URL });
 
@@ -71,12 +71,12 @@ test('グループ内の「会員情報」で管理画面（顧客管理）へ�
   });
 
   assert.equal(f.replies.length, 1);
-  assert.match(f.replies[0].messages[0].text, /admin\/customers\.html/);
+  assert.match(f.replies[0].messages[0].text, /mock\/#list/);
   assert.equal(f.classifyCalls.length, 0);
   assert.equal(f.linkCalls.length, 0);
 });
 
-test('表記ゆれ（空白・記号つき）でも管理画面の導線を返す', async () => {
+test('表記ゆれ（空白・記号つき）でも店舗管理画面の導線を返す', async () => {
   const f = makeFakes();
   const handler = createMessageHandler({ ...f, adminUrl: ADMIN_URL });
 
@@ -87,7 +87,7 @@ test('表記ゆれ（空白・記号つき）でも管理画面の導線を返�
     message: { type: 'text', text: ' お客様情報！ ' },
   });
   assert.equal(f.replies.length, 1);
-  assert.match(f.replies[0].messages[0].text, /admin/);
+  assert.match(f.replies[0].messages[0].text, /mock/);
 });
 
 test('1:1 トークの「会員情報」には応答しない（分類にも回さない）', async () => {

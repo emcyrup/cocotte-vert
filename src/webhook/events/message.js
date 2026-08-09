@@ -1,5 +1,5 @@
 // message イベント:
-//   1. グループでの「会員情報」等のコマンド → 管理画面の顧客管理（参照・編集）への導線を返信
+//   1. グループでの「会員情報」等のコマンド → 店舗管理画面の顧客一覧（参照・編集）への導線を返信
 //   2. 電話番号らしき文字列 → 突合を試行（補助経路・Phase 2）
 //   3. それ以外のテキスト → 直近に来店フォローを送った顧客なら Claude Haiku で分類（Phase 4）
 //      concern / question のみ Slack へ通知する
@@ -109,7 +109,7 @@ export function createMessageHandler({
         await lineClient.reply(event.replyToken, [
           {
             type: 'text',
-            text: `お客様情報の参照・編集は管理画面から行えます。\n${adminUrl}`,
+            text: `お客様情報の参照・編集は店舗管理画面から行えます。\n${adminUrl}`,
           },
         ]);
       }

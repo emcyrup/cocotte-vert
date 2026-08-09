@@ -7,7 +7,7 @@
 // 発言だけ**を受け付ける。店内の数字を第三者に読ませないため。
 import { SETTING_KEYS } from '../../settings.js';
 import { toPlainText } from '../../notify/staffNotifier.js';
-import { parseLinkCommand } from './linkCommand.js';
+import { parseLinkCommand, parseBareCode } from './linkCommand.js';
 
 // 表記ゆれを吸収する。スペースと記号だけ落として比較する
 const COMMANDS = {
@@ -19,6 +19,11 @@ const COMMANDS = {
 function normalize(text) {
   return text.replace(/[\s　]/g, '').replace(/[?？!！。、]/g, '');
 }
+
+const linkedMessage = (name) =>
+  `${name}さんのLINEアカウントを連携しました。\n` +
+  'これから、Botとの1対1のトークにシフトのご希望を送っていただければ申請できます。\n' +
+  '例：8/1 有休でお願いします';
 
 export function createStaffCommandHandler({ settings, lineClient, config, shiftService = null }) {
   async function resolveGroupId() {
@@ -51,11 +56,7 @@ export function createStaffCommandHandler({ settings, lineClient, config, shiftS
       ambiguous: `「${arg}」に当てはまるスタッフが複数います。店舗管理画面から LINE ID を直接設定してください。`,
       already_linked_to_other: 'この LINE アカウントは既に別のスタッフに紐付いています。',
     };
-    const body = result.ok
-      ? `${result.staff.name}さんのLINEアカウントを連携しました。\n` +
-        'これから、Botとの1対1のトークにシフトのご希望を送っていただければ申請できます。\n' +
-        '例：8/1 有休でお願いします'
-      : messages[result.error];
+    const body = result.ok ? linkedMessage(result.staff.name) : messages[result.error];
     await replyText(event, body);
     return true;
   }
@@ -64,11 +65,26 @@ export function createStaffCommandHandler({ settings, lineClient, config, shiftS
     if (event.source?.type !== 'group') return false;
 
     const link = shiftService ? parseLinkCommand(text) : null;
+    const bare = shiftService && !link ? parseBareCode(text) : null;
     const command = COMMANDS[normalize(text)];
-    if (!command && !link) return false;
+    if (!command && !link && !bare) return false;
 
     const staffGroupId = await resolveGroupId();
     const isStaffGroup = Boolean(staffGroupId) && event.source.groupId === staffGroupId;
+
+    // 接頭辞なしで数字だけ送られた場合。発行済みのコードに一致したときだけ連携し、
+    // 一致しなければ黙って通常の処理へ委ねる（グループの雑談を横取りしないため）
+    if (bare) {
+      if (!isStaffGroup || !event.source.userId) return false;
+      const result = await shiftService.linkStaffByCode({
+        lineUserId: event.source.userId,
+        code: bare,
+      });
+      console.log(`[staff-link] source=group by=bare-code ok=${result.ok}`);
+      if (!result.ok) return false;
+      await replyText(event, linkedMessage(result.staff.name));
+      return true;
+    }
 
     // 連携コマンドは意図の明確な操作なので、どのグループでも必ず返事をする。
     // 無言で終わると「送ったのに反応がない」となり、原因にたどり着けないため

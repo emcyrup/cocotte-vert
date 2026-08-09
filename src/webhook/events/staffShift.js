@@ -6,7 +6,7 @@
 // 未連携の相手の発言は false を返し、従来どおり顧客向けの処理へ委ねる。
 
 import { formatShift } from '../../shifts/service.js';
-import { parseLinkCommand } from './linkCommand.js';
+import { parseLinkCommand, parseBareCode } from './linkCommand.js';
 
 const jstDateFmt = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Asia/Tokyo',
@@ -14,6 +14,11 @@ const jstDateFmt = new Intl.DateTimeFormat('en-CA', {
   month: '2-digit',
   day: '2-digit',
 });
+
+const linkedMessage = (name) =>
+  `${name}さん、連携しました。\n` +
+  'このトークにシフトのご希望をそのまま送っていただければ、申請として店長に届きます。\n' +
+  '例：8/1 有休でお願いします';
 
 export function createStaffShiftHandler({ shiftService, shiftParser, lineClient, slack, now = () => new Date() }) {
   async function replyText(event, text) {
@@ -50,12 +55,7 @@ export function createStaffShiftHandler({ shiftService, shiftParser, lineClient,
       );
       return true;
     }
-    await replyText(
-      event,
-      `${result.staff.name}さん、連携しました。\n` +
-        'このトークにシフトのご希望をそのまま送っていただければ、申請として店長に届きます。\n' +
-        '例：8/1 有休でお願いします'
-    );
+    await replyText(event, linkedMessage(result.staff.name));
     return true;
   }
 
@@ -67,6 +67,21 @@ export function createStaffShiftHandler({ shiftService, shiftParser, lineClient,
 
     const link = parseLinkCommand(text);
     if (link) return handleLink(event, link);
+
+    // 接頭辞なしで数字だけ送られた場合。発行済みのコードに一致したときだけ連携する。
+    // 一致しなければ何も起きなかったものとして、以降の通常処理へそのまま進む
+    const bare = parseBareCode(text);
+    if (bare) {
+      const result = await shiftService.linkStaffByCode({
+        lineUserId: event.source.userId,
+        code: bare,
+      });
+      console.log(`[staff-link] source=user by=bare-code ok=${result.ok}`);
+      if (result.ok) {
+        await replyText(event, linkedMessage(result.staff.name));
+        return true;
+      }
+    }
 
     const staff = await shiftService.findStaffByLineUserId(event.source.userId);
     if (!staff) return false;

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseLinkCommand } from '../src/webhook/events/linkCommand.js';
+import { parseLinkCommand, parseBareCode } from '../src/webhook/events/linkCommand.js';
 
 test('基本の書き方をコードとして読み取る', () => {
   assert.deepEqual(parseLinkCommand('スタッフ登録 123456'), { arg: '123456', isCode: true });
@@ -45,4 +45,23 @@ test('接頭辞だけで中身が無ければコマンドにしない', () => {
 test('桁数の違う数字はコードとして扱わない', () => {
   assert.deepEqual(parseLinkCommand('スタッフ登録 12345'), { arg: '12345', isCode: false });
   assert.deepEqual(parseLinkCommand('スタッフ登録 1234567'), { arg: '1234567', isCode: false });
+});
+
+// ---- 接頭辞なしの数字だけ ----
+
+test('6桁の数字だけをコードとして取り出す（全角・空白まじりも）', () => {
+  for (const [text, want] of [
+    ['123456', '123456'],
+    [' 123456 ', '123456'],
+    ['１２３４５６', '123456'],
+    ['123 456', '123456'],
+  ]) {
+    assert.equal(parseBareCode(text), want, text);
+  }
+});
+
+test('6桁でないものはコードとして扱わない', () => {
+  for (const text of ['12345', '1234567', '090-1234-5678', 'こんにちは', 'abc123', '', null]) {
+    assert.equal(parseBareCode(text), null, String(text));
+  }
 });

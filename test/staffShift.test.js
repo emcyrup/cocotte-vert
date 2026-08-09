@@ -125,3 +125,38 @@ test('1:1 で名前を送られたら、コードでの登録方法を案内す�
   // 名前だけで成りすませないよう、1:1 では名前による連携を行わない
   assert.equal(f.created.length, 0);
 });
+
+test('接頭辞なしでコードだけ送っても、発行済みなら連携する', async () => {
+  const f = makeFakes({ staff: null, link: { ok: true, staff: { id: 3, name: '高橋' } } });
+  const handler = createStaffShiftHandler(f);
+
+  const handled = await handler(userEvent('123456'), '123456');
+
+  assert.equal(handled, true);
+  assert.equal(f.created[0].code, '123456');
+  assert.match(f.replies[0].text, /高橋さん、連携しました/);
+});
+
+test('発行済みでない6桁は連携せず、顧客の会話を横取りしない', async () => {
+  const f = makeFakes({ staff: null, link: { ok: false, error: 'invalid_code' } });
+  const handler = createStaffShiftHandler(f);
+
+  const handled = await handler(userEvent('123456'), '123456');
+
+  assert.equal(handled, false, '従来どおり顧客向けの処理へ渡す');
+  assert.equal(f.replies.length, 0);
+});
+
+test('連携済みスタッフが6桁を送っても、シフト申請の処理へ進む', async () => {
+  const f = makeFakes({
+    staff: { id: 3, name: '高橋' },
+    link: { ok: false, error: 'invalid_code' },
+    parsed: { isRequest: false, entries: [] },
+  });
+  const handler = createStaffShiftHandler(f);
+
+  const handled = await handler(userEvent('123456'), '123456');
+
+  assert.equal(handled, true);
+  assert.match(f.replies[0].text, /読み取れませんでした/, 'コード不一致で処理が逸れない');
+});

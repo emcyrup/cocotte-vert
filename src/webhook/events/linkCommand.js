@@ -22,3 +22,17 @@ export function parseLinkCommand(text) {
   if (!arg) return null;
   return { arg, isCode: CODE_RE.test(arg) };
 }
+
+/**
+ * 接頭辞なしで6桁の数字だけが送られた場合のコード。
+ *
+ * 画面に出ている数字をそのまま送る人が多く、接頭辞を必須にすると連携できないまま
+ * 顧客向けの応答に流れてしまう。発行済みで期限内のコードに一致した場合だけ連携する
+ * 運用にすれば、たまたま6桁を送った顧客の会話を横取りすることはない。
+ *
+ * @returns {string | null} 6桁の数字。それ以外は null
+ */
+export function parseBareCode(text) {
+  const trimmed = toHalfWidth(String(text ?? '').trim()).replace(/[\s　]/g, '');
+  return CODE_RE.test(trimmed) ? trimmed : null;
+}

@@ -1796,9 +1796,9 @@ function staffRow(s, { live }){
       const { code: issued, expiresInHours } = await adminApi('/staff/' + s.id + '/link-code', { method: 'POST' });
       // トーストは消えるため画面に残す。数字だけだと本人が数字だけ送ってしまうので、
       // 送ってもらう文面をそのまま出す
-      code.outerHTML = '<b class="num" style="font-size:14px">スタッフ登録 ' + issued + '</b>'
+      code.outerHTML = '<b class="num" style="font-size:16px;letter-spacing:.1em">' + issued + '</b>'
         + '<span class="pill mut">' + expiresInHours + '時間有効</span>';
-      showToast(s.name + 'さんに「スタッフ登録 ' + issued + '」をそのまま公式LINEへ送ってもらってください');
+      showToast(s.name + 'さんに「' + issued + '」を公式LINEへ送ってもらってください（数字だけでOK）');
     } catch (err) { showToast('エラー: ' + err.message); }
   });
   acts.append(edit, code);
@@ -2876,8 +2876,8 @@ async function loadFamiliesLive(){
     + '（例：<b>8/1 有休お願いします</b> ／ <b>7/31 10時から12時まで時間休</b>）。'
     + '連携していない相手の発言は、これまでどおり顧客からのメッセージとして扱われます。</p>'
     + '<p class="hint"><b>連携のしかたは3通りです。</b><br>'
-    + '① 上の「スタッフ情報」で<b>連携コード発行</b>を押し、本人が'
-    + '<b>Botとの1対1のトーク</b>へ「スタッフ登録 123456」と送る（確実）<br>'
+    + '① 上の「スタッフ情報」で<b>連携コード発行</b>を押し、本人が公式LINEへ'
+    + '<b>その6桁の数字を送る</b>だけ（1対1のトークでもグループでも可）<br>'
     + '② スタッフ用のLINEグループで、本人が「<b>スタッフ登録 高橋</b>」と自分の名前、'
     + 'または発行したコードを送る<br>'
     + '③ LINE ID が分かっていれば「編集」から直接入力する</p>'

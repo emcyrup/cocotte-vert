@@ -95,6 +95,33 @@ export function createAdminRouter({ pool, reservationService, lineClient, config
     }
   });
 
+  // スタッフの削除。予約に担当として残っている場合は履歴が壊れるため削除できない。
+  // その場合は「退職」（active = false）で担当候補から外す運用にする
+  router.delete('/staff/:id', async (req, res, next) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'invalid_id' });
+      const { rows: counts } = await pool.query(
+        `SELECT (SELECT count(*) FROM reservations WHERE staff_id = $1) AS reservations,
+                (SELECT count(*) FROM shifts WHERE staff_id = $1) AS shifts,
+                (SELECT count(*) FROM shift_requests WHERE staff_id = $1) AS requests`,
+        [id]
+      );
+      const used = Number(counts[0].reservations);
+      if (used > 0) return res.status(409).json({ error: 'staff_in_use', reservations: used });
+
+      const { rowCount } = await pool.query(`DELETE FROM staff WHERE id = $1`, [id]);
+      if (rowCount === 0) return res.status(404).json({ error: 'not_found' });
+      res.json({
+        ok: true,
+        // シフトと申請は外部キーの CASCADE で一緒に消える
+        deleted: { shifts: Number(counts[0].shifts), requests: Number(counts[0].requests) },
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   // ---- メニュー（LIFF 予約フォームの選択肢）----
   router.get('/menus', async (_req, res, next) => {
     try {

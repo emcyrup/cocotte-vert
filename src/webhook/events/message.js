@@ -1,11 +1,16 @@
 // message イベント:
-//   1. 電話番号らしき文字列 → 突合を試行（補助経路・Phase 2）
-//   2. それ以外のテキスト → 直近に来店フォローを送った顧客なら Claude Haiku で分類（Phase 4）
+//   1. 「お客様情報」等のコマンド → LIFF（確認・変更画面）への導線を返信
+//   2. 電話番号らしき文字列 → 突合を試行（補助経路・Phase 2）
+//   3. それ以外のテキスト → 直近に来店フォローを送った顧客なら Claude Haiku で分類（Phase 4）
 //      concern / question のみ Slack へ通知する
 import { looksLikePhone } from '../../customers/phone.js';
 
 // フォロー送信からこの日数以内の返信をフォロー回答とみなす
 const FOLLOWUP_WINDOW_DAYS = 14;
+
+// リッチメニュー未設定でもテキストで LIFF を呼び出せるようにする（1:1 トークのみ）
+const INFO_COMMANDS = new Set(['お客様情報', '登録情報', '会員情報', 'マイページ']);
+const normalizeInfoCommand = (text) => text.replace(/[\s　]/g, '').replace(/[?？!！。、]/g, '');
 
 export function createMessageHandler({
   pool,
@@ -14,6 +19,7 @@ export function createMessageHandler({
   linkService,
   classifier,
   staffCommand = null,
+  liffUrl = null,
 }) {
   async function handlePhoneText(event, text) {
     const lineUserId = event.source.userId;
@@ -95,6 +101,22 @@ export function createMessageHandler({
     if (staffCommand && (await staffCommand(event, text))) return;
 
     if (!event.source?.userId) return;
+
+    // お客様情報の呼び出し。分類（Haiku）に回す前に処理する
+    if (
+      liffUrl &&
+      event.source?.type === 'user' &&
+      INFO_COMMANDS.has(normalizeInfoCommand(text)) &&
+      event.replyToken
+    ) {
+      await lineClient.reply(event.replyToken, [
+        {
+          type: 'text',
+          text: `お客様情報のご確認・ご変更はこちらから開けます。\n${liffUrl}`,
+        },
+      ]);
+      return;
+    }
 
     if (looksLikePhone(text)) {
       await handlePhoneText(event, text);

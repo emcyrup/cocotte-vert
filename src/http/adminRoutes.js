@@ -5,7 +5,24 @@ import { buildPreReminderMessage } from '../line/messages/preReminder.js';
 import { buildAfterVisitMessage } from '../line/messages/afterVisit.js';
 import { buildDormantMessage } from '../line/messages/dormant.js';
 import { buildBirthdayMessage } from '../line/messages/birthday.js';
+import {
+  buildRequestReceivedMessage,
+  buildConfirmedMessage,
+  buildDeclinedMessage,
+} from '../line/messages/reservationStatus.js';
 import { REMINDER_JOBS } from '../reminders.js';
+
+// テスト送信できるメッセージの一覧。顧客へ送りうるものは全種類ここに載せる。
+// needs は文面を組み立てるのに要る対象（予約 or 顧客）。
+export const TEST_MESSAGE_TYPES = [
+  { type: 'preReminder', label: '前々日確認', needs: 'reservation', note: 'ご予約の2日前に自動送信' },
+  { type: 'afterVisit', label: '来店7日後フォロー', needs: 'reservation', note: 'ご来店の7日後に自動送信' },
+  { type: 'dormant', label: '休眠フォロー', needs: 'customer', note: '最終来店から90日で自動送信' },
+  { type: 'birthday', label: '誕生日メッセージ', needs: 'customer', note: 'お誕生日当日に自動送信' },
+  { type: 'requestReceived', label: '予約リクエスト受付', needs: 'reservation', note: '予約フォーム送信の直後' },
+  { type: 'confirmed', label: '予約の確定通知', needs: 'reservation', note: '「承認」を押したとき' },
+  { type: 'declined', label: '予約の見送り通知', needs: 'reservation', note: '「見送り」を押したとき' },
+];
 
 export function createAdminRouter({
   pool,
@@ -544,12 +561,29 @@ export function createAdminRouter({
   // ---- 配信メッセージのテスト送信 ----
   // 日付条件を待たずに各ジョブの実物メッセージを確認するための機能。
   // 宛先は常に TEST_LINE_USER_ID（lineClient.pushTest 側で保証）。
+  //
+  // 顧客へ送りうるメッセージは全種類ここから確認できるようにしてある。
+  // 文面を変えたときに「実際に条件が揃うまで見られない」種類が残ると、
+  // 本番で初めて崩れに気付くことになるため。
+
+  // 送信前の状態確認。画面に「今押すと何が起きるか」を先に出すために使う
+  router.get('/test-message', (_req, res) => {
+    res.json({
+      sendMode: config.sendMode,
+      // dry_run では宛先を使わないため、未設定でも確認はできる
+      testUserConfigured: Boolean(config.testLineUserId),
+      types: TEST_MESSAGE_TYPES,
+    });
+  });
+
   router.post('/test-message', async (req, res, next) => {
     try {
       const { type, reservationId, customerId } = req.body ?? {};
+      const spec = TEST_MESSAGE_TYPES.find((t) => t.type === type);
+      if (!spec) return res.status(400).json({ error: 'invalid_type' });
       let message;
 
-      if (type === 'preReminder' || type === 'afterVisit') {
+      if (spec.needs === 'reservation') {
         const id = Number(reservationId);
         if (!Number.isInteger(id)) return res.status(400).json({ error: 'invalid_reservation' });
         const { rows } = await pool.query(
@@ -562,17 +596,21 @@ export function createAdminRouter({
         );
         const r = rows[0];
         if (!r) return res.status(404).json({ error: 'reservation_not_found' });
-        message =
-          type === 'preReminder'
-            ? buildPreReminderMessage({
-                customerName: r.customer_name,
-                reservedAt: r.reserved_at,
-                menu: r.menu,
-                staffName: r.staff_name,
-                reservationId: r.id,
-              })
-            : buildAfterVisitMessage({ customerName: r.customer_name, reservationId: r.id });
-      } else if (type === 'dormant' || type === 'birthday') {
+        const base = {
+          customerName: r.customer_name,
+          reservedAt: r.reserved_at,
+          menu: r.menu,
+          staffName: r.staff_name,
+        };
+        const builders = {
+          preReminder: () => buildPreReminderMessage({ ...base, reservationId: r.id }),
+          afterVisit: () => buildAfterVisitMessage({ customerName: r.customer_name, reservationId: r.id }),
+          requestReceived: () => buildRequestReceivedMessage(base),
+          confirmed: () => buildConfirmedMessage(base),
+          declined: () => buildDeclinedMessage(base),
+        };
+        message = builders[type]();
+      } else {
         const id = Number(customerId);
         if (!Number.isInteger(id)) return res.status(400).json({ error: 'invalid_customer' });
         const { rows } = await pool.query(`SELECT id, name FROM customers WHERE id = $1`, [id]);
@@ -582,8 +620,6 @@ export function createAdminRouter({
           type === 'dormant'
             ? buildDormantMessage({ customerName: c.name })
             : buildBirthdayMessage({ customerName: c.name, couponUrl: config.birthdayCouponUrl });
-      } else {
-        return res.status(400).json({ error: 'invalid_type' });
       }
 
       const result = await lineClient.pushTest([message]);

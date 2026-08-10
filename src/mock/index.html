@@ -542,6 +542,7 @@ tr.await td{background:var(--warn-soft)}
     <button data-s="list"><span class="ic">&#9633;</span>顧客一覧</button>
     <button data-s="cust"><span class="ic">&#9633;</span>顧客カルテ</button>
     <button data-s="rem"><span class="ic">&#9633;</span>リマインド</button>
+    <button data-s="test"><span class="ic">&#9633;</span>テスト送信</button>
     <button data-s="shift"><span class="ic">&#9633;</span>スタッフ情報・シフト</button>
     <button data-s="sns"><span class="ic">&#9633;</span>SNS投稿</button>
   </nav>
@@ -568,6 +569,7 @@ tr.await td{background:var(--warn-soft)}
     <button class="qbtn" data-s="list"><span class="qi">&#128100;</span><span class="qt">顧客一覧<span class="qd">10世帯 / 14頭</span></span></button>
     <button class="qbtn" data-s="cust"><span class="qi">&#128203;</span><span class="qt">顧客カルテ<span class="qd">来店履歴・ワクチン</span></span></button>
     <button class="qbtn" data-s="rem"><span class="qi">&#128276;</span><span class="qt">リマインド<span class="qd">本日 12件 送信予定</span></span></button>
+    <button class="qbtn" data-s="test"><span class="qi">&#128233;</span><span class="qt">テスト送信<span class="qd">実物の文面を確認</span></span></button>
     <button class="qbtn" data-s="shift"><span class="qi">&#128337;</span><span class="qt">スタッフ情報・シフト<span class="qd">LINE連携・シフト申請</span></span></button>
     <button class="qbtn" data-s="sns"><span class="qi">&#128247;</span><span class="qt">SNS投稿<span class="qd">写真14枚 未投稿</span></span></button>
   </div>
@@ -693,7 +695,7 @@ tr.await td{background:var(--warn-soft)}
         <input type="date" id="rv-to" value="2026-07-31" aria-label="終了日">
         <button class="btn sub" id="rv-reload" type="button">表示</button>
       </div>
-      <p class="hint">承認待ちは期間に関わらず先頭に出ます。📩はテスト送信（飼い主様には届きません）。</p>
+      <p class="hint">承認待ちは期間に関わらず先頭に出ます。</p>
       <table class="rvtable">
         <thead>
           <tr><th>日時</th><th>わんちゃん</th><th>コース</th><th>担当</th><th>状態</th><th>ご要望</th><th>操作</th></tr>
@@ -730,20 +732,10 @@ tr.await td{background:var(--warn-soft)}
     </div>
 
     <div class="card">
-      <div class="hd"><h2>配信メッセージのテスト送信</h2><span class="pill good">誤爆しません</span></div>
+      <div class="hd"><h2>配信メッセージの確認</h2></div>
       <div class="bd">
-        <p class="hint">実物のメッセージを確認できます。宛先はテスト用アカウント固定で、本番の配信には影響しません。</p>
-        <div class="frow" style="margin-bottom:8px">
-          <input type="text" id="ts-q" placeholder="飼い主名・わんちゃん名 or 電話番号で検索">
-          <button class="btn sub" id="ts-search" type="button">検索</button>
-        </div>
-        <div class="frow" style="margin-bottom:8px">
-          <select id="ts-cust"><option value="">わんちゃんを選択</option></select>
-        </div>
-        <div class="frow">
-          <button class="btn sub" data-test="休眠フォロー" data-type="dormant" type="button">&#128233; 休眠フォロー</button>
-          <button class="btn sub" data-test="誕生日" data-type="birthday" type="button">&#128233; 誕生日</button>
-        </div>
+        <p class="hint">実物の文面は「テスト送信」の画面で全種類ためせます（飼い主様には届きません）。</p>
+        <button class="btn sub" id="ts-goto" type="button">テスト送信を開く</button>
       </div>
     </div>
   </div>
@@ -922,6 +914,51 @@ tr.await td{background:var(--warn-soft)}
   </div>
 </section>
 
+<!-- ================= テスト送信 ================= -->
+<section class="screen" id="s-test">
+  <div class="crumb">自動化</div>
+  <h1>テスト送信</h1>
+  <p class="sub">実物の文面をテスト用アカウントで確認できます。飼い主様には届きません。</p>
+
+  <div class="card" id="ts-state" style="margin-bottom:16px">
+    <div class="bd"><p class="hint" style="margin:0">送信モードを確認しています…</p></div>
+  </div>
+
+  <div class="grid resv2">
+    <div class="card">
+      <div class="hd"><h2>お客様を選んで送る</h2></div>
+      <div class="bd">
+        <p class="hint">お名前だけで組み立てられるメッセージです。</p>
+        <div class="frow" style="margin-bottom:8px">
+          <input type="text" id="ts-q" placeholder="飼い主名・わんちゃん名 or 電話番号で検索">
+          <button class="btn sub" id="ts-search" type="button">検索</button>
+        </div>
+        <div class="frow" style="margin-bottom:8px">
+          <select id="ts-cust"><option value="">わんちゃんを選択</option></select>
+        </div>
+        <div class="frow" id="ts-custbtns"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="hd"><h2>ご予約を選んで送る</h2></div>
+      <div class="bd">
+        <p class="hint">日時・コース・担当が入るメッセージです。</p>
+        <div class="frow" style="margin-bottom:8px">
+          <input type="date" id="ts-from" aria-label="開始日">
+          <span style="font-size:13px;color:var(--muted)">〜</span>
+          <input type="date" id="ts-to" aria-label="終了日">
+          <button class="btn sub" id="ts-reload" type="button">表示</button>
+        </div>
+        <div class="frow" style="margin-bottom:8px">
+          <select id="ts-resv"><option value="">ご予約を選択</option></select>
+        </div>
+        <div class="frow" id="ts-resvbtns"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ================= スタッフ情報・シフト入力 ================= -->
 <section class="screen" id="s-shift">
   <div class="crumb">スタッフ管理</div>
@@ -1088,12 +1125,13 @@ async function adminApi(path, options = {}) {
   return body;
 }
 // 配信メッセージのテスト送信。宛先はサーバ側で常にテスト用アカウントに固定される
-async function testSend(payload) {
+async function testSend(payload, label = '') {
+  const name = label ? '「' + label + '」' : 'メッセージ';
   try {
     const { mode } = await adminApi('/test-message', { method: 'POST', body: JSON.stringify(payload) });
     showToast(mode === 'dry_run'
-      ? 'dry_run のため送信せずログに出力しました（受け取るには SEND_MODE=test にしてください）'
-      : 'テスト用アカウントへ送信しました（飼い主様には届きません）');
+      ? name + 'は dry_run のため送信せず、サーバのログに文面を出力しました（受け取るには SEND_MODE=test にしてください）'
+      : name + 'をテスト用アカウントへ送信しました（飼い主様には届きません）');
   } catch (err) {
     const messages = {
       live_mode: 'SEND_MODE=live ではテスト送信できません（誤配信防止）',
@@ -3022,14 +3060,6 @@ function renderResv(){
         r.name + 'の予約を無断キャンセルにしました',
         '「' + r.name + '」の予約を無断キャンセルにしますか？'));
     }
-    if (r.status === 'confirmed' || r.status === 'visited') {
-      mk('&#128233;前々日', 'mut', () => adminLive
-        ? testSend({ type: 'preReminder', reservationId: r.id })
-        : showToast('前々日確認のメッセージをテスト用アカウントへ送りました'));
-      mk('&#128233;フォロー', 'mut', () => adminLive
-        ? testSend({ type: 'afterVisit', reservationId: r.id })
-        : showToast('来店7日後フォローのメッセージをテスト用アカウントへ送りました'));
-    }
     tr.appendChild(td);
     rvrows.appendChild(tr);
   });
@@ -3180,14 +3210,110 @@ document.getElementById('nr-submit').addEventListener('click', async () => {
   showToast(name + 'の予約を登録しました（スタッフ入力のため承認は不要です）');
 });
 
-document.querySelectorAll('[data-test]').forEach(b => {
-  b.addEventListener('click', () => {
-    const sel = document.getElementById('ts-cust');
-    if (!sel.selectedIndex) { showToast('先に送信対象を選択してください'); return; }
-    if (adminLive) { testSend({ type: b.dataset.type, customerId: Number(sel.value) }); return; }
-    showToast(b.dataset.test + 'のメッセージをテスト用アカウントへ送りました（飼い主様には届きません）');
+// ================= テスト送信 =================
+// 顧客へ送りうるメッセージを全種類ここから確認できるようにしている。文面を変えたときに
+// 「実際に条件が揃うまで見られない」種類が残ると、本番で初めて崩れに気付くことになるため。
+// サーバ側の TEST_MESSAGE_TYPES と同じ並び。needs は文面の組み立てに要る対象
+const TEST_TYPES = [
+  { type:'preReminder',     label:'前々日確認',          needs:'reservation', note:'ご予約の2日前に自動送信' },
+  { type:'afterVisit',      label:'来店7日後フォロー',    needs:'reservation', note:'ご来店の7日後に自動送信' },
+  { type:'dormant',         label:'休眠フォロー',        needs:'customer',    note:'最終来店から90日で自動送信' },
+  { type:'birthday',        label:'誕生日メッセージ',    needs:'customer',    note:'お誕生日当日に自動送信' },
+  { type:'requestReceived', label:'予約リクエスト受付',  needs:'reservation', note:'予約フォーム送信の直後' },
+  { type:'confirmed',       label:'予約の確定通知',      needs:'reservation', note:'「承認」を押したとき' },
+  { type:'declined',        label:'予約の見送り通知',    needs:'reservation', note:'「見送り」を押したとき' },
+];
+function tsRenderButtons(){
+  for (const [needs, boxId] of [['customer','ts-custbtns'], ['reservation','ts-resvbtns']]) {
+    const box = document.getElementById(boxId);
+    box.innerHTML = '';
+    TEST_TYPES.filter(t => t.needs === needs).forEach(t => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'btn sub';
+      b.innerHTML = '&#128233; ' + t.label;
+      b.title = t.note;
+      b.addEventListener('click', () => tsSend(t));
+      box.appendChild(b);
+    });
+  }
+}
+function tsSend(t){
+  const sel = document.getElementById(t.needs === 'customer' ? 'ts-cust' : 'ts-resv');
+  if (!sel.value) {
+    showToast(t.needs === 'customer' ? '先にお客様を選択してください' : '先にご予約を選択してください');
+    return;
+  }
+  if (!adminLive) {
+    showToast('「' + t.label + '」をテスト用アカウントへ送りました（モックのため実送信はされません）');
+    return;
+  }
+  testSend(t.needs === 'customer'
+    ? { type: t.type, customerId: Number(sel.value) }
+    : { type: t.type, reservationId: Number(sel.value) }, t.label);
+}
+// 「今押すと何が起きるか」を先に出す。dry_run と実送信の区別が付かないまま
+// 押されると、届かない理由を追いかけることになるため
+async function tsRenderState(){
+  const box = document.querySelector('#ts-state .bd');
+  if (!adminLive) {
+    box.innerHTML = '<p class="hint" style="margin:0">'
+      + '<span class="pill mut">デモモード</span> ボタンを押しても実際には送信されません。</p>';
+    return;
+  }
+  try {
+    const { sendMode, testUserConfigured } = await adminApi('/test-message');
+    const states = {
+      dry_run: ['mut', 'dry_run', '送信せずサーバのログに文面を出力します。実際に受け取るには SEND_MODE=test にしてください。'],
+      test: testUserConfigured
+        ? ['good', 'test', 'テスト用アカウントへ実際に届きます。飼い主様には届きません。']
+        : ['crit', 'test', 'TEST_LINE_USER_ID が未設定のため送信できません。'],
+      live: ['crit', 'live', '本番送信モードのため、誤配信防止としてテスト送信はできません。'],
+    };
+    const [cls, mode, text] = states[sendMode] ?? ['mut', sendMode, ''];
+    box.innerHTML = '<p class="hint" style="margin:0"><span class="pill ' + cls + '">SEND_MODE = ' + mode + '</span> ' + text + '</p>';
+  } catch (err) {
+    box.innerHTML = '<p class="hint" style="margin:0">送信モードを確認できませんでした: ' + err.message + '</p>';
+  }
+}
+// 予約の選択肢。テスト送信は過去の予約でも文面を確認できるため、既定は前後2週間
+function tsFillResv(list){
+  const sel = document.getElementById('ts-resv');
+  sel.innerHTML = '<option value="">ご予約を選択</option>';
+  list.forEach(r => {
+    const opt = document.createElement('option');
+    opt.value = r.id;
+    opt.textContent = r.at + '｜' + r.name + '｜' + r.menu + (r.staff ? '｜' + r.staff : '');
+    sel.appendChild(opt);
   });
-});
+}
+async function tsReloadResv({ quiet = false } = {}){
+  if (!adminLive) { tsFillResv(RESV); return; }
+  const params = new URLSearchParams();
+  const from = document.getElementById('ts-from').value, to = document.getElementById('ts-to').value;
+  if (from) params.set('from', from);
+  if (to) params.set('to', to);
+  try {
+    const { reservations } = await adminApi('/reservations?' + params);
+    tsFillResv(reservations.map(rvMap));
+    if (!quiet) showToast(reservations.length ? reservations.length + ' 件のご予約を読み込みました' : 'この期間にご予約はありません');
+  } catch (err) { if (!quiet) showToast('読み込みに失敗しました: ' + err.message); }
+}
+document.getElementById('ts-search').addEventListener('click',
+  () => fillCustomers(document.getElementById('ts-q').value, 'ts-cust'));
+document.getElementById('ts-reload').addEventListener('click', () => tsReloadResv());
+document.getElementById('ts-goto').addEventListener('click', () => go('test'));
+tsRenderButtons();
+// 期間の初期値は今日を挟んで前後2週間。テスト送信は過去の予約でも文面を確認できるため、
+// 予約管理（これからの予約）とは違って過去側も既定で含める
+(function tsInitDates(){
+  const day = 86_400_000;
+  const now = Date.now();
+  document.getElementById('ts-from').value = dateOnly(new Date(now - 14 * day).toISOString());
+  document.getElementById('ts-to').value = dateOnly(new Date(now + 14 * day).toISOString());
+  tsFillResv(RESV);
+  tsRenderState();
+})();
 
 document.getElementById('nc-add').addEventListener('click', async () => {
   const name = document.getElementById('nc-name').value.trim();
@@ -3453,6 +3579,8 @@ async function loadFamiliesLive(){
       loadShiftReqs(), renderStaffInfo(), renderShiftTable(), renderDashboardLive(),
     ]);
     renderRemindLive();
+    tsRenderState();
+    await tsReloadResv({ quiet: true });
   } catch (err) {
     showToast('データの読み込みに失敗しました: ' + err.message);
   }

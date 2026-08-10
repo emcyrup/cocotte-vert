@@ -88,6 +88,11 @@ Meta 側のセットアップは [docs/instagram.md](docs/instagram.md) を参�
 （前々日確認・来店フォロー・休眠・誕生日・予約の受付/確定/見送り）。宛先はサーバ側で
 常に `TEST_LINE_USER_ID` に固定され、`SEND_MODE=live` では誤配信防止のため拒否される。
 
+`TEST_LINE_USER_ID` に専用アカウントを用意する必要はなく、**店長・スタッフ本人の LINE**
+でよい。条件はそのアカウントが運用中の公式アカウントを**友だち追加している**こと
+（userId はアカウントごとに違う値のため）。値の調べ方は
+[docs/switch-account.md](docs/switch-account.md) の Step 6 を参照。
+
 ## リマインドの ON/OFF
 
 実装済みの4種（前々日確認・来店7日後フォロー・休眠フォロー・誕生日）は、管理画面

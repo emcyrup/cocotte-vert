@@ -478,8 +478,10 @@ tr.await td{background:var(--warn-soft)}
   /* 操作ボタンは文字幅に収める。横いっぱいに伸ばすと画面が間延びして、
      一度に見える情報が減ってしまう */
   .rvtable .sbtn{flex:0 0 auto; padding:5px 9px}
-  /* 期間の指定は日付を2つ横に並べて1行に収める */
-  .frow input[type="date"]{flex:1 1 44%}
+  /* 期間の指定は「開始日・終了日・表示」を1行に収める。
+     幅を割合で決めるとボタンのぶんが入らず折り返すため、残り幅を分け合わせる */
+  .frow{gap:6px}
+  .frow input[type="date"]{flex:1 1 0; min-width:0; width:100%; padding:6px 8px; font-size:12.5px}
   /* 検索欄が広がりすぎて件数がはみ出すのを防ぐ */
   .search input{max-width:none; min-width:0}
   /* 入力欄だけ全幅にし、ボタンは隣に小さく置く */
@@ -502,7 +504,9 @@ tr.await td{background:var(--warn-soft)}
   /* シフトの期間指定。日付の行と操作の行に分けて2行に収める
      （全幅にすると4行を占めて表が画面から押し出される） */
   #shweek{gap:6px}
-  #shweek input[type="date"]{order:0; flex:1 1 44%; width:auto; padding:6px 8px; font-size:12.5px}
+  /* ボタンが4つあるため6要素すべては1行に入らない。
+     日付2つで1行、ボタンで1行の計2行にする（1行に詰めると日付が読めない幅になる） */
+  #shweek input[type="date"]{order:0; flex:1 1 47%; min-width:0; width:auto}
   #shweek .sbtn{order:1; flex:0 0 auto}
   #shweek span{display:none}
 
@@ -927,9 +931,9 @@ tr.await td{background:var(--warn-soft)}
     <button class="sbtn" id="sh-prev" type="button">&larr; 前へ</button>
     <button class="sbtn" id="sh-today" type="button">今週</button>
     <button class="sbtn" id="sh-next" type="button">次へ &rarr;</button>
-    <input type="date" id="sh-from" aria-label="表示の開始日" style="flex:0 0 auto">
+    <input type="date" id="sh-from" aria-label="表示の開始日">
     <span style="font-size:13px;color:var(--muted)">〜</span>
-    <input type="date" id="sh-to" aria-label="表示の終了日" style="flex:0 0 auto">
+    <input type="date" id="sh-to" aria-label="表示の終了日">
     <button class="sbtn pri" id="sh-apply" type="button">表示</button>
   </div>
 

@@ -5,8 +5,16 @@ import { buildPreReminderMessage } from '../line/messages/preReminder.js';
 import { buildAfterVisitMessage } from '../line/messages/afterVisit.js';
 import { buildDormantMessage } from '../line/messages/dormant.js';
 import { buildBirthdayMessage } from '../line/messages/birthday.js';
+import { REMINDER_JOBS } from '../reminders.js';
 
-export function createAdminRouter({ pool, reservationService, lineClient, config, shiftService = null }) {
+export function createAdminRouter({
+  pool,
+  reservationService,
+  lineClient,
+  config,
+  shiftService = null,
+  reminderSettings = null,
+}) {
   const router = express.Router();
 
   // ---- ダッシュボードの集計 ----
@@ -499,6 +507,36 @@ export function createAdminRouter({ pool, reservationService, lineClient, config
       }
       res.json(await shiftService.upsertShift({ staffId: id, date, kind: kind || null, startTime, endTime }));
     } catch (err) {
+      next(err);
+    }
+  });
+
+  // ---- リマインドの ON/OFF ----
+  // 画面から一括で切り替えられるようにするため、更新は「変えるぶんだけ」を受け取る。
+  router.get('/reminders', async (_req, res, next) => {
+    try {
+      if (!reminderSettings) return res.status(503).json({ error: 'not_configured' });
+      res.json({ jobs: REMINDER_JOBS, enabled: await reminderSettings.getAll() });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.put('/reminders', async (req, res, next) => {
+    try {
+      if (!reminderSettings) return res.status(503).json({ error: 'not_configured' });
+      const { enabled } = req.body ?? {};
+      if (!enabled || typeof enabled !== 'object') {
+        return res.status(400).json({ error: 'invalid_body' });
+      }
+      const next2 = await reminderSettings.update(enabled);
+      // 誤って全部止めたときに後から追えるよう、変更はサーバログにも残す
+      console.log(`[reminders] 更新 ${JSON.stringify(next2)}`);
+      res.json({ ok: true, enabled: next2 });
+    } catch (err) {
+      if (/未知のリマインド|真偽値/.test(err.message)) {
+        return res.status(400).json({ error: err.message });
+      }
       next(err);
     }
   });

@@ -1,4 +1,4 @@
-// Instagram 投稿の管理 API。全ルートが Basic 認証（index.js 側で適用）配下にある前提。
+// SNS 投稿（Instagram / スレッズ）の管理 API。全ルートが Basic 認証（index.js 側で適用）配下にある前提。
 //
 // 写真は管理画面のブラウザ側で JPEG へ正規化してから、1枚ずつ raw ボディで受け取る
 // （multipart パーサを足さず依存を増やさないため）。保存名は推測不能なランダム値。
@@ -9,6 +9,8 @@ import express from 'express';
 
 const MAX_PHOTOS = 20; // 10枚×2投稿ぶんまで
 const MAX_CAPTION = 2200; // Instagram の上限
+const MAX_THREADS_TEXT = 500; // Threads の上限（Instagram より短い）
+const PLATFORMS = ['instagram', 'threads'];
 
 export function createSnsRouter({ pool, publisher, dataDir }) {
   const router = express.Router();
@@ -51,12 +53,14 @@ export function createSnsRouter({ pool, publisher, dataDir }) {
   // ---- 投稿の作成（即時 or 予約）----
   router.post('/posts', async (req, res, next) => {
     try {
-      const { caption = '', files, scheduledAt = null } = req.body ?? {};
+      const { caption = '', files, scheduledAt = null, platform = 'instagram' } = req.body ?? {};
+      if (!PLATFORMS.includes(platform)) return res.status(400).json({ error: 'invalid_platform' });
       if (!Array.isArray(files) || files.length === 0) {
         return res.status(400).json({ error: 'no_photos' });
       }
       if (files.length > MAX_PHOTOS) return res.status(400).json({ error: 'too_many_photos' });
-      if (typeof caption !== 'string' || caption.length > MAX_CAPTION) {
+      const maxCaption = platform === 'threads' ? MAX_THREADS_TEXT : MAX_CAPTION;
+      if (typeof caption !== 'string' || caption.length > maxCaption) {
         return res.status(400).json({ error: 'invalid_caption' });
       }
       // アップロード API が発行した名前だけを受け付ける（パス操作の防止）
@@ -74,9 +78,10 @@ export function createSnsRouter({ pool, publisher, dataDir }) {
       try {
         await client.query('BEGIN');
         const { rows } = await client.query(
-          `INSERT INTO sns_posts (caption, scheduled_at) VALUES ($1, COALESCE($2, now()))
+          `INSERT INTO sns_posts (caption, scheduled_at, platform)
+           VALUES ($1, COALESCE($2, now()), $3)
            RETURNING id`,
-          [caption, when]
+          [caption, when, platform]
         );
         postId = rows[0].id;
         for (let i = 0; i < files.length; i++) {
@@ -108,7 +113,7 @@ export function createSnsRouter({ pool, publisher, dataDir }) {
   router.get('/posts', async (_req, res, next) => {
     try {
       const { rows } = await pool.query(
-        `SELECT p.id, p.caption, p.status, p.scheduled_at, p.published_at, p.error,
+        `SELECT p.id, p.caption, p.status, p.platform, p.scheduled_at, p.published_at, p.error,
                 count(ph.id)::int AS photo_count,
                 (SELECT file FROM sns_photos WHERE post_id = p.id ORDER BY sort_order, id LIMIT 1) AS thumb
          FROM sns_posts p
@@ -137,6 +142,13 @@ export function createSnsRouter({ pool, publisher, dataDir }) {
       );
       if (rowCount === 0) return res.status(400).json({ error: 'not_cancellable' });
       for (const p of photos) {
+        // 同じ写真を別の投稿でも使っていることがある（Instagram と スレッズ に同じ写真を出す等）。
+        // 消してしまうと残った投稿が画像を取得できなくなるため、他で使われていないものだけ消す
+        const { rows: used } = await pool.query(
+          `SELECT 1 FROM sns_photos WHERE file = $1 LIMIT 1`,
+          [p.file]
+        );
+        if (used.length > 0) continue;
         await unlink(path.join(dataDir, p.file)).catch(() => {});
       }
       res.json({ ok: true });

@@ -16,6 +16,7 @@ const JOB_LABELS = {
 export function summaryLine(name, summary) {
   const label = JOB_LABELS[name] ?? name;
   if (!summary) return `・${label}: 🚨 異常終了（詳細は別途通知）`;
+  if (summary.disabled) return `・${label}: 停止中（管理画面で OFF）`;
   const parts = [`対象 ${summary.total}`];
   if (summary.sent > 0) parts.push(`送信 ${summary.sent}`);
   if (summary.dryRun > 0) parts.push(`dry_run ${summary.dryRun}`);
@@ -24,13 +25,19 @@ export function summaryLine(name, summary) {
   return `・${label}: ${parts.join(' / ')}`;
 }
 
-export function createJobRunner({ slack, settings = null }) {
+export function createJobRunner({ slack, settings = null, reminders = null }) {
   /**
    * ジョブを1つ実行する。
    * ジョブ関数は { total, sent, dryRun, skipped, failed, errors } を返す規約とする。
    * notify=false のときは通知せずサマリだけ返す（日次のまとめ通知用）。
    */
   async function runJob(name, jobFn, { notify = true } = {}) {
+    // 管理画面で OFF にされたリマインドはここで止める。手動実行も同じ判定にしておかないと
+    // 「画面では止めたのに送られた」が起きるため、経路を分けない
+    if (reminders && !(await reminders.isEnabled(name))) {
+      console.log(`[job:${name}] 停止中のため実行しません`);
+      return { total: 0, sent: 0, dryRun: 0, skipped: 0, failed: 0, errors: [], disabled: true };
+    }
     const startedAt = Date.now();
     console.log(`[job:${name}] 開始`);
     try {

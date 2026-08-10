@@ -23,13 +23,19 @@ function makeFakes({ post = { id: 1, caption: 'c' }, photos = ['a'.repeat(24) + 
   };
   const instagram = {
     publishPost: async (args) => {
-      published.push(args);
+      published.push({ ...args, via: 'instagram' });
       return { status: 'published', mediaId: `m-${published.length}` };
+    },
+  };
+  const threads = {
+    publishPost: async (args) => {
+      published.push({ ...args, via: 'threads' });
+      return { status: 'published', mediaId: `t-${published.length}` };
     },
   };
   const slack = { notify: async (text) => notifications.push(text) };
   const config = { publicBaseUrl: 'https://example.com' };
-  return { pool, instagram, slack, config, queries, published, notifications };
+  return { pool, instagram, threads, slack, config, queries, published, notifications };
 }
 
 test('公開 URL を組み立てて投稿し、published へ更新する', async () => {
@@ -108,4 +114,50 @@ test('publicBaseUrl 未設定では投稿せず failed にする', async () => {
   assert.equal(result.ok, false);
   assert.match(result.error, /PUBLIC_BASE_URL/);
   assert.equal(f.published.length, 0);
+});
+
+test('platform=threads はスレッズ側のクライアントへ渡り、分割しない', async () => {
+  const f = makeFakes({
+    post: { id: 9, caption: 'スレッズ本文', platform: 'threads' },
+    photos: Array.from({ length: 12 }, () => 'c'.repeat(24) + '.jpg'),
+  });
+  const publisher = createSnsPublisher(f);
+
+  const result = await publisher.publishOne(9);
+  assert.equal(result.ok, true);
+  assert.equal(result.parts, 1);
+  assert.equal(f.published.length, 1);
+  assert.equal(f.published[0].via, 'threads');
+  assert.equal(f.published[0].imageUrls.length, 12);
+});
+
+test('platform 未設定の既存行は Instagram として扱う', async () => {
+  const f = makeFakes({ post: { id: 3, caption: 'c' } });
+  const publisher = createSnsPublisher(f);
+
+  await publisher.publishOne(3);
+  assert.equal(f.published[0].via, 'instagram');
+});
+
+test('スレッズ未設定なら失敗として記録し、Instagram 投稿は巻き込まない', async () => {
+  const f = makeFakes({ post: { id: 4, caption: 'c', platform: 'threads' } });
+  const publisher = createSnsPublisher({ ...f, threads: null });
+
+  const result = await publisher.publishOne(4);
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'platform_unavailable');
+  assert.equal(f.published.length, 0);
+  const failed = f.queries.find((q) => /SET status = 'failed'/.test(q.sql));
+  assert.match(failed.params[1], /スレッズ/);
+});
+
+test('スレッズ投稿の失敗通知にはスレッズと出る', async () => {
+  const f = makeFakes({ post: { id: 5, caption: 'c', platform: 'threads' } });
+  const publisher = createSnsPublisher({
+    ...f,
+    threads: { publishPost: async () => { throw new Error('API 落ち'); } },
+  });
+
+  await publisher.publishOne(5);
+  assert.match(f.notifications[0], /スレッズ 投稿に失敗/);
 });

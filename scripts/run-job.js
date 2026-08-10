@@ -24,6 +24,7 @@ const { createLineClient } = await import('../src/line/client.js');
 const { createSlackNotifier } = await import('../src/notify/slack.js');
 const { createStaffNotifier } = await import('../src/notify/staffNotifier.js');
 const { createSettings } = await import('../src/settings.js');
+const { createReminderSettings } = await import('../src/reminders.js');
 const { createJobRunner } = await import('../src/jobs/runner.js');
 const { createPreReminderJob } = await import('../src/jobs/preReminder.js');
 const { createAfterVisitJob } = await import('../src/jobs/afterVisit.js');
@@ -39,7 +40,8 @@ const slackChannel = config.slackWebhookUrl
   : null;
 const settings = createSettings({ pool });
 const slack = createStaffNotifier({ config, slack: slackChannel, lineClient, settings });
-const runner = createJobRunner({ slack });
+// 管理画面で OFF にしたリマインドは手動実行でも送らない（経路によって挙動が変わらないように）
+const runner = createJobRunner({ slack, settings, reminders: createReminderSettings({ settings }) });
 
 const jobs = {
   preReminder: createPreReminderJob({ pool, lineClient }),

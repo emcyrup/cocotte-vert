@@ -48,6 +48,13 @@ export function loadConfig(env = process.env) {
   if (!IG_POST_MODES.includes(igPostMode)) {
     throw new Error(`IG_POST_MODE が不正です: "${igPostMode}"（${IG_POST_MODES.join(' | ')} のいずれか）`);
   }
+  // Threads も同様（Instagram とは別アカウント・別トークンのため設定を分ける）
+  const threadsPostMode = env.THREADS_POST_MODE || 'dry_run';
+  if (!IG_POST_MODES.includes(threadsPostMode)) {
+    throw new Error(
+      `THREADS_POST_MODE が不正です: "${threadsPostMode}"（${IG_POST_MODES.join(' | ')} のいずれか）`
+    );
+  }
   const liffId = env.LIFF_ID || null;
 
   return {
@@ -85,6 +92,11 @@ export function loadConfig(env = process.env) {
     igAccessToken: env.IG_ACCESS_TOKEN || null,
     igPostMode,
     igGraphBase: env.IG_GRAPH_BASE || 'https://graph.instagram.com',
+    // Threads 投稿（未設定なら機能ごと無効）
+    threadsUserId: env.THREADS_USER_ID || null,
+    threadsAccessToken: env.THREADS_ACCESS_TOKEN || null,
+    threadsPostMode,
+    threadsGraphBase: env.THREADS_GRAPH_BASE || 'https://graph.threads.net',
     // Instagram は投稿画像を公開 URL から取得するため、外から見える自分の URL が要る
     publicBaseUrl: env.PUBLIC_BASE_URL || (env.DOMAIN ? `https://${env.DOMAIN}` : null),
     port: Number(env.PORT || 3000),

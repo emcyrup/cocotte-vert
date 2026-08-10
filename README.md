@@ -35,7 +35,7 @@ npm start
 | `birthday` | 誕生日当日にお祝い＋クーポン（2/29 生まれは平年 2/28） |
 
 手動実行は `node scripts/run-job.js --job=preReminder --dry-run`。
-管理画面の「テスト送信」からも1件ずつ試せる（`SEND_MODE=test` 時のみ、配信ログには残さない）。
+管理画面の「テスト送信」（`/mock/#test`）からも1件ずつ試せる（配信ログには残さない）。
 
 ## 顧客向け画面（LIFF）
 
@@ -81,6 +81,12 @@ Meta 側のセットアップは [docs/instagram.md](docs/instagram.md) を参�
 同じ画面で**スレッズ**にも投稿できる。Instagram 用に並べた写真の左上にチェックを入れると、
 その分だけが別の投稿としてスレッズへ出る（`THREADS_POST_MODE=dry_run` が既定）。
 設定は [docs/threads.md](docs/threads.md) を参照。
+
+## テスト送信
+
+管理画面 `/mock/#test` から、顧客へ送りうるメッセージを**全種類**テスト送信できる
+（前々日確認・来店フォロー・休眠・誕生日・予約の受付/確定/見送り）。宛先はサーバ側で
+常に `TEST_LINE_USER_ID` に固定され、`SEND_MODE=live` では誤配信防止のため拒否される。
 
 ## リマインドの ON/OFF
 

@@ -78,3 +78,12 @@ test('抽出クエリは月日一致＋閏年フラグをパラメータで渡�
   assert.match(captured.sql, /is_blocked = false/);
   assert.equal(typeof captured.params[2], 'boolean');
 });
+
+test('お客様ごとに止めていると対象から外れる（SQL に条件が入っている）', async () => {
+  // 実際の除外は SQL の NOT EXISTS で行うため、条件が消えていないことを確かめる
+  let sql = '';
+  const pool = { query: async (q) => { sql = q; return { rows: [] }; } };
+  await createBirthdayJob({ pool, lineClient: { deliver: async () => ({}) } })();
+  assert.match(sql, /customer_reminder_settings/);
+  assert.match(sql, /s\.job = 'birthday'/);
+});

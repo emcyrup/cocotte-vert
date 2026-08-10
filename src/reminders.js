@@ -59,3 +59,42 @@ export function createReminderSettings({ settings }) {
 
   return { getAll, isEnabled, update };
 }
+
+/**
+ * お客様ごとのリマインド ON/OFF。
+ *
+ * 店舗全体の設定（上の createReminderSettings）とは別枠で、両方 ON のときだけ送られる。
+ * 判定はジョブ側の SQL に埋め込んである（対象者の抽出と同じクエリで済ませるため）。
+ * ここは画面から読み書きするための入口。
+ */
+export function createCustomerReminders({ pool }) {
+  async function get(customerId) {
+    const { rows } = await pool.query(
+      `SELECT job, enabled FROM customer_reminder_settings WHERE customer_id = $1`,
+      [customerId]
+    );
+    const stored = Object.fromEntries(rows.map((r) => [r.job, r.enabled]));
+    return Object.fromEntries(KEYS.map((k) => [k, stored[k] !== false]));
+  }
+
+  /** 変えるぶんだけ受け取り、更新後の全体を返す */
+  async function update(customerId, patch) {
+    const entries = Object.entries(patch ?? {});
+    for (const [k, v] of entries) {
+      if (!KEYS.includes(k)) throw new Error(`未知のリマインドです: ${k}`);
+      if (typeof v !== 'boolean') throw new Error(`ON/OFF は真偽値で指定してください: ${k}`);
+    }
+    for (const [job, enabled] of entries) {
+      await pool.query(
+        `INSERT INTO customer_reminder_settings (customer_id, job, enabled)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (customer_id, job)
+         DO UPDATE SET enabled = EXCLUDED.enabled, updated_at = now()`,
+        [customerId, job, enabled]
+      );
+    }
+    return get(customerId);
+  }
+
+  return { get, update };
+}

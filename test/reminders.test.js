@@ -126,3 +126,72 @@ test('まとめ通知では停止中と分かる', async () => {
   assert.match(saved, /誕生日: 対象 1/);
   assert.equal(notifications.length, 0);
 });
+
+// ---- お客様ごとの設定 ----
+import { createCustomerReminders } from '../src/reminders.js';
+
+// customer_reminder_settings の中身だけを持つ最小の pool
+function makeCustomerPool(initial = []) {
+  const rows = [...initial]; // { customer_id, job, enabled }
+  return {
+    rows,
+    pool: {
+      query: async (sql, params) => {
+        if (/SELECT job, enabled/.test(sql)) {
+          return { rows: rows.filter((r) => r.customer_id === params[0]) };
+        }
+        if (/INSERT INTO customer_reminder_settings/.test(sql)) {
+          const [customer_id, job, enabled] = params;
+          const hit = rows.find((r) => r.customer_id === customer_id && r.job === job);
+          if (hit) hit.enabled = enabled;
+          else rows.push({ customer_id, job, enabled });
+          return { rows: [] };
+        }
+        return { rows: [] };
+      },
+    },
+  };
+}
+
+test('お客様ごとの設定は行が無ければ全 ON', async () => {
+  const { pool } = makeCustomerPool();
+  const cr = createCustomerReminders({ pool });
+  assert.deepEqual(await cr.get(1), {
+    preReminder: true, afterVisit: true, dormant: true, birthday: true,
+  });
+});
+
+test('OFF にした種類だけが保存される', async () => {
+  const { pool, rows } = makeCustomerPool();
+  const cr = createCustomerReminders({ pool });
+
+  const after = await cr.update(1, { birthday: false });
+  assert.equal(after.birthday, false);
+  assert.equal(after.dormant, true);
+  assert.equal(rows.length, 1);
+  assert.deepEqual(rows[0], { customer_id: 1, job: 'birthday', enabled: false });
+});
+
+test('別のお客様の設定は混ざらない', async () => {
+  const { pool } = makeCustomerPool([{ customer_id: 1, job: 'dormant', enabled: false }]);
+  const cr = createCustomerReminders({ pool });
+  assert.equal((await cr.get(1)).dormant, false);
+  assert.equal((await cr.get(2)).dormant, true);
+});
+
+test('お客様ごとでも未知のキー・真偽値以外は保存しない', async () => {
+  const { pool, rows } = makeCustomerPool();
+  const cr = createCustomerReminders({ pool });
+  await assert.rejects(() => cr.update(1, { nope: false }), /未知のリマインド/);
+  await assert.rejects(() => cr.update(1, { dormant: 'off' }), /真偽値/);
+  assert.equal(rows.length, 0);
+});
+
+test('OFF にしたあと ON に戻せる', async () => {
+  const { pool } = makeCustomerPool();
+  const cr = createCustomerReminders({ pool });
+  await cr.update(1, { afterVisit: false });
+  assert.equal((await cr.get(1)).afterVisit, false);
+  await cr.update(1, { afterVisit: true });
+  assert.equal((await cr.get(1)).afterVisit, true);
+});

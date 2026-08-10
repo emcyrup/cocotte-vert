@@ -15,7 +15,12 @@ export function createPreReminderJob({ pool, lineClient }) {
          AND (r.reserved_at AT TIME ZONE 'Asia/Tokyo')::date
              = ((now() AT TIME ZONE 'Asia/Tokyo')::date + INTERVAL '2 day')::date
          AND c.line_user_id IS NOT NULL
-         AND c.is_blocked = false`
+         AND c.is_blocked = false
+         -- お客様が「前々日確認だけ止めたい」と希望した場合は送らない
+         AND NOT EXISTS (
+           SELECT 1 FROM customer_reminder_settings s
+           WHERE s.customer_id = c.id AND s.job = 'preReminder' AND s.enabled = false
+         )`
     );
 
     const summary = { total: rows.length, sent: 0, dryRun: 0, skipped: 0, failed: 0, errors: [] };

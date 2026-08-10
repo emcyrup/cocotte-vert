@@ -16,6 +16,10 @@ export function createAfterVisitJob({ pool, lineClient }) {
          AND c.line_user_id IS NOT NULL
          AND c.opt_out = false
          AND c.is_blocked = false
+         AND NOT EXISTS (
+           SELECT 1 FROM customer_reminder_settings s
+           WHERE s.customer_id = c.id AND s.job = 'afterVisit' AND s.enabled = false
+         )
        ORDER BY c.id, r.reserved_at DESC`
     );
 

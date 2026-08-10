@@ -68,3 +68,12 @@ test('1件の失敗が他の対象者を止めない', async () => {
   assert.equal(summary.sent, 1);
   assert.equal(summary.failed, 1);
 });
+
+test('お客様ごとに止めていると対象から外れる（SQL に条件が入っている）', async () => {
+  // 実際の除外は SQL の NOT EXISTS で行うため、条件が消えていないことを確かめる
+  let sql = '';
+  const pool = { query: async (q) => { sql = q; return { rows: [] }; } };
+  await createAfterVisitJob({ pool, lineClient: { deliver: async () => ({}) } })();
+  assert.match(sql, /customer_reminder_settings/);
+  assert.match(sql, /s\.job = 'afterVisit'/);
+});

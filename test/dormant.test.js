@@ -50,3 +50,12 @@ test('dedupe_key は dormant:cust:{id}:{YYYY-MM-DD}', async () => {
   assert.match(delivered[0].dedupeKey, /^dormant:cust:7:\d{4}-\d{2}-\d{2}$/);
   assert.equal(delivered[0].jobType, 'dormant');
 });
+
+test('お客様ごとに止めていると対象から外れる（SQL に条件が入っている）', async () => {
+  // 実際の除外は SQL の NOT EXISTS で行うため、条件が消えていないことを確かめる
+  let sql = '';
+  const pool = { query: async (q) => { sql = q; return { rows: [] }; } };
+  await createDormantJob({ pool, lineClient: { deliver: async () => ({}) }, dailyLimit: 5 })();
+  assert.match(sql, /customer_reminder_settings/);
+  assert.match(sql, /s\.job = 'dormant'/);
+});

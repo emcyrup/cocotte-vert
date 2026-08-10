@@ -164,19 +164,26 @@ SEND_MODE=test
 TEST_LINE_USER_ID=（運用中アカウントでの自分の userId）
 ```
 
-userId は Step 5 のログから拾える。
+**テスト用に別のアカウントを作る必要はない。** 店長やスタッフ本人の LINE でよい。
+`SEND_MODE=test` の間は、対象者が誰であっても宛先がこの1つに差し替わる。
+条件は**そのアカウントが運用中の公式アカウントを友だち追加していること**。
+userId は公式アカウント（プロバイダー）ごとに違う値のため、別アカウントの値は使えない。
+
+userId は LINE アプリの画面には出ない。Step 5 で友だち追加した本人の行を DB から取り出す。
 
 ```bash
-docker compose logs app | grep '\[follow\]'
 docker compose exec db psql -U postgres -d cocotte_vert -c \
   "SELECT line_user_id FROM customers ORDER BY id DESC LIMIT 1;"
 ```
+
+`[follow]` のログには**内部 id しか出ない**（顧客の LINE userId をログに残さない方針のため）。
+ログから拾おうとしても見つからないので、上の SQL を使う。
 
 ```bash
 docker compose --profile standalone up -d
 ```
 
-店舗管理画面（`/mock/` の予約管理）の「配信メッセージのテスト送信」で4種類とも自分に届くことを確認する。
+店舗管理画面の**「テスト送信」**（`/mock/#test`）で、7種類とも自分に届くことを確認する。
 宛先は `TEST_LINE_USER_ID` に固定されるため、**この段階でもお客様には届かない**。
 
 ### Step 7. リッチメニュー（お客様の画面が変わる最初の操作）

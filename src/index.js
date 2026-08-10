@@ -10,7 +10,7 @@ import { createIdTokenVerifier } from './line/verifyIdToken.js';
 import { createSlackNotifier } from './notify/slack.js';
 import { createStaffNotifier } from './notify/staffNotifier.js';
 import { createSettings } from './settings.js';
-import { createReminderSettings } from './reminders.js';
+import { createReminderSettings, createCustomerReminders } from './reminders.js';
 import { createLinkService } from './customers/linkService.js';
 import { createWebhookHandler } from './webhook/handler.js';
 import { createJobRunner } from './jobs/runner.js';
@@ -36,6 +36,7 @@ const config = loadConfig();
 const lineClient = createLineClient({ config, pool });
 const settings = createSettings({ pool });
 const reminderSettings = createReminderSettings({ settings });
+const customerReminders = createCustomerReminders({ pool });
 // スタッフ通知は staffNotifier に集約（Slack / LINE グループ / 両方を設定で切替）
 const slackChannel = config.slackWebhookUrl
   ? createSlackNotifier({ webhookUrl: config.slackWebhookUrl })
@@ -227,7 +228,15 @@ app.get(['/admin', '/admin/index.html'], (_req, res) => res.redirect('/mock/#res
 app.use(
   '/api/admin',
   adminGuard,
-  createAdminRouter({ pool, reservationService, lineClient, config, shiftService, reminderSettings })
+  createAdminRouter({
+    pool,
+    reservationService,
+    lineClient,
+    config,
+    shiftService,
+    reminderSettings,
+    customerReminders,
+  })
 );
 
 // 店舗管理画面（モック統合版）。管理 API に疎通できる本番環境では実データで動き、

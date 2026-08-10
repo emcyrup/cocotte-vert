@@ -14,6 +14,10 @@ export function createBirthdayJob({ pool, lineClient, couponUrl = null }) {
        WHERE c.line_user_id IS NOT NULL
          AND c.opt_out = false
          AND c.is_blocked = false
+         AND NOT EXISTS (
+           SELECT 1 FROM customer_reminder_settings s
+           WHERE s.customer_id = c.id AND s.job = 'birthday' AND s.enabled = false
+         )
          AND c.birthday IS NOT NULL
          AND (
            (EXTRACT(MONTH FROM c.birthday) = $1 AND EXTRACT(DAY FROM c.birthday) = $2)

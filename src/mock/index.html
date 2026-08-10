@@ -340,6 +340,18 @@ button.trow2:focus-visible{outline:2px solid var(--accent); outline-offset:-2px}
 .dogbtn .dn{font-size:13px; font-weight:700; line-height:1.3}
 .dogbtn .db{display:block; font-size:11px; color:var(--muted); font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
 .dogbtn .dtags{margin-left:auto; display:flex; gap:4px; flex-wrap:wrap; justify-content:flex-end; flex:0 0 auto}
+/* 顧客一覧の表。1行＝1世帯。編集は行の直下（.erow）を開いて行う */
+.ctable td{vertical-align:top}
+.ctable .cname{font-weight:700; font-size:13.5px}
+.ctable .cpets{display:flex; flex-wrap:wrap; gap:4px}
+.ctable .petlink{background:var(--accent-soft); border:1px solid var(--line); border-radius:99px;
+  padding:3px 9px; font:inherit; font-size:12px; color:var(--ink); cursor:pointer}
+.ctable .petlink:hover{border-color:var(--accent)}
+.ctable .petlink:focus-visible{outline:2px solid var(--accent); outline-offset:1px}
+.ctable .nopet{font-size:11.5px; color:var(--muted)}
+.ctable .rowacts{display:flex; gap:6px; justify-content:flex-end; flex-wrap:wrap}
+.erow>td{background:var(--surface2); border-top:0}
+.erow .ehd{font-size:12px; font-weight:700; padding:10px 18px 0}
 .cres{display:none; gap:8px; flex-wrap:wrap; background:var(--surface); border:1px solid var(--line);
   border-radius:12px; box-shadow:var(--shadow); padding:12px 14px; margin-bottom:18px}
 .cres.on{display:flex}
@@ -469,6 +481,16 @@ tr.await td{background:var(--warn-soft)}
   /* 7列の予約一覧は潰れて読めないため、1予約=1カードに組み替える。
      同じ画面にある料金表・店舗情報まで組み替えると逆に読めなくなるので、
      対象は予約一覧のテーブルだけに限る */
+  .ctable,.ctable tbody,.ctable tr,.ctable td{display:block}
+  .ctable thead{display:none}
+  .ctable tbody>tr{border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:10px}
+  .ctable td{border:0; padding:2px 0; white-space:normal}
+  .ctable td::before{content:attr(data-label)"： "; color:var(--muted); font-size:11px}
+  .ctable td.cn::before,.ctable td.rowacts::before{content:none}
+  .ctable td.cn{font-size:14px; margin-bottom:4px}
+  .ctable .rowacts{margin-top:8px; justify-content:flex-start}
+  .ctable tr.erow{padding:0}
+  .ctable tr.erow>td{border-radius:10px}
   .rvtable,.rvtable tbody,.rvtable tr,.rvtable td{display:block}
   .rvtable thead{display:none}
   .rvtable tr{border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:10px}
@@ -514,7 +536,7 @@ tr.await td{background:var(--warn-soft)}
   #shweek .sbtn{order:1; flex:0 0 auto}
   #shweek span{display:none}
 
-  /* 顧客カルテの見出し。名前と操作ボタンが横に潰れないようにする */
+  /* ペットカルテの見出し。名前と操作ボタンが横に潰れないようにする */
   .cust-hd{flex-wrap:wrap}
   .cust-hd>div:last-child{margin-left:0; max-width:none; justify-content:flex-start}
 
@@ -540,11 +562,11 @@ tr.await td{background:var(--warn-soft)}
     <button data-s="cal"><span class="ic">&#9633;</span>予約カレンダー</button>
     <button data-s="resv"><span class="ic">&#9633;</span>予約管理</button>
     <button data-s="list"><span class="ic">&#9633;</span>顧客一覧</button>
-    <button data-s="cust"><span class="ic">&#9633;</span>顧客カルテ</button>
+    <button data-s="cust"><span class="ic">&#9633;</span>ペットカルテ</button>
     <button data-s="rem"><span class="ic">&#9633;</span>リマインド</button>
-    <button data-s="test"><span class="ic">&#9633;</span>テスト送信</button>
     <button data-s="shift"><span class="ic">&#9633;</span>スタッフ情報・シフト</button>
     <button data-s="sns"><span class="ic">&#9633;</span>SNS投稿</button>
+    <button data-s="test"><span class="ic">&#9633;</span>テスト送信</button>
   </nav>
   <div class="foot">ここっとベール 管理システム<br>モック <b>v1.0</b>（更新 2026-08-06）<br>サンプルデータのみ・実データ未接続</div>
 </aside>
@@ -567,11 +589,11 @@ tr.await td{background:var(--warn-soft)}
     <button class="qbtn" data-s="cal"><span class="qi">&#128197;</span><span class="qt">予約カレンダー<span class="qd">本日 12件・シフト反映</span></span></button>
     <button class="qbtn" data-s="resv"><span class="qi">&#128221;</span><span class="qt">予約管理<span class="qd">承認待ち 2件</span></span></button>
     <button class="qbtn" data-s="list"><span class="qi">&#128100;</span><span class="qt">顧客一覧<span class="qd">10世帯 / 14頭</span></span></button>
-    <button class="qbtn" data-s="cust"><span class="qi">&#128203;</span><span class="qt">顧客カルテ<span class="qd">来店履歴・ワクチン</span></span></button>
+    <button class="qbtn" data-s="cust"><span class="qi">&#128203;</span><span class="qt">ペットカルテ<span class="qd">来店履歴・ワクチン</span></span></button>
     <button class="qbtn" data-s="rem"><span class="qi">&#128276;</span><span class="qt">リマインド<span class="qd">本日 12件 送信予定</span></span></button>
-    <button class="qbtn" data-s="test"><span class="qi">&#128233;</span><span class="qt">テスト送信<span class="qd">実物の文面を確認</span></span></button>
     <button class="qbtn" data-s="shift"><span class="qi">&#128337;</span><span class="qt">スタッフ情報・シフト<span class="qd">LINE連携・シフト申請</span></span></button>
     <button class="qbtn" data-s="sns"><span class="qi">&#128247;</span><span class="qt">SNS投稿<span class="qd">写真14枚 未投稿</span></span></button>
+    <button class="qbtn" data-s="test"><span class="qi">&#128233;</span><span class="qt">テスト送信<span class="qd">実物の文面を確認</span></span></button>
   </div>
 
   <div class="grid kpis" id="kpis">
@@ -827,7 +849,7 @@ tr.await td{background:var(--warn-soft)}
 <section class="screen" id="s-list">
   <div class="crumb">顧客管理</div>
   <h1>顧客一覧</h1>
-  <p class="sub">名前をタップするとカルテが開きます。</p>
+  <p class="sub">わんちゃんの名前をタップするとカルテが開きます。</p>
 
   <div class="card" style="margin-bottom:16px">
     <div class="hd"><h2>飼い主様の登録</h2><span class="pill mut">LINE未連携</span></div>
@@ -836,7 +858,6 @@ tr.await td{background:var(--warn-soft)}
       <div class="frow">
         <input type="text" id="nc-name" placeholder="飼い主様のお名前">
         <input type="tel" id="nc-tel" placeholder="電話番号">
-        <input type="date" id="nc-bd" aria-label="誕生日（任意）" style="flex:0 0 150px">
         <button class="btn" id="nc-add" type="button">登録</button>
       </div>
     </div>
@@ -846,14 +867,21 @@ tr.await td{background:var(--warn-soft)}
     <input id="q" type="search" placeholder="飼い主名・わんちゃん名で検索" aria-label="顧客を検索">
     <span class="cnt" id="cnt"></span>
   </div>
-  <div class="owners" id="owners"></div>
+  <div class="card">
+    <div class="bd" style="padding:6px 0 0">
+      <table class="ctable">
+        <thead><tr><th>飼い主様</th><th>わんちゃん</th><th>電話番号</th><th>LINE</th><th></th></tr></thead>
+        <tbody id="owners"></tbody>
+      </table>
+    </div>
+  </div>
 </section>
 
-<!-- ================= 顧客カルテ ================= -->
+<!-- ================= ペットカルテ ================= -->
 <section class="screen" id="s-cust">
   <div id="cartelist">
     <div class="crumb">顧客管理</div>
-    <h1>顧客カルテ</h1>
+    <h1>ペットカルテ</h1>
     <p class="sub">わんちゃんを選ぶとカルテが開きます。</p>
     <div class="search">
       <input id="cq" type="search" placeholder="わんちゃん名・飼い主名で検索" aria-label="カルテを検索">
@@ -1293,6 +1321,8 @@ const FAMILIES = [
 ];
 // ---- 顧客一覧の描画 ----
 const ownersEl = document.getElementById('owners'), cntEl = document.getElementById('cnt'), qEl = document.getElementById('q');
+// 行の直下に開く編集欄。renderOwners が初期表示でも closeInline を呼ぶため、ここで宣言しておく
+let inlineRow = null;
 function memberTags(d){
   const t = [];
   if (d.plan) t.push('<span class="pill acc">' + d.plan.label.replace('スクール ', '') + '</span>');
@@ -1303,48 +1333,65 @@ function memberTags(d){
 }
 function renderOwners(q = ''){
   const k = q.trim().toLowerCase();
+  closeInline();          // 並び替わった行の下に編集欄が取り残されないようにする
   ownersEl.innerHTML = '';
   let dogCount = 0, ownerCount = 0;
   FAMILIES.forEach(o => {
     const members = o.members.filter(d => !k || (o.name + d.n + d.menu).toLowerCase().includes(k));
     // わんちゃん未登録の飼い主様も一覧に出す（実データでは登録直後にあり得るため）
-    const selfHit = !k || o.name.toLowerCase().includes(k);
+    const selfHit = !k || (o.name + o.tel).toLowerCase().includes(k);
     if (!members.length && !(o.members.length === 0 && selfHit)) return;
     ownerCount++; dogCount += members.length;
-    const c = document.createElement('div'); c.className = 'ocard';
-    c.innerHTML = '<div class="oinfo"><div class="oh"><span class="on">' + o.name + ' 様</span>'
-      + (o.members.length > 1 ? '<span class="pill mut">' + o.members.length + '頭</span>' : '')
-      + (o.line ? '<span class="pill good">LINE</span>' : '<span class="pill mut">LINE未連携</span>') + '</div>'
-      + '<div class="om">' + o.tel
-      // 経路・初回来店は実データを持たない環境では出さない（「未登録」が並ぶだけになるため）
-      + (o.source || o.since ? '<br>経路: ' + (o.source || '—') + '｜初回 ' + (o.since || '—') : '')
-      + '</div></div>';
-    const list = document.createElement('div'); list.className = 'dogs';
+
+    const tr = document.createElement('tr');
+    const name = document.createElement('td');
+    name.className = 'cn';
+    name.dataset.label = '飼い主様';
+    name.innerHTML = '<span class="cname">' + o.name + ' 様</span>'
+      + (o.optOut ? ' <span class="pill crit">配信停止中</span>' : '');
+    const pets = document.createElement('td');
+    pets.dataset.label = 'わんちゃん';
+    const petbox = document.createElement('div'); petbox.className = 'cpets';
     members.forEach(d => {
-      const b = document.createElement('button'); b.className = 'dogbtn';
-      b.innerHTML = '<span class="dav">' + d.n.charAt(0) + '</span>'
-        + '<span class="dname"><span class="dn">' + d.n + '</span><span class="db">' + dogSub(d) + '</span></span>'
-        + '<span class="dtags">' + memberTags(d) + '</span>';
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'petlink';
+      b.textContent = d.n;
+      b.title = dogSub(d) + '｜カルテを開く';
       b.addEventListener('click', () => openCarte(d, o));
-      list.appendChild(b);
+      petbox.appendChild(b);
     });
-    if (!o.members.length) list.innerHTML = '<p style="font-size:12px;color:var(--muted);margin:4px 0">わんちゃん未登録</p>';
+    if (!members.length) petbox.innerHTML = '<span class="nopet">わんちゃん未登録</span>';
+    pets.appendChild(petbox);
+    const tel = document.createElement('td');
+    tel.dataset.label = '電話番号';
+    tel.className = 'num';
+    tel.textContent = o.tel;
+    const line = document.createElement('td');
+    line.dataset.label = 'LINE';
+    line.innerHTML = o.line
+      ? '<span class="pill good">連携済み</span>'
+      : '<span class="pill mut">未連携</span>';
+    const acts = document.createElement('td');
+    acts.className = 'rowacts';
+    tr.append(name, pets, tel, line, acts);
+
     if (adminLive) {   // 実運用モードでは一覧から直接編集・追加できる
-      const eb = document.createElement('button');
-      eb.className = 'sbtn mut'; eb.textContent = '編集';
-      eb.style.marginLeft = 'auto';   // バッジの数で位置がばらつかないよう右端へ寄せる
-      eb.addEventListener('click', () => editOwner(o));
-      c.querySelector('.oh').appendChild(eb);
-      const ab = document.createElement('button');
-      ab.className = 'sbtn mut'; ab.textContent = '＋ わんちゃん';
-      ab.style.alignSelf = 'center';
-      ab.addEventListener('click', () => editPet(o, null));
-      list.appendChild(ab);
+      const mk = (label, fn) => {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'sbtn mut'; b.textContent = label;
+        b.addEventListener('click', fn);
+        acts.appendChild(b);
+      };
+      mk('編集', () => editOwner(o, tr));
+      mk('＋ わんちゃん', () => editPet(o, null, tr));
     }
-    c.appendChild(list); ownersEl.appendChild(c);
+    ownersEl.appendChild(tr);
   });
   cntEl.textContent = ownerCount + ' 世帯 / ' + dogCount + ' 頭';
-  if (!ownerCount) ownersEl.innerHTML = '<p class="sub">該当する顧客が見つかりません。</p>';
+  if (!ownerCount) {
+    ownersEl.innerHTML = '<tr><td colspan="5" style="color:var(--muted);font-size:12.5px">'
+      + '該当する顧客が見つかりません。</td></tr>';
+  }
 }
 qEl.addEventListener('input', () => renderOwners(qEl.value));
 renderOwners();
@@ -1380,7 +1427,7 @@ function bindSearch(inputId, resId, cntId){
 }
 bindSearch('dq', 'dres', 'dcnt');   // ダッシュボード
 
-// ---- 顧客カルテの一覧 ----
+// ---- ペットカルテの一覧 ----
 // カルテ画面は「まずわんちゃんの一覧」を出し、選んだ子のカルテを開く。
 // いきなり特定の1頭が開くと、誰のカルテを見ているのか分からないまま操作されるため。
 const carteListEl = document.getElementById('cartelist');
@@ -1412,6 +1459,7 @@ function renderCarteList(q = ''){
 cqEl.addEventListener('input', () => renderCarteList(cqEl.value));
 // 一覧に戻る。開いていたカルテは残さない（次に開く子と混ざるため）
 function showCarteList(){
+  carteCtx = null;
   custbody.innerHTML = '';
   carteListEl.style.display = '';
   renderCarteList(cqEl.value);
@@ -1435,19 +1483,32 @@ const REMIND_JOB_OF = { R1:'preReminder', R2:'afterVisit', R3:'dormant', R4:'bir
 const custRem = {};                       // わんちゃんごとの個別設定（未設定＝店舗設定に従う）
 custRem['きなこ'] = { R4:false };            // 例: 誕生日メッセージを辞退
 custRem['ラテ']   = { R6:false };            // 例: 回数券の来店促しを辞退
+// お客様ごとのリマインド設定（実運用モード）。サーバに保存され、日次ジョブが見る。
+// 対象はジョブの単位に合わせて「飼い主様」ごと。同じ飼い主様のわんちゃんが複数いても
+// 送信は1通なので、わんちゃんごとには分けられない
+const custRemLive = {};   // 顧客id → { ジョブ名: true/false }
 function remCard(d, o){
+  const mine = custRemLive[o.id] || {};
   const rows = REMINDERS.filter(r => r.need(d)).map(r => {
     const ov = custRem[d.n] && custRem[d.n][r.id] !== undefined;
     const on = ov ? custRem[d.n][r.id] : true;
-    // 実運用モードでは、この子だけを止める仕組みはまだ無い。止める操作は
-    // 飼い主様単位の「配信停止」か、リマインド設定画面の店舗単位の OFF になるため、
-    // ここでは結果としてどうなるかだけを表示する
-    const jobOff = adminLive && REMIND_JOB_OF[r.id] && remindEnabled[REMIND_JOB_OF[r.id]] === false;
-    const stopped = o.optOut || jobOff;
-    const control = adminLive
-      ? '<span class="pill ' + (stopped ? 'crit' : 'good') + '">'
-        + (o.optOut ? '停止中' : jobOff ? '店舗設定でOFF' : '稼働中') + '</span>'
-      : '<button class="sw crem" data-member="' + d.n + '" data-id="' + r.id + '" role="switch" aria-checked="' + on + '" aria-label="' + r.n + '"><i></i></button>';
+    const job = REMIND_JOB_OF[r.id];
+    // 店舗設定で止まっているものは、お客様ごとに ON にしても送られない。
+    // 触れるトグルのままだと「ONにしたのに来ない」と誤解されるため状態表示にする
+    const jobOff = adminLive && job && remindEnabled[job] === false;
+    let control;
+    if (!adminLive) {
+      control = '<button class="sw crem" data-member="' + d.n + '" data-id="' + r.id + '" role="switch" aria-checked="' + on + '" aria-label="' + r.n + '"><i></i></button>';
+    } else if (o.optOut) {
+      control = '<span class="pill crit">配信停止中</span>';
+    } else if (!job) {
+      control = '<span class="pill mut">未実装</span>';
+    } else if (jobOff) {
+      control = '<span class="pill crit">店舗設定でOFF</span>';
+    } else {
+      control = '<button class="sw cremlive" data-job="' + job + '" data-cust="' + o.id + '"'
+        + ' role="switch" aria-checked="' + (mine[job] !== false) + '" aria-label="' + r.n + '"><i></i></button>';
+    }
     return '<div class="row"><span class="rid">' + r.id + '</span>'
       + '<div><div class="nm">' + r.n + (!adminLive && ov ? ' <span class="pill hny">個別設定</span>' : '') + '</div>'
       + '<div class="cond">' + r.c + '</div></div>'
@@ -1458,11 +1519,12 @@ function remCard(d, o){
   const note = adminLive
     ? (o.optOut
         ? '<b>配信停止中</b>のため送られません。再開は「飼い主様情報を編集」から。'
-        : 'この方だけ止めるときは「飼い主様情報を編集」の<b>配信停止</b>、'
+        : 'ここで切り替えると<b>この飼い主様だけ</b>その種類を止められます。'
           + '店舗全体で止めるときは<b>リマインド設定</b>の画面で切り替えます。')
     : '個別にOFFにすると、この子だけ送信を止められます。'
       + (off ? '<br>現在の対象外: ' + off : '');
-  return '<div class="card"><div class="hd"><h2>この子へのリマインド設定</h2>'
+  return '<div class="card" id="remcard"><div class="hd">'
+    + '<h2>' + (adminLive ? '飼い主様へのリマインド設定' : 'この子へのリマインド設定') + '</h2>'
     + '<span class="pill mut">' + (adminLive ? '飼い主様ごとの設定' : '店舗設定を引き継ぎ') + '</span></div>'
     + '<div class="rem">' + rows + '</div>'
     + '<div class="bd" style="border-top:1px solid var(--line)"><p style="font-size:12px;color:var(--muted);margin:0">'
@@ -1470,6 +1532,47 @@ function remCard(d, o){
     + '<br>送信先: ' + o.name + ' 様' + (o.line ? '（LINE連携済み）' : '（LINE未連携のため送信されません）')
     + '</p></div></div>';
 }
+
+// カルテを開いている飼い主様。設定を読み込んだ後にカードだけ差し替えるために持つ
+let carteCtx = null;
+function repaintRemCard(){
+  const el = document.getElementById('remcard');
+  if (el && carteCtx) el.outerHTML = remCard(carteCtx.d, carteCtx.o);
+}
+async function loadCustomerReminders(o){
+  if (!adminLive || o.id == null) return;
+  try {
+    const { enabled } = await adminApi('/customers/' + o.id + '/reminders');
+    custRemLive[o.id] = enabled;
+    repaintRemCard();
+  } catch (err) {
+    showToast('リマインド設定を読み込めませんでした: ' + err.message);
+  }
+}
+document.addEventListener('click', async e => {
+  const sw = e.target.closest('.sw.cremlive');
+  if (!sw) return;
+  const on = sw.getAttribute('aria-checked') !== 'true';
+  const job = sw.dataset.job, id = sw.dataset.cust;
+  const label = sw.closest('.row').querySelector('.nm').textContent.trim();
+  // 前々日確認は営業ではなく予約の確認連絡。止めると当日まで連絡が届かなくなる
+  if (!on && job === 'preReminder'
+    && !confirm('この飼い主様へ前々日確認を送らなくなります。ご予約の確認連絡が届かなくなりますが、よろしいですか？')) return;
+  const before = { ...(custRemLive[id] || {}) };
+  custRemLive[id] = { ...before, [job]: on };
+  sw.setAttribute('aria-checked', on);   // 先に反映して待たせない。失敗したら戻す
+  try {
+    const { enabled } = await adminApi('/customers/' + id + '/reminders', {
+      method: 'PUT', body: JSON.stringify({ enabled: { [job]: on } }),
+    });
+    custRemLive[id] = enabled;
+    showToast('「' + label + '」を' + (on ? 'ON' : 'OFF') + 'にしました');
+  } catch (err) {
+    custRemLive[id] = before;
+    sw.setAttribute('aria-checked', !on);
+    showToast('保存に失敗しました: ' + err.message);
+  }
+});
 document.addEventListener('click', e => {
   const sw = e.target.closest('.sw.crem');
   if (!sw) return;
@@ -1483,7 +1586,7 @@ document.addEventListener('click', e => {
   showToast(member + 'の「' + nm.textContent.replace('個別設定', '').trim() + '」を' + (on ? 'ON' : 'OFF') + 'にしました');
 });
 
-// ---- 顧客カルテの描画 ----
+// ---- ペットカルテの描画 ----
 const custbody = document.getElementById('custbody');
 function openCarte(d, o){
   const lapsedTotal = d.lapsed.reduce((a, x) => a + x[3], 0);
@@ -1512,7 +1615,7 @@ function openCarte(d, o){
 
   carteListEl.style.display = 'none';   // 一覧とカルテは同じ画面を入れ替えて使う
   custbody.innerHTML =
-    '<div class="crumb"><a href="#" id="bkcarte" style="color:var(--accent)">顧客カルテ</a> / '
+    '<div class="crumb"><a href="#" id="bkcarte" style="color:var(--accent)">ペットカルテ</a> / '
     + '<a href="#" id="bklist" style="color:var(--accent)">顧客一覧</a> /</div>'
     + '<div class="cust-hd"><div class="avatar">' + d.n.charAt(0) + '</div><div>'
     + '<h1 style="margin-bottom:0">' + d.n + ' <span style="font-size:13px;color:var(--muted);font-weight:600">' + dogSub(d) + '</span></h1>'
@@ -1562,6 +1665,8 @@ function openCarte(d, o){
       : '<p style="font-size:12.5px;color:var(--muted);margin:10px 0">来店履歴はまだありません。</p>')
     + '</div></div></div></div>';
 
+  carteCtx = { d, o };
+  loadCustomerReminders(o);   // 読めたらリマインドのカードだけ差し替える
   document.getElementById('bkcarte').addEventListener('click', e => { e.preventDefault(); showCarteList(); });
   document.getElementById('bklist').addEventListener('click', e => { e.preventDefault(); go('list'); });
   if (adminLive) {
@@ -2420,7 +2525,7 @@ function openPop(ev, x, y){
   const acts = document.createElement('div'); acts.className = 'acts';
   const mk = (cls, label, fn) => { const b = document.createElement('button'); b.className = 'pbtn ' + cls; b.textContent = label; b.addEventListener('click', fn); return b; };
   acts.append(
-    mk('', '顧客カルテを開く', () => { closePop(); document.querySelector('#nav button[data-s="cust"]').click(); }),
+    mk('', 'ペットカルテを開く', () => { closePop(); document.querySelector('#nav button[data-s="cust"]').click(); }),
     mk('cancel', 'キャンセルとして記録', () => removeEv(ev, 'キャンセルとして記録しました（履歴に残ります）')),
     mk('del', '完全に削除（入力ミス用）', () => removeEv(ev, '削除しました'))
   );
@@ -3323,7 +3428,8 @@ document.getElementById('nc-add').addEventListener('click', async () => {
     try {
       await adminApi('/customers', {
         method: 'POST',
-        body: JSON.stringify({ name, phone: tel, birthday: document.getElementById('nc-bd').value || null }),
+        // 誕生日はこの画面では扱わない（お客様ご自身の LINE 登録で入る）
+        body: JSON.stringify({ name, phone: tel }),
       });
     } catch (err) {
       const messages = { phone_exists: 'この電話番号は登録済みです', invalid_phone: '電話番号の形式が不正です' };
@@ -3334,7 +3440,6 @@ document.getElementById('nc-add').addEventListener('click', async () => {
     loadFamiliesLive().then(() => { renderOwners(qEl.value); renderCarteList(cqEl.value); }).catch(() => {});
   }
   document.getElementById('nc-name').value = ''; document.getElementById('nc-tel').value = '';
-  document.getElementById('nc-bd').value = '';
   showToast(name + ' 様を登録しました（LINE未連携のため配信対象外です）');
 });
 document.getElementById('ns-add').addEventListener('click', async () => {
@@ -3355,15 +3460,22 @@ document.getElementById('ns-add').addEventListener('click', async () => {
 // 保存後は一覧・カルテを実データで組み直す
 let editBack = null;
 function closeEdit(){ if (editBack) { editBack.remove(); editBack = null; } }
-function openEditModal(title, rows, { onSave, onDelete, after }){
-  closeEdit();
-  const back = document.createElement('div'); back.className = 'mback';
-  back.addEventListener('click', e => { if (e.target === back) closeEdit(); });
-  const win = document.createElement('div'); win.className = 'mwin';
-  win.innerHTML = '<div class="mhd"><h2></h2><button class="mx" aria-label="閉じる">&#10005;</button></div>';
-  win.querySelector('h2').textContent = title;
-  win.querySelector('.mx').addEventListener('click', closeEdit);
 
+const EDIT_ERRORS = {
+  invalid_name: 'お名前を入力してください',
+  invalid_phone: '電話番号の形式が不正です',
+  phone_exists: 'この電話番号は別のお客様で登録済みです',
+  invalid_birthday: '誕生日の形式が不正です',
+  invalid_line_user_id: 'LINE ID の形式が違います（U から始まる33文字）',
+  line_user_id_exists: 'この LINE ID は別のスタッフに設定済みです',
+  staff_in_use: '予約の担当として登録があるため削除できません。「在職中」を外して退職にしてください',
+  invalid_time: '時刻の形式が不正です',
+  invalid_time_order: '終了は開始より後の時刻にしてください',
+};
+
+// 入力欄と保存・削除ボタンを組み立てる。モーダルとインライン編集で中身を共有する
+// （見せ方だけを変えたいので、検証やエラー文言を2箇所に分けない）
+function buildEditForm(rows, { onSave, onDelete, after, close }){
   const bd = document.createElement('div');
   bd.style.cssText = 'padding:14px 18px;display:grid;gap:10px;overflow-y:auto';
   const inputs = {};
@@ -3387,20 +3499,10 @@ function openEditModal(title, rows, { onSave, onDelete, after }){
   });
 
   const acts = document.createElement('div');
-  acts.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;padding:0 0 4px';
+  acts.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;padding:0 0 4px;flex-wrap:wrap';
   const collect = () => Object.fromEntries(Object.entries(inputs).map(([k, el2]) =>
     [k, el2.type === 'checkbox' ? el2.checked : el2.value.trim()]));
-  const ERRORS = {
-    invalid_name: 'お名前を入力してください',
-    invalid_phone: '電話番号の形式が不正です',
-    phone_exists: 'この電話番号は別のお客様で登録済みです',
-    invalid_birthday: '誕生日の形式が不正です',
-    invalid_line_user_id: 'LINE ID の形式が違います（U から始まる33文字）',
-    line_user_id_exists: 'この LINE ID は別のスタッフに設定済みです',
-    staff_in_use: '予約の担当として登録があるため削除できません。「在職中」を外して退職にしてください',
-    invalid_time: '時刻の形式が不正です',
-    invalid_time_order: '終了は開始より後の時刻にしてください',
-  };
+
   if (onDelete) {
     const del = document.createElement('button');
     del.className = 'sbtn warn'; del.textContent = '削除';
@@ -3411,32 +3513,81 @@ function openEditModal(title, rows, { onSave, onDelete, after }){
         // false ならキャンセル。文字列を返した場合はそれをそのまま知らせる
         const outcome = await onDelete();
         if (outcome === false) { del.disabled = false; return; }
-        closeEdit(); showToast(typeof outcome === 'string' ? outcome : '削除しました');
+        close(); showToast(typeof outcome === 'string' ? outcome : '削除しました');
         if (after) await after();
-      } catch (err) { showToast(ERRORS[err.message] || 'エラー: ' + err.message); del.disabled = false; }
+      } catch (err) { showToast(EDIT_ERRORS[err.message] || 'エラー: ' + err.message); del.disabled = false; }
     });
     acts.appendChild(del);
   }
+  const cancel = document.createElement('button');
+  cancel.className = 'sbtn mut'; cancel.textContent = 'キャンセル';
+  cancel.addEventListener('click', () => close());
+  acts.appendChild(cancel);
+
   const save = document.createElement('button');
   save.className = 'btn'; save.textContent = '保存';
   save.addEventListener('click', async () => {
     save.disabled = true;
     try {
       await onSave(collect());
-      closeEdit(); showToast('保存しました');
+      close(); showToast('保存しました');
       if (after) await after();
-    } catch (err) { showToast(ERRORS[err.message] || 'エラー: ' + err.message); save.disabled = false; }
+    } catch (err) { showToast(EDIT_ERRORS[err.message] || 'エラー: ' + err.message); save.disabled = false; }
   });
   acts.appendChild(save);
   bd.appendChild(acts);
-  win.appendChild(bd);
+  return { el: bd, focus: () => Object.values(inputs)[0]?.focus() };
+}
+
+function openEditModal(title, rows, { onSave, onDelete, after }){
+  closeEdit();
+  const back = document.createElement('div'); back.className = 'mback';
+  back.addEventListener('click', e => { if (e.target === back) closeEdit(); });
+  const win = document.createElement('div'); win.className = 'mwin';
+  win.innerHTML = '<div class="mhd"><h2></h2><button class="mx" aria-label="閉じる">&#10005;</button></div>';
+  win.querySelector('h2').textContent = title;
+  win.querySelector('.mx').addEventListener('click', closeEdit);
+
+  const form = buildEditForm(rows, { onSave, onDelete, after, close: closeEdit });
+  win.appendChild(form.el);
   back.appendChild(win);
   document.body.appendChild(back);
   editBack = back;
-  const first = Object.values(inputs)[0];
-  if (first) first.focus();
+  form.focus();
+}
+
+// 顧客一覧の編集は、画面を覆うモーダルではなく行の直下を開いて編集する。
+// 一覧を見ながら直せるうえ、どの行を編集しているのかが分かるため（inlineRow は上で宣言）
+function closeInline(){ if (inlineRow) { inlineRow.remove(); inlineRow = null; } }
+function openInlineEdit(tr, title, rows, { onSave, onDelete, after, key }){
+  // 同じ行の同じボタンをもう一度押したら閉じる（開きっぱなしにしない）
+  if (inlineRow && inlineRow.dataset.key === key) { closeInline(); return; }
+  closeInline();
+  const er = document.createElement('tr');
+  er.className = 'erow';
+  er.dataset.key = key;
+  const td = document.createElement('td');
+  td.colSpan = 5;
+  const h = document.createElement('div');
+  h.className = 'ehd';
+  h.textContent = title;
+  td.appendChild(h);
+  const form = buildEditForm(rows, { onSave, onDelete, after, close: closeInline });
+  td.appendChild(form.el);
+  er.appendChild(td);
+  tr.after(er);
+  inlineRow = er;
+  form.focus();
 }
 window.addEventListener('keydown', e => { if (e.key === 'Escape') closeEdit(); });
+
+// 顧客一覧から編集したときの再読み込み。カルテへは飛ばさず一覧のまま更新する
+// （一覧を見ながら直せるのがインライン編集の利点なので、画面を移さない）
+async function refreshListAfterEdit(){
+  try { await loadFamiliesLive(); } catch (err) { showToast('再読み込みに失敗しました: ' + err.message); return; }
+  renderOwners(qEl.value);
+  renderCarteList(cqEl.value);
+}
 
 // 保存後の再読み込み。編集していた世帯のカルテを開き直す（世帯ごと消えたら一覧へ）
 async function refreshAfterEdit(custId, petId){
@@ -3449,16 +3600,21 @@ async function refreshAfterEdit(custId, petId){
   if (d) openCarte(d, o); else go('list');
 }
 
-function editOwner(o){
-  openEditModal(o.name + ' 様の情報を編集', [
+// tr を渡すとその行の直下で編集する（顧客一覧）。渡さなければ従来どおりモーダル（カルテ）。
+// 誕生日はこの画面では扱わない。ペットの誕生日はカルテのわんちゃん編集にある
+function editOwner(o, tr = null){
+  const open = tr
+    ? (title, rows, opts) => openInlineEdit(tr, title, rows, { ...opts, key: 'owner-' + o.id })
+    : openEditModal;
+  open(o.name + ' 様の情報を編集', [
     { key: 'name', label: 'お名前', value: o.name },
     { key: 'phone', label: '電話番号（LINE登録時の自動ひも付けに使われます）', type: 'tel', value: o.tel === '電話未登録' ? '' : o.tel },
-    { key: 'birthday', label: '誕生日', type: 'date', value: o.obd },
     { key: 'optOut', label: '配信停止（この方への自動配信をすべて止める）', type: 'checkbox', value: o.optOut },
   ], {
     onSave: v => adminApi('/customers/' + o.id, {
       method: 'PATCH',
-      body: JSON.stringify({ name: v.name, phone: v.phone || null, birthday: v.birthday || null, optOut: v.optOut }),
+      // 誕生日は画面から編集しないため、いまの値をそのまま送り返す（消さない）
+      body: JSON.stringify({ name: v.name, phone: v.phone || null, birthday: o.obd || null, optOut: v.optOut }),
     }),
     onDelete: async () => {
       // 取り消せない操作なので、何が一緒に消えるかを数で示してから確認する
@@ -3477,12 +3633,15 @@ function editOwner(o){
       const { deleted } = await adminApi('/customers/' + o.id, { method: 'DELETE' });
       return o.name + ' 様を削除しました（わんちゃん' + deleted.pets + '頭・予約' + deleted.reservations + '件）';
     },
-    after: () => refreshAfterEdit(o.id),
+    after: () => (tr ? refreshListAfterEdit() : refreshAfterEdit(o.id)),
   });
 }
 
-function editPet(o, p){   // p が null なら追加
-  openEditModal(p ? p.n + ' の情報を編集' : o.name + ' 様のわんちゃんを追加', [
+function editPet(o, p, tr = null){   // p が null なら追加
+  const open = tr
+    ? (title, rows, opts) => openInlineEdit(tr, title, rows, { ...opts, key: 'pet-' + o.id + '-' + (p ? p.id : 'new') })
+    : openEditModal;
+  open(p ? p.n + ' の情報を編集' : o.name + ' 様のわんちゃんを追加', [
     { key: 'name', label: 'お名前', value: p && p.n },
     { key: 'breed', label: '犬種', value: p && p.menu !== '犬種未登録' ? p.menu : '' },
     { key: 'birthday', label: '誕生日', type: 'date', value: p && p.pbd },
@@ -3498,7 +3657,7 @@ function editPet(o, p){   // p が null なら追加
       if (!confirm(p.n + ' の情報を削除しますか？（元に戻せません）')) return false;
       await adminApi('/pets/' + p.id, { method: 'DELETE' });
     } : null,
-    after: () => refreshAfterEdit(o.id, p && p.id),
+    after: () => (tr ? refreshListAfterEdit() : refreshAfterEdit(o.id, p && p.id)),
   });
 }
 

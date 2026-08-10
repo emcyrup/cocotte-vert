@@ -124,3 +124,13 @@ test('抽出クエリが仕様の条件を含む', async () => {
   assert.match(capturedSql, /is_blocked = false/);
   assert.doesNotMatch(capturedSql, /opt_out/, '予約確認は opt_out を除外条件にしない');
 });
+
+test('お客様ごとに前々日確認を止めていると対象から外れる（SQL に条件が入っている）', async () => {
+  // 実際の除外は SQL の NOT EXISTS で行うため、条件が消えていないことを確かめる
+  let sql = '';
+  const pool = { query: async (q) => { sql = q; return { rows: [] }; } };
+  const job = createPreReminderJob({ pool, lineClient: { deliver: async () => ({}) } });
+  await job();
+  assert.match(sql, /customer_reminder_settings/);
+  assert.match(sql, /s\.job = 'preReminder'/);
+});

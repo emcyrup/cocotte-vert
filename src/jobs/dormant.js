@@ -15,6 +15,10 @@ export function createDormantJob({ pool, lineClient, dailyLimit = 50 }) {
        WHERE c.line_user_id IS NOT NULL
          AND c.opt_out = false
          AND c.is_blocked = false
+         AND NOT EXISTS (
+           SELECT 1 FROM customer_reminder_settings s
+           WHERE s.customer_id = c.id AND s.job = 'dormant' AND s.enabled = false
+         )
          AND c.last_visit_at IS NOT NULL
          AND c.last_visit_at <= (now() AT TIME ZONE 'Asia/Tokyo')::date - INTERVAL '90 day'
          -- 未来の予約（確定・承認待ち）がある顧客は除外

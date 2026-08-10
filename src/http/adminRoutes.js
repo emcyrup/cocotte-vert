@@ -31,6 +31,7 @@ export function createAdminRouter({
   config,
   shiftService = null,
   reminderSettings = null,
+  customerReminders = null,
 }) {
   const router = express.Router();
 
@@ -345,6 +346,40 @@ export function createAdminRouter({
       notes: notes?.trim() || null,
     };
   };
+
+  // ---- お客様ごとのリマインド ON/OFF ----
+  // 店舗全体の設定（/reminders）とは別枠で、両方 ON のときだけ送られる。
+  // 「配信停止」は全部まとめて止めるスイッチなので、種類ごとの希望はこちらで持つ。
+  router.get('/customers/:id/reminders', async (req, res, next) => {
+    try {
+      if (!customerReminders) return res.status(503).json({ error: 'not_configured' });
+      res.json({ jobs: REMINDER_JOBS, enabled: await customerReminders.get(Number(req.params.id)) });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.put('/customers/:id/reminders', async (req, res, next) => {
+    try {
+      if (!customerReminders) return res.status(503).json({ error: 'not_configured' });
+      const { enabled } = req.body ?? {};
+      if (!enabled || typeof enabled !== 'object') {
+        return res.status(400).json({ error: 'invalid_body' });
+      }
+      const id = Number(req.params.id);
+      const { rows } = await pool.query(`SELECT 1 FROM customers WHERE id = $1`, [id]);
+      if (rows.length === 0) return res.status(404).json({ error: 'customer_not_found' });
+      const after = await customerReminders.update(id, enabled);
+      // 顧客は内部 id でのみ参照する（氏名・LINE userId はログに残さない）
+      console.log(`[reminders] customer=${id} ${JSON.stringify(after)}`);
+      res.json({ ok: true, enabled: after });
+    } catch (err) {
+      if (/未知のリマインド|真偽値/.test(err.message)) {
+        return res.status(400).json({ error: err.message });
+      }
+      next(err);
+    }
+  });
 
   router.get('/customers/:id/pets', async (req, res, next) => {
     try {

@@ -10,6 +10,7 @@ import { createIdTokenVerifier } from './line/verifyIdToken.js';
 import { createSlackNotifier } from './notify/slack.js';
 import { createStaffNotifier } from './notify/staffNotifier.js';
 import { createSettings } from './settings.js';
+import { createReminderSettings } from './reminders.js';
 import { createLinkService } from './customers/linkService.js';
 import { createWebhookHandler } from './webhook/handler.js';
 import { createJobRunner } from './jobs/runner.js';
@@ -26,6 +27,7 @@ import { createAdminRouter } from './http/adminRoutes.js';
 import { createImportRouter } from './http/importRoutes.js';
 import { createSnsRouter } from './http/snsRoutes.js';
 import { createInstagramClient } from './instagram/client.js';
+import { createThreadsClient } from './threads/client.js';
 import { createSnsPublisher } from './jobs/snsPublisher.js';
 import { mkdirSync } from 'node:fs';
 import cron from 'node-cron';
@@ -33,6 +35,7 @@ import cron from 'node-cron';
 const config = loadConfig();
 const lineClient = createLineClient({ config, pool });
 const settings = createSettings({ pool });
+const reminderSettings = createReminderSettings({ settings });
 // スタッフ通知は staffNotifier に集約（Slack / LINE グループ / 両方を設定で切替）
 const slackChannel = config.slackWebhookUrl
   ? createSlackNotifier({ webhookUrl: config.slackWebhookUrl })
@@ -221,7 +224,11 @@ const adminGuard = basicAuth({ user: config.adminUser, password: config.adminPas
 // 旧管理画面（/admin/）はモック側の画面に統合した。ブックマーク・LINE内の旧リンク互換のためリダイレクトを残す
 app.get('/admin/customers.html', (_req, res) => res.redirect('/mock/#list'));
 app.get(['/admin', '/admin/index.html'], (_req, res) => res.redirect('/mock/#resv'));
-app.use('/api/admin', adminGuard, createAdminRouter({ pool, reservationService, lineClient, config, shiftService }));
+app.use(
+  '/api/admin',
+  adminGuard,
+  createAdminRouter({ pool, reservationService, lineClient, config, shiftService, reminderSettings })
+);
 
 // 店舗管理画面（モック統合版）。管理 API に疎通できる本番環境では実データで動き、
 // 単体で開いたときはサンプルデータのデモとして動く。
@@ -242,7 +249,8 @@ try {
 app.use('/sns-media', express.static(snsDataDir, { maxAge: '7d', immutable: true }));
 
 const instagram = createInstagramClient({ config, settings });
-const snsPublisher = createSnsPublisher({ pool, instagram, slack, config });
+const threads = createThreadsClient({ config, settings });
+const snsPublisher = createSnsPublisher({ pool, instagram, threads, slack, config });
 app.use('/api/admin/sns', adminGuard, createSnsRouter({ pool, publisher: snsPublisher, dataDir: snsDataDir }));
 
 // 予約投稿の時刻チェック（5分おき）。深夜帯の投稿も予約どおり実行する（SNS は顧客への Push ではないため）
@@ -254,14 +262,19 @@ cron.schedule('*/5 * * * *', async () => {
   }
 }, { timezone: 'Asia/Tokyo' });
 
-// Instagram 長期トークンの延長（毎日チェックし、7日ごとに実際に延長）
+// Instagram / Threads 長期トークンの延長（毎日チェックし、7日ごとに実際に延長）
 cron.schedule('30 4 * * *', async () => {
-  try {
-    const result = await instagram.refreshTokenIfNeeded();
-    if (result.refreshed) console.log('[instagram] アクセストークンを延長しました');
-  } catch (err) {
-    console.error(`[instagram] トークン延長に失敗: ${err.message}`);
-    await slack.notify(`:warning: Instagram トークンの延長に失敗しました。期限切れ前に再発行してください。\n${err.message}`);
+  for (const [label, client] of [['instagram', instagram], ['threads', threads]]) {
+    // 片方の失敗でもう片方の延長を止めない（どちらも60日で切れるため）
+    try {
+      const result = await client.refreshTokenIfNeeded();
+      if (result.refreshed) console.log(`[${label}] アクセストークンを延長しました`);
+    } catch (err) {
+      console.error(`[${label}] トークン延長に失敗: ${err.message}`);
+      await slack.notify(
+        `:warning: ${label} トークンの延長に失敗しました。期限切れ前に再発行してください。\n${err.message}`
+      );
+    }
   }
 }, { timezone: 'Asia/Tokyo' });
 
@@ -282,7 +295,7 @@ app.use((err, _req, res, next) => {
 });
 
 // 毎日 10:00 JST の配信ジョブ（Phase 4・5 のジョブもここに追加していく）
-const runner = createJobRunner({ slack, settings });
+const runner = createJobRunner({ slack, settings, reminders: reminderSettings });
 runner.scheduleDaily(
   {
     preReminder: createPreReminderJob({ pool, lineClient }),

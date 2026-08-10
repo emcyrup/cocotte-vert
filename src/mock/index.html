@@ -389,7 +389,10 @@ button.trow2:focus-visible{outline:2px solid var(--accent); outline-offset:-2px}
 .snswrap{grid-template-columns:1fr 320px}
 .photos{display:grid; grid-template-columns:repeat(7,1fr); gap:8px}
 .ph{aspect-ratio:1; border-radius:8px; display:flex; align-items:flex-end; padding:5px 7px; font-size:10.5px; font-weight:700; color:#fff; text-shadow:0 1px 2px rgba(0,0,0,.4); position:relative}
-.ph .no{position:absolute; top:4px; left:6px; font-size:10px; opacity:.9}
+.ph .no{position:absolute; right:7px; bottom:5px; font-size:10px; opacity:.9}
+/* スレッズへ出す写真の選択。左上に置き、選ぶと枠が付いて一目で分かるようにする */
+.ph .pick{position:absolute; top:4px; left:4px; width:17px; height:17px; margin:0; padding:0; cursor:pointer; accent-color:var(--accent)}
+.ph.picked{outline:2px solid var(--accent); outline-offset:1px}
 .ph .rm{position:absolute; top:2px; right:2px; width:19px; height:19px; border:0; border-radius:50%;
   background:rgba(0,0,0,.55); color:#fff; font-size:12px; line-height:19px; text-align:center; cursor:pointer; padding:0}
 .ph .rm:hover{background:#dc2626}
@@ -408,6 +411,7 @@ textarea{width:100%; border:1px solid var(--line); border-radius:8px; background
 .frow input,.frow select{border:1px solid var(--line); border-radius:8px; background:var(--surface);
   color:var(--ink); font:inherit; font-size:13px; padding:8px 10px; min-width:0}
 .frow input[type="text"],.frow input[type="tel"]{flex:1 1 190px}
+.frow input[type="datetime-local"]{flex:1 1 190px; min-width:0}
 .frow select{flex:1 1 190px}
 .frow input:focus-visible,.frow select:focus-visible{outline:2px solid var(--accent); outline-offset:-1px}
 .hint{font-size:12px; color:var(--muted); margin:0 0 12px}
@@ -855,11 +859,16 @@ tr.await td{background:var(--warn-soft)}
 
 <!-- ================= 顧客カルテ ================= -->
 <section class="screen" id="s-cust">
-  <div class="search">
-    <input id="cq" type="search" placeholder="別のわんちゃんを検索" aria-label="カルテを検索">
-    <span class="cnt" id="ccnt"></span>
+  <div id="cartelist">
+    <div class="crumb">顧客管理</div>
+    <h1>顧客カルテ</h1>
+    <p class="sub">わんちゃんを選ぶとカルテが開きます。</p>
+    <div class="search">
+      <input id="cq" type="search" placeholder="わんちゃん名・飼い主名で検索" aria-label="カルテを検索">
+      <span class="cnt" id="ccnt"></span>
+    </div>
+    <div id="cres" class="cres on"></div>
   </div>
-  <div id="cres" class="cres"></div>
   <div id="custbody"></div>
 </section>
 
@@ -870,11 +879,17 @@ tr.await td{background:var(--warn-soft)}
   <p class="sub">条件を満たすと自動で送信されます。<span class="pill good">実装済</span> は稼働中、<span class="pill mut">構想</span> は今後の候補です。</p>
 
   <div class="card">
+    <div class="hd"><h2>配信するリマインド</h2>
+      <span style="margin-left:auto;display:flex;gap:6px">
+        <button class="sbtn" id="rem-all-on" type="button">すべてON</button>
+        <button class="sbtn mut" id="rem-all-off" type="button">すべてOFF</button>
+      </span>
+    </div>
     <div class="rem" id="remrows">
-      <div class="row"><span class="rid">R1</span><div><div class="nm">前々日確認 <span class="pill good">実装済</span></div><div class="cond">ご予約の2日前 10:00｜「伺います / 変更したい」のボタン付き</div></div><span class="src line">LINE</span><button class="sw" aria-checked="true" role="switch" aria-label="R1 有効"><i></i></button></div>
-      <div class="row"><span class="rid">R2</span><div><div class="nm">来店7日後フォロー <span class="pill good">実装済</span></div><div class="cond">ご来店の7日後 10:00｜自由入力の返信は自動で内容を判定しスタッフへ通知</div></div><span class="src line">LINE</span><button class="sw" aria-checked="true" role="switch" aria-label="R2 有効"><i></i></button></div>
-      <div class="row"><span class="rid">R3</span><div><div class="nm">休眠フォロー <span class="pill good">実装済</span></div><div class="cond">最終来店から90日 10:00｜同じ方へは90日に1回まで・配信停止の導線つき</div></div><span class="src line">LINE</span><button class="sw" aria-checked="true" role="switch" aria-label="R3 有効"><i></i></button></div>
-      <div class="row"><span class="rid">R4</span><div><div class="nm">誕生日メッセージ <span class="pill good">実装済</span></div><div class="cond">お誕生日 当日 10:00｜クーポンを添付（2/29 生まれは平年 2/28）</div></div><span class="src line">LINE</span><button class="sw" aria-checked="true" role="switch" aria-label="R4 有効"><i></i></button></div>
+      <div class="row" data-job="preReminder"><span class="rid">R1</span><div><div class="nm">前々日確認 <span class="pill good">実装済</span></div><div class="cond">ご予約の2日前 10:00｜「伺います / 変更したい」のボタン付き</div></div><span class="src line">LINE</span><button class="sw" aria-checked="true" role="switch" aria-label="R1 有効"><i></i></button></div>
+      <div class="row" data-job="afterVisit"><span class="rid">R2</span><div><div class="nm">来店7日後フォロー <span class="pill good">実装済</span></div><div class="cond">ご来店の7日後 10:00｜自由入力の返信は自動で内容を判定しスタッフへ通知</div></div><span class="src line">LINE</span><button class="sw" aria-checked="true" role="switch" aria-label="R2 有効"><i></i></button></div>
+      <div class="row" data-job="dormant"><span class="rid">R3</span><div><div class="nm">休眠フォロー <span class="pill good">実装済</span></div><div class="cond">最終来店から90日 10:00｜同じ方へは90日に1回まで・配信停止の導線つき</div></div><span class="src line">LINE</span><button class="sw" aria-checked="true" role="switch" aria-label="R3 有効"><i></i></button></div>
+      <div class="row" data-job="birthday"><span class="rid">R4</span><div><div class="nm">誕生日メッセージ <span class="pill good">実装済</span></div><div class="cond">お誕生日 当日 10:00｜クーポンを添付（2/29 生まれは平年 2/28）</div></div><span class="src line">LINE</span><button class="sw" aria-checked="true" role="switch" aria-label="R4 有効"><i></i></button></div>
       <div class="row"><span class="rid">R5</span><div><div class="nm">初回ご来店後の追客 <span class="pill mut">構想</span></div><div class="cond">次回のご予約が未定の方のみ（下の3パターンで自動判定）</div></div><span class="src line">LINE</span><button class="sw" aria-checked="true" role="switch" aria-label="R5 有効"><i></i></button></div>
       <div class="row"><span class="rid">R6</span><div><div class="nm">回数券 残回数のご案内 <span class="pill mut">構想</span></div><div class="cond">2週間ご来店なし＋残回数ありで通知</div></div><span class="src line">LINE</span><button class="sw" aria-checked="true" role="switch" aria-label="R6 有効"><i></i></button></div>
       <div class="row"><span class="rid">R7</span><div><div class="nm">保育コース 残回数のご案内 <span class="pill mut">構想</span></div><div class="cond">月4回・月8回の保育コースで1週間ご来店なしのとき月内残回数を通知</div></div><span class="src line">LINE</span><button class="sw" aria-checked="true" role="switch" aria-label="R7 有効"><i></i></button></div>
@@ -986,7 +1001,7 @@ tr.await td{background:var(--warn-soft)}
 <section class="screen" id="s-sns">
   <div class="crumb">集客</div>
   <h1>SNS投稿</h1>
-  <p class="sub">11枚以上を選ぶと、自動で2つの投稿に分割されます。リール動画は <span class="pill mut">構想</span>。</p>
+  <p class="sub">11枚以上を選ぶと Instagram では自動で2投稿に分割されます。写真の左上にチェックを入れると、その分だけスレッズへ投稿できます。</p>
 
   <div class="grid snswrap">
     <div class="card">
@@ -1012,8 +1027,20 @@ tr.await td{background:var(--warn-soft)}
           <p style="font-size:12px;color:var(--muted);margin:8px 0 12px">2投稿に分かれる場合、投稿2には「つづき（2/2）」が自動で追記されます。</p>
           <button class="btn block" id="sns-now" type="button">今すぐ投稿</button>
           <div class="frow" style="margin-top:8px">
-            <input type="datetime-local" id="sns-at" value="2026-07-24T19:00" style="flex:1" aria-label="予約日時">
+            <input type="datetime-local" id="sns-at" value="2026-07-24T19:00" aria-label="予約日時">
             <button class="btn sub" id="sns-later" type="button">予約投稿</button>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="hd"><h2>スレッズ投稿</h2><span class="pill acc" id="th-count">0枚</span></div>
+        <div class="bd">
+          <p style="font-size:12px;color:var(--muted);margin:0 0 8px">写真の左上にチェックを入れた分だけを投稿します（20枚・本文500文字まで）。</p>
+          <textarea rows="4" id="thcap" placeholder="スレッズの本文（Instagram のキャプションとは別に書けます）"></textarea>
+          <button class="btn block" id="th-now" type="button" style="margin-top:8px">スレッズに投稿</button>
+          <div class="frow" style="margin-top:8px">
+            <input type="datetime-local" id="th-at" aria-label="スレッズの予約日時">
+            <button class="btn sub" id="th-later" type="button">予約投稿</button>
           </div>
         </div>
       </div>
@@ -1032,7 +1059,7 @@ tr.await td{background:var(--warn-soft)}
     <div class="hd"><h2>投稿履歴</h2><span class="pill mut">直近20件</span></div>
     <div class="bd" style="padding-top:6px">
       <table>
-        <thead><tr><th>日時</th><th class="r">枚数</th><th>状態</th><th>キャプション</th><th></th></tr></thead>
+        <thead><tr><th>日時</th><th>投稿先</th><th class="r">枚数</th><th>状態</th><th>本文</th><th></th></tr></thead>
         <tbody id="snshist"></tbody>
       </table>
       <p style="font-size:12px;color:var(--muted);margin:10px 0 0">
@@ -1314,7 +1341,44 @@ function bindSearch(inputId, resId, cntId){
   });
 }
 bindSearch('dq', 'dres', 'dcnt');   // ダッシュボード
-bindSearch('cq', 'cres', 'ccnt');   // 顧客カルテ
+
+// ---- 顧客カルテの一覧 ----
+// カルテ画面は「まずわんちゃんの一覧」を出し、選んだ子のカルテを開く。
+// いきなり特定の1頭が開くと、誰のカルテを見ているのか分からないまま操作されるため。
+const carteListEl = document.getElementById('cartelist');
+const cresEl = document.getElementById('cres');
+const cqEl = document.getElementById('cq');
+function renderCarteList(q = ''){
+  const k = q.trim().toLowerCase();
+  const hits = [];
+  FAMILIES.forEach(o => o.members.forEach(d => {
+    if (!k || (o.name + d.n + d.menu).toLowerCase().includes(k)) hits.push([d, o]);
+  }));
+  document.getElementById('ccnt').textContent = hits.length + ' 頭';
+  cresEl.innerHTML = '';
+  if (!hits.length) {
+    cresEl.innerHTML = '<p class="none">該当するわんちゃんが見つかりません。</p>';
+    return;
+  }
+  hits.forEach(([d, o]) => {
+    const b = document.createElement('button'); b.className = 'dogbtn';
+    b.innerHTML = '<span class="dav">' + d.n.charAt(0) + '</span>'
+      + '<span class="dname"><span class="dn">' + d.n + '</span>'
+      + '<span class="db">' + dogSub(d) + '</span>'
+      + '<span class="owner">' + o.name + ' 様</span></span>'
+      + '<span class="dtags">' + memberTags(d) + '</span>';
+    b.addEventListener('click', () => openCarte(d, o));
+    cresEl.appendChild(b);
+  });
+}
+cqEl.addEventListener('input', () => renderCarteList(cqEl.value));
+// 一覧に戻る。開いていたカルテは残さない（次に開く子と混ざるため）
+function showCarteList(){
+  custbody.innerHTML = '';
+  carteListEl.style.display = '';
+  renderCarteList(cqEl.value);
+  go('cust', true);
+}
 
 // ---- 顧客ごとのリマインド設定 ----
 // 現行システムで動いている4種（R1〜R4）と、今後の候補（R5〜R8）
@@ -1328,6 +1392,8 @@ const REMINDERS = [
   { id:'R7', n:'保育コース 残回数案内',  c:'1週間ご来店なし',           need:d => !!d.plan },
   { id:'R8', n:'繰越分の消化のご案内',   c:'翌月へ繰り越したとき',      need:d => !!(d.plan && d.plan.carry) },
 ];
+// 画面の R番号 → 日次ジョブ名（サーバの /reminders と同じ対応）
+const REMIND_JOB_OF = { R1:'preReminder', R2:'afterVisit', R3:'dormant', R4:'birthday' };
 const custRem = {};                       // わんちゃんごとの個別設定（未設定＝店舗設定に従う）
 custRem['きなこ'] = { R4:false };            // 例: 誕生日メッセージを辞退
 custRem['ラテ']   = { R6:false };            // 例: 回数券の来店促しを辞退
@@ -1335,10 +1401,14 @@ function remCard(d, o){
   const rows = REMINDERS.filter(r => r.need(d)).map(r => {
     const ov = custRem[d.n] && custRem[d.n][r.id] !== undefined;
     const on = ov ? custRem[d.n][r.id] : true;
-    // 実運用モードでは、配信のON/OFFは飼い主様単位の「配信停止」で行う。
-    // 触れるトグルのままだと「OFFにした＝止まった」と誤解されるため状態表示にする
+    // 実運用モードでは、この子だけを止める仕組みはまだ無い。止める操作は
+    // 飼い主様単位の「配信停止」か、リマインド設定画面の店舗単位の OFF になるため、
+    // ここでは結果としてどうなるかだけを表示する
+    const jobOff = adminLive && REMIND_JOB_OF[r.id] && remindEnabled[REMIND_JOB_OF[r.id]] === false;
+    const stopped = o.optOut || jobOff;
     const control = adminLive
-      ? '<span class="pill ' + (o.optOut ? 'crit' : 'good') + '">' + (o.optOut ? '停止中' : '稼働中') + '</span>'
+      ? '<span class="pill ' + (stopped ? 'crit' : 'good') + '">'
+        + (o.optOut ? '停止中' : jobOff ? '店舗設定でOFF' : '稼働中') + '</span>'
       : '<button class="sw crem" data-member="' + d.n + '" data-id="' + r.id + '" role="switch" aria-checked="' + on + '" aria-label="' + r.n + '"><i></i></button>';
     return '<div class="row"><span class="rid">' + r.id + '</span>'
       + '<div><div class="nm">' + r.n + (!adminLive && ov ? ' <span class="pill hny">個別設定</span>' : '') + '</div>'
@@ -1350,7 +1420,8 @@ function remCard(d, o){
   const note = adminLive
     ? (o.optOut
         ? '<b>配信停止中</b>のため送られません。再開は「飼い主様情報を編集」から。'
-        : '止めるときは「飼い主様情報を編集」の<b>配信停止</b>にチェックを入れてください。')
+        : 'この方だけ止めるときは「飼い主様情報を編集」の<b>配信停止</b>、'
+          + '店舗全体で止めるときは<b>リマインド設定</b>の画面で切り替えます。')
     : '個別にOFFにすると、この子だけ送信を止められます。'
       + (off ? '<br>現在の対象外: ' + off : '');
   return '<div class="card"><div class="hd"><h2>この子へのリマインド設定</h2>'
@@ -1401,8 +1472,10 @@ function openCarte(d, o){
       : '<p style="font-size:12.5px;color:var(--muted);margin:0">失効した回数はありません。</p>')
     + '</div></div>';
 
+  carteListEl.style.display = 'none';   // 一覧とカルテは同じ画面を入れ替えて使う
   custbody.innerHTML =
-    '<div class="crumb"><a href="#" id="bklist" style="color:var(--accent)">顧客管理 / 顧客一覧</a> /</div>'
+    '<div class="crumb"><a href="#" id="bkcarte" style="color:var(--accent)">顧客カルテ</a> / '
+    + '<a href="#" id="bklist" style="color:var(--accent)">顧客一覧</a> /</div>'
     + '<div class="cust-hd"><div class="avatar">' + d.n.charAt(0) + '</div><div>'
     + '<h1 style="margin-bottom:0">' + d.n + ' <span style="font-size:13px;color:var(--muted);font-weight:600">' + dogSub(d) + '</span></h1>'
     + '<div style="font-size:12.5px;color:var(--muted)">飼い主: ' + o.name + ' 様'
@@ -1451,17 +1524,20 @@ function openCarte(d, o){
       : '<p style="font-size:12.5px;color:var(--muted);margin:10px 0">来店履歴はまだありません。</p>')
     + '</div></div></div></div>';
 
+  document.getElementById('bkcarte').addEventListener('click', e => { e.preventDefault(); showCarteList(); });
   document.getElementById('bklist').addEventListener('click', e => { e.preventDefault(); go('list'); });
   if (adminLive) {
     document.getElementById('ed-pet').addEventListener('click', () => editPet(o, d));
     document.getElementById('ed-owner').addEventListener('click', () => editOwner(o));
     document.getElementById('ed-addpet').addEventListener('click', () => editPet(o, null));
   }
-  go('cust');
+  go('cust', true);
 }
 // ---- タブ切替 ----
 const nav = document.getElementById('nav');
-function go(s){
+// keepCarte=true はカルテ側からの遷移。それ以外でカルテ画面へ来たときは一覧から始める
+function go(s, keepCarte = false){
+  if (s === 'cust' && !keepCarte) { showCarteList(); return; }
   nav.querySelectorAll('button').forEach(x => { const on = x.dataset.s === s; x.classList.toggle('on', on); x.querySelector('.ic').innerHTML = on ? '&#9632;' : '&#9633;'; });
   document.querySelectorAll('.screen').forEach(sec => sec.classList.toggle('on', sec.id === 's' + '-' + s));
   // URL に画面名を残し、#resv などで直接その画面を開けるようにする（履歴は増やさない）
@@ -1476,10 +1552,9 @@ document.getElementById('quick').addEventListener('click', e => {   // ダッシ
   const b = e.target.closest('button[data-s]');
   if (b) go(b.dataset.s);
 });
-// URL の #画面名 があればその画面から開く（LINE のリッチメニュー等からの直リンク用）。
-// openCarte が go('cust') でハッシュを上書きするため、必ず先に読み取っておく
+// URL の #画面名 があればその画面から開く（LINE のリッチメニュー等からの直リンク用）
 const initialScreen = location.hash.slice(1);
-openCarte(FAMILIES[0].members[0], FAMILIES[0]);   // 初期表示用にカルテを組み立て
+renderCarteList();
 go(document.getElementById('s-' + initialScreen) ? initialScreen : 'dash');
 window.addEventListener('hashchange', () => {
   const s = location.hash.slice(1);
@@ -1916,27 +1991,69 @@ async function renderStaffInfo(){
 }
 
 // ---- リマインド設定（実運用モードでの見せ方）----
-// 実装済みの4種は常時動いており、この画面から止める仕組みはまだ無い。
-// 触れるトグルのままだと「OFF にした＝止まった」と誤解されるため、状態表示に置き換える。
+// 実装済みの4種（data-job 付きの行）は画面から止められる。設定はサーバに保存され、
+// 日次ジョブも手動実行も同じ設定を見るため、OFF にすればどの経路でも送られない。
+// 未実装の4種は触れると誤解を招くので、状態表示に置き換える。
+const remindEnabled = {};   // ジョブ名 → true/false（カルテ側の表示にも使う）
 function renderRemindLive(){
   document.querySelectorAll('#remrows .row').forEach(row => {
-    const done = row.querySelector('.nm .pill.good');   // 「実装済」バッジの有無で判別
     const sw = row.querySelector('.sw');
     if (!sw) return;
-    const state = document.createElement('span');
-    state.className = 'pill ' + (done ? 'good' : 'mut');
-    state.textContent = done ? '稼働中' : '未実装';
-    sw.replaceWith(state);
+    if (row.dataset.job) {
+      sw.classList.add('rem-job');
+      sw.dataset.job = row.dataset.job;
+    } else {
+      const state = document.createElement('span');
+      state.className = 'pill mut';
+      state.textContent = '未実装';
+      sw.replaceWith(state);
+    }
     // 右端の状態と同じ意味なので、名前の後ろのバッジは落とす
     row.querySelector('.nm .pill')?.remove();
   });
   document.querySelector('#s-rem .sub').innerHTML =
-    '<span class="pill good">稼働中</span> の4種は毎朝10:00に自動送信されています。'
+    '実装済みの4種はここで止められます（毎朝10:00に自動送信）。'
     + 'お客様ごとに止めるときは、カルテの「飼い主様情報を編集」で配信停止にしてください。';
 
   // 初回フォローの状況は実データを持っていないため、カードごと出さない
   document.getElementById('follow3')?.remove();
   document.getElementById('follow-head')?.remove();
+  loadRemindLive();
+}
+
+function paintRemindRows(){
+  document.querySelectorAll('#remrows .sw.rem-job').forEach(sw => {
+    sw.setAttribute('aria-checked', String(remindEnabled[sw.dataset.job] !== false));
+  });
+}
+
+async function loadRemindLive(){
+  try {
+    const { enabled } = await adminApi('/reminders');
+    Object.assign(remindEnabled, enabled);
+    paintRemindRows();
+  } catch (err) {
+    showToast('リマインド設定を読み込めませんでした: ' + err.message);
+  }
+}
+
+// patch は「変えるぶんだけ」。一括ON/OFFも4件まとめて渡すだけで済む
+async function saveRemind(patch, label){
+  const before = { ...remindEnabled };
+  Object.assign(remindEnabled, patch);
+  paintRemindRows();   // 先に反映して待たせない。失敗したら戻す
+  try {
+    const { enabled } = await adminApi('/reminders', {
+      method: 'PUT', body: JSON.stringify({ enabled: patch }),
+    });
+    Object.assign(remindEnabled, enabled);
+    paintRemindRows();
+    showToast(label);
+  } catch (err) {
+    Object.assign(remindEnabled, before);
+    paintRemindRows();
+    showToast('保存に失敗しました: ' + err.message);
+  }
 }
 
 // ---- ダッシュボード（実運用モードのみ実データ）----
@@ -2406,9 +2523,38 @@ window.addEventListener('pointerup', e => {
 });
 window.addEventListener('pointercancel', () => { endRsz(); endDrag(false); });
 // ---- リマインドのトグル ----
-document.querySelectorAll('#s-rem .sw').forEach(sw => {   // 店舗全体の設定のみ（カルテ側は個別ハンドラ）
-  sw.addEventListener('click', () => sw.setAttribute('aria-checked', sw.getAttribute('aria-checked') !== 'true'));
+// 店舗全体の設定のみ（カルテ側は個別ハンドラ）。実運用モードでは data-job 付きの4種だけが
+// 操作対象になり、切り替えるとサーバへ保存される。
+document.querySelectorAll('#s-rem .sw').forEach(sw => {
+  sw.addEventListener('click', () => {
+    const on = sw.getAttribute('aria-checked') !== 'true';
+    if (adminLive && sw.dataset.job) {
+      const label = sw.closest('.row').querySelector('.nm').textContent.trim();
+      // 前々日確認は営業ではなく予約の確認連絡。止めると当日まで連絡が無くなるため一度確認する
+      if (!on && sw.dataset.job === 'preReminder'
+        && !confirm('前々日確認を止めると、ご予約の確認連絡が届かなくなります。よろしいですか？')) return;
+      saveRemind({ [sw.dataset.job]: on }, '「' + label + '」を' + (on ? 'ON' : 'OFF') + 'にしました');
+      return;
+    }
+    sw.setAttribute('aria-checked', on);
+  });
 });
+// 一括ON/OFF。1件ずつ押させると止め忘れが起きるため、この画面で完結させる
+function bulkRemind(on){
+  const targets = [...document.querySelectorAll('#s-rem .sw')];
+  if (adminLive) {
+    const patch = {};
+    targets.forEach(sw => { if (sw.dataset.job) patch[sw.dataset.job] = on; });
+    if (!Object.keys(patch).length) return;
+    if (!on && !confirm('実装済みのリマインドをすべて停止します。よろしいですか？')) return;
+    saveRemind(patch, 'すべて' + (on ? 'ON' : 'OFF') + 'にしました');
+    return;
+  }
+  targets.forEach(sw => sw.setAttribute('aria-checked', String(on)));
+  showToast('すべて' + (on ? 'ON' : 'OFF') + 'にしました（モックのため保存されません）');
+}
+document.getElementById('rem-all-on').addEventListener('click', () => bulkRemind(true));
+document.getElementById('rem-all-off').addEventListener('click', () => bulkRemind(false));
 
 // ---- シフトセルの切替 ----
 const CYCLE = [['work','出勤'],['am','AM半休'],['pm','PM半休'],['koukyu','公休'],['yukyu','有休'],['jikan','時間休<br>要時間指定']];
@@ -2472,6 +2618,20 @@ function snsPhotoEl(item, no){
     d.style.background = `linear-gradient(135deg, hsl(${item.hue} 32% 62%), hsl(${(item.hue+40)%360} 30% 44%))`;
   }
   d.innerHTML = `${item.label}<span class="no num">${no}</span>`;
+  d.classList.toggle('picked', !!item.pick);
+  // 左上のチェック＝スレッズへ出す写真。Instagram の候補はそのまま残す
+  const pick = document.createElement('input');
+  pick.type = 'checkbox';
+  pick.className = 'pick';
+  pick.checked = !!item.pick;
+  pick.title = 'スレッズに投稿する';
+  pick.setAttribute('aria-label', `${no}枚目をスレッズに投稿する`);
+  pick.addEventListener('change', () => {
+    item.pick = pick.checked;
+    d.classList.toggle('picked', pick.checked);
+    renderThreadsCount();
+  });
+  d.appendChild(pick);
   const rm = document.createElement('button');
   rm.type = 'button';
   rm.className = 'rm';
@@ -2501,6 +2661,12 @@ function renderSnsPhotos(){
   document.getElementById('sns-c2').textContent = second + '枚';
   document.getElementById('sns-lb2').style.display = second ? '' : 'none';
   document.getElementById('post2').style.display = second ? '' : 'none';
+  renderThreadsCount();
+}
+function threadsPicked(){ return snsItems.filter(i => i.pick); }
+function renderThreadsCount(){
+  const n = threadsPicked().length;
+  document.getElementById('th-count').textContent = n + '枚';
 }
 document.getElementById('sns-add').addEventListener('change', async (e) => {
   const files = [...e.target.files];
@@ -2545,9 +2711,10 @@ const SNS_HIST = [
 ];
 const SNS_ST = { scheduled:['予約中','warn'], publishing:['投稿処理中','warn'], published:['投稿済み','good'], failed:['失敗','crit'], dry_run:['dry_run','mut'] };
 
+const SNS_PF = { instagram:['Instagram','acc'], threads:['スレッズ','hny'] };
 function snsMapPost(p){
   return { id: p.id, at: snsFmtJst(p.published_at || p.scheduled_at), count: p.photo_count,
-    status: p.status, caption: p.caption || '', error: p.error };
+    platform: p.platform || 'instagram', status: p.status, caption: p.caption || '', error: p.error };
 }
 async function snsReloadHist(){
   try {
@@ -2565,7 +2732,9 @@ function renderSnsHist(){
   SNS_HIST.forEach((h) => {
     const [label, cls] = SNS_ST[h.status];
     const tr = document.createElement('tr');
+    const [pfLabel, pfCls] = SNS_PF[h.platform] ?? SNS_PF.instagram;
     tr.innerHTML = `<td class="num" style="white-space:nowrap">${h.at}</td>`
+      + `<td><span class="pill ${pfCls}">${pfLabel}</span></td>`
       + `<td class="r num">${h.count}</td>`
       + `<td><span class="pill ${cls}">${label}</span>`
       + (h.error ? `<div style="font-size:11.5px;color:var(--muted);margin-top:2px">${h.error}</div>` : '') + `</td>`
@@ -2655,6 +2824,76 @@ document.getElementById('sns-later').addEventListener('click', () => {
   snsSubmit(at);
 });
 
+// ---- スレッズ投稿 ----
+// Instagram の候補写真のうち、左上にチェックを入れたものだけを別投稿として出す。
+// Instagram 側の選択は消さない（同じ写真を両方へ出すことがあるため）。
+const TH_MAX_TEXT = 500;
+async function threadsSubmit(scheduledAtLocal){
+  const picked = threadsPicked();
+  if (!picked.length) { showToast('写真の左上にチェックを入れて選んでください'); return; }
+  if (picked.length > 20) { showToast('スレッズは1投稿20枚までです'); return; }
+  const caption = document.getElementById('thcap').value;
+  if (caption.length > TH_MAX_TEXT) {
+    showToast(`スレッズの本文は${TH_MAX_TEXT}文字までです（現在${caption.length}文字）`);
+    return;
+  }
+
+  if (!snsLive) {
+    let at = 'いま';
+    if (scheduledAtLocal) {
+      const [d, t] = scheduledAtLocal.split('T');
+      const [, mo, da] = d.split('-');
+      const w = '日月火水木金土'[new Date(d + 'T00:00:00+09:00').getDay()];
+      at = `${Number(mo)}/${Number(da)}(${w}) ${t}`;
+    }
+    SNS_HIST.unshift({ at, count: picked.length, platform: 'threads',
+      status: scheduledAtLocal ? 'scheduled' : 'published', caption });
+    renderSnsHist();
+    showToast(scheduledAtLocal
+      ? 'スレッズへの予約投稿を登録しました（モックのため実投稿はされません）'
+      : 'スレッズに投稿しました（モックのため実投稿はされません）');
+    clearThreadsPick();
+    return;
+  }
+
+  if (!scheduledAtLocal && !confirm(`${picked.length}枚を今すぐスレッズへ投稿しますか？（実際に投稿されます）`)) return;
+  try {
+    const res = await fetch(`${SNS_API}/posts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        platform: 'threads',
+        caption,
+        files: picked.map((i) => i.file).filter(Boolean),
+        scheduledAt: scheduledAtLocal ? `${scheduledAtLocal}:00+09:00` : null,
+      }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+    const messages = {
+      published: 'スレッズに投稿しました',
+      dry_run: 'dry_run のため実投稿せず記録しました（実投稿には THREADS_POST_MODE=live が必要です）',
+      scheduled: '予約しました。時刻になると自動でスレッズへ投稿されます',
+    };
+    showToast(messages[body.status] || '受け付けました');
+    clearThreadsPick();
+    document.getElementById('thcap').value = '';
+  } catch (err) {
+    showToast(`失敗しました: ${err.message}`);
+  }
+  snsReloadHist();
+}
+function clearThreadsPick(){
+  snsItems.forEach((i) => { i.pick = false; });
+  renderSnsPhotos();
+}
+document.getElementById('th-now').addEventListener('click', () => threadsSubmit(null));
+document.getElementById('th-later').addEventListener('click', () => {
+  const at = document.getElementById('th-at').value;
+  if (!at) { showToast('予約日時を指定してください'); return; }
+  threadsSubmit(at);
+});
+
 // 初期化: API に届けば実投稿モード、届かなければデモのまま
 (async () => {
   try {
@@ -2666,15 +2905,16 @@ document.getElementById('sns-later').addEventListener('click', () => {
     SNS_HIST.length = 0;
     posts.forEach((p) => SNS_HIST.push(snsMapPost(p)));
     document.getElementById('snscap').value = '';
-    // 予約日時の初期値をデモ用の過去日時から「今日の19:00」に差し替える
-    const now = new Date();
-    const pad = (n) => String(n).padStart(2, '0');
-    document.getElementById('sns-at').value =
-      `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T19:00`;
     const sub = document.querySelector('#s-sns .sub');
-    if (sub) sub.innerHTML = '<span class="pill good">実投稿モード</span> この画面から実際に Instagram へ投稿されます。'
+    if (sub) sub.innerHTML = '<span class="pill good">実投稿モード</span> この画面から実際に投稿されます。'
       + '11枚以上は自動で2投稿に分割されます。';
   } catch { /* デモ動作のまま */ }
+  // 予約日時の初期値を「今日の19:00」にする（デモ用の固定値を残すと過去日時のまま押される）
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const at19 = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T19:00`;
+  if (snsLive) document.getElementById('sns-at').value = at19;
+  document.getElementById('th-at').value = at19;
   renderSnsPhotos();
   renderSnsHist();
 })();
@@ -2964,7 +3204,8 @@ document.getElementById('nc-add').addEventListener('click', async () => {
       showToast(messages[err.message] || 'エラー: ' + err.message);
       return;
     }
-    loadFamiliesLive().then(() => renderOwners(qEl.value)).catch(() => {});   // 顧客一覧にも反映
+    // 顧客一覧・カルテ一覧にも反映
+    loadFamiliesLive().then(() => { renderOwners(qEl.value); renderCarteList(cqEl.value); }).catch(() => {});
   }
   document.getElementById('nc-name').value = ''; document.getElementById('nc-tel').value = '';
   document.getElementById('nc-bd').value = '';
@@ -3075,6 +3316,7 @@ window.addEventListener('keydown', e => { if (e.key === 'Escape') closeEdit(); }
 async function refreshAfterEdit(custId, petId){
   try { await loadFamiliesLive(); } catch (err) { showToast('再読み込みに失敗しました: ' + err.message); return; }
   renderOwners(qEl.value);
+  renderCarteList(cqEl.value);
   const o = FAMILIES.find(f => String(f.id) === String(custId));
   if (!o) { go('list'); return; }
   const d = (petId != null && o.members.find(m => String(m.id) === String(petId))) || o.members[0];
@@ -3244,11 +3486,8 @@ async function loadFamiliesLive(){
       '<span class="pill good" style="margin-right:6px">実運用モード</span>');
   }
 
-  // カルテの初期表示を実データで組み直す（開いている画面は変えない）
-  const cur = document.querySelector('.screen.on');
-  const fam = FAMILIES.find(f => f.members.length);
-  if (fam) openCarte(fam.members[0], fam);
-  if (cur) go(cur.id.slice(2));
+  // カルテ一覧を実データで組み直す（開いている画面は変えない）
+  renderCarteList(cqEl.value);
 })();
 </script>
 </body>

@@ -72,11 +72,22 @@ npm test
 店舗管理画面で承認・却下すると本人へ LINE で自動通知される。申請文の解釈は Claude Haiku。
 連携の手順と書き方の例は [docs/shift-requests.md](docs/shift-requests.md) を参照。
 
-## Instagram 投稿
+## Instagram / スレッズ投稿
 
 管理画面から店舗の Instagram へ写真を投稿できる（複数枚のカルーセル・11枚以上の自動2分割・
 予約投稿）。`IG_POST_MODE=dry_run` が既定で、`live` にするまで実投稿されない。
 Meta 側のセットアップは [docs/instagram.md](docs/instagram.md) を参照。
+
+同じ画面で**スレッズ**にも投稿できる。Instagram 用に並べた写真の左上にチェックを入れると、
+その分だけが別の投稿としてスレッズへ出る（`THREADS_POST_MODE=dry_run` が既定）。
+設定は [docs/threads.md](docs/threads.md) を参照。
+
+## リマインドの ON/OFF
+
+実装済みの4種（前々日確認・来店7日後フォロー・休眠フォロー・誕生日）は、管理画面
+`/mock/#rem` から個別・一括で止められる。設定は `app_settings` に保存され、日次の
+自動実行と `scripts/run-job.js` の手動実行の**どちらも同じ設定を見る**。
+お客様ごとに止めるときは顧客カルテの「配信停止」（`customers.opt_out`）を使う。
 
 ## 店舗管理画面
 

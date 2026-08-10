@@ -8,6 +8,11 @@ export const SETTING_KEYS = {
   // Instagram の長期トークン。60日で切れるため定期的に延長し、更新後の値はこちらを正とする
   igAccessToken: 'ig_access_token',
   igTokenRefreshedAt: 'ig_token_refreshed_at',
+  // Threads も Instagram と同じく長期トークンを定期延長する
+  threadsAccessToken: 'threads_access_token',
+  threadsTokenRefreshedAt: 'threads_token_refreshed_at',
+  // 日次リマインド4種の ON/OFF（JSON）。行が無ければ全 ON
+  remindersEnabled: 'reminders_enabled',
 };
 
 export function createSettings({ pool }) {

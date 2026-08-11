@@ -347,6 +347,7 @@ button.trow2:focus-visible{outline:2px solid var(--accent); outline-offset:-2px}
 .dogbtn .db{display:block; font-size:11px; color:var(--muted); font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
 .dogbtn .dtags{margin-left:auto; display:flex; gap:4px; flex-wrap:wrap; justify-content:flex-end; flex:0 0 auto}
 /* 顧客一覧の表。1行＝1世帯。編集は行の直下（.erow）を開いて行う */
+.tscroll{overflow-x:auto; -webkit-overflow-scrolling:touch}
 .ctable td{vertical-align:top}
 .ctable .cname{font-weight:700; font-size:13.5px}
 .ctable .cpets{display:flex; flex-wrap:wrap; gap:4px}
@@ -484,19 +485,22 @@ tr.await td{background:var(--warn-soft)}
   .mcell .closed{font-size:10px; letter-spacing:0}
 }
 @media (max-width:640px){
+  /* 顧客一覧は表のまま横スクロールさせる（カードに崩すと一覧性が落ちるため）。
+     飼い主様の列は position:sticky で残し、誰の行かを見失わないようにする */
+  .ctable{min-width:560px; font-size:12.5px}
+  .ctable th,.ctable td{padding:8px 6px}
+  .ctable td.num{white-space:nowrap}
+  /* ボタンが2段になると行の高さが倍になり、一覧として見づらくなる */
+  .ctable .rowacts{flex-wrap:nowrap}
+  .ctable th:first-child,.ctable td.cn{position:sticky; left:0; background:var(--surface); z-index:1}
+  .ctable .cname{font-size:12.5px}
+  .ctable .sbtn{padding:5px 9px; font-size:11.5px}
+  /* 編集欄は横スクロールせずに使えるよう、画面幅に収めて左端に置く */
+  .erow>td{position:sticky; left:0; width:1px}
+  .erow .efit{width:calc(100vw - 60px); max-width:440px}
   /* 7列の予約一覧は潰れて読めないため、1予約=1カードに組み替える。
      同じ画面にある料金表・店舗情報まで組み替えると逆に読めなくなるので、
      対象は予約一覧のテーブルだけに限る */
-  .ctable,.ctable tbody,.ctable tr,.ctable td{display:block}
-  .ctable thead{display:none}
-  .ctable tbody>tr{border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:10px}
-  .ctable td{border:0; padding:2px 0; white-space:normal}
-  .ctable td::before{content:attr(data-label)"： "; color:var(--muted); font-size:11px}
-  .ctable td.cn::before,.ctable td.rowacts::before{content:none}
-  .ctable td.cn{font-size:14px; margin-bottom:4px}
-  .ctable .rowacts{margin-top:8px; justify-content:flex-start}
-  .ctable tr.erow{padding:0}
-  .ctable tr.erow>td{border-radius:10px}
   .rvtable,.rvtable tbody,.rvtable tr,.rvtable td{display:block}
   .rvtable thead{display:none}
   .rvtable tr{border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:10px}
@@ -874,7 +878,7 @@ tr.await td{background:var(--warn-soft)}
     <span class="cnt" id="cnt"></span>
   </div>
   <div class="card">
-    <div class="bd" style="padding:6px 0 0">
+    <div class="bd tscroll" style="padding:6px 0 0">
       <table class="ctable">
         <thead><tr><th>飼い主様</th><th>わんちゃん</th><th>電話番号</th><th>LINE</th><th></th></tr></thead>
         <tbody id="owners"></tbody>
@@ -3613,12 +3617,16 @@ function openInlineEdit(tr, title, rows, { onSave, onDelete, after, key }){
   er.dataset.key = key;
   const td = document.createElement('td');
   td.colSpan = 5;
+  // 表が横スクロールしても編集欄は画面内に収まるよう、幅を持つ入れ物に入れる
+  const fit = document.createElement('div');
+  fit.className = 'efit';
   const h = document.createElement('div');
   h.className = 'ehd';
   h.textContent = title;
-  td.appendChild(h);
+  fit.appendChild(h);
   const form = buildEditForm(rows, { onSave, onDelete, after, close: closeInline });
-  td.appendChild(form.el);
+  fit.appendChild(form.el);
+  td.appendChild(fit);
   er.appendChild(td);
   tr.after(er);
   inlineRow = er;

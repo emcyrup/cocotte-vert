@@ -29,7 +29,7 @@ import { createSnsRouter } from './http/snsRoutes.js';
 import { createInstagramClient } from './instagram/client.js';
 import { createThreadsClient } from './threads/client.js';
 import { createSnsPublisher } from './jobs/snsPublisher.js';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, statSync } from 'node:fs';
 import cron from 'node-cron';
 
 const config = loadConfig();
@@ -244,6 +244,19 @@ app.use(
 // 実在の顧客データを扱うため、管理 API と同じ Basic 認証の内側に置く
 const mockDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'mock');
 app.use('/mock', adminGuard, express.static(mockDir, noStaleCache));
+
+// いま配信している画面ファイルの更新時刻。開きっぱなしのタブが古い画面のままでも
+// 気付けるよう、画面側が自分の Last-Modified と突き合わせて再読み込みを促す。
+// （no-cache を付けていても、タブ一覧から戻ったときに再検証せず描画する端末がある）
+app.get('/api/admin/mock-version', adminGuard, (_req, res) => {
+  try {
+    const { mtime } = statSync(path.join(mockDir, 'index.html'));
+    res.json({ mtime: mtime.toISOString() });
+  } catch (err) {
+    // 判定できないだけなので、画面を止めずに黙って諦めさせる
+    res.status(503).json({ error: err.message });
+  }
+});
 
 // ---- Instagram 投稿 ----
 // 投稿画像は Instagram 側が公開 URL から取得する仕様のため、認証なしで配信する。

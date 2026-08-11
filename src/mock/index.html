@@ -290,6 +290,12 @@ button.trow2:focus-visible{outline:2px solid var(--accent); outline-offset:-2px}
 .toast.on{opacity:1; transform:translateX(-50%); pointer-events:auto}
 .toast button{background:none; border:0; color:var(--honey); font:inherit; font-weight:700; cursor:pointer; padding:0}
 .toast button:focus-visible{outline:2px solid var(--honey); outline-offset:2px}
+/* 古い画面のままのときに出す帯。見落とすと「直っていない」と誤解されるため最上部に固定する */
+.stale{position:fixed; top:0; left:0; right:0; z-index:90; background:var(--honey); color:#1c1810;
+  padding:9px 14px; font-size:12.5px; font-weight:700; display:flex; align-items:center; gap:10px;
+  justify-content:center; flex-wrap:wrap; box-shadow:0 2px 10px rgba(0,0,0,.2)}
+.stale button{background:#1c1810; color:#fff; border:0; border-radius:99px; padding:5px 14px;
+  font:inherit; font-weight:700; font-size:12px; cursor:pointer}
 .popback{position:fixed; inset:0; z-index:65}
 .pop{position:fixed; z-index:70; width:264px; background:var(--surface); border:1px solid var(--line); border-radius:12px; box-shadow:0 12px 32px rgba(0,0,0,.28); padding:14px 16px}
 .pop h3{margin:0 0 2px; font-size:14.5px}
@@ -2133,6 +2139,45 @@ async function renderStaffInfo(){
   }
 }
 
+// ---- 開きっぱなしのタブが古い画面のままになっていないかの確認 ----
+// no-cache を付けていても、タブ一覧から戻ったときに再検証せず描画する端末がある。
+// 「直したはずが反映されていない」と誤解されるため、いま読み込んでいる HTML の
+// Last-Modified とサーバ上のファイルの更新時刻を突き合わせて、古ければ帯で知らせる。
+async function checkStaleScreen(){
+  if (!adminLive) return;
+  try {
+    const { mtime } = await adminApi('/mock-version');
+    // document.lastModified は端末のローカル時刻の文字列。Date 経由で比較する。
+    // Last-Modified が付かない環境では現在時刻になるため、古いとは判定されない
+    const loaded = new Date(document.lastModified).getTime();
+    const latest = new Date(mtime).getTime();
+    if (!Number.isFinite(loaded) || !Number.isFinite(latest)) return;
+    if (latest - loaded < 5000) return;   // 秒未満の丸めで誤検知しないよう少し余裕を持たせる
+    showStaleBanner();
+  } catch { /* 判定できないだけなので黙って諦める */ }
+}
+function showStaleBanner(){
+  if (document.querySelector('.stale')) return;
+  const bar = document.createElement('div');
+  bar.className = 'stale';
+  bar.innerHTML = '<span>新しい画面があります。表示が古いままです。</span>';
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.textContent = '再読み込み';
+  // ハッシュを落として読み直す（同じ URL のままだと再検証されない端末があるため）
+  b.addEventListener('click', () => { location.replace(location.pathname + '?r=' + Date.now()); });
+  bar.appendChild(b);
+  document.body.appendChild(bar);
+}
+
+// タブに戻ってきたときにも確かめる。開きっぱなしのタブが古いままになるのが
+// まさにこの機能で拾いたい状況なので、読み込み時の1回だけでは足りない
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') checkStaleScreen();
+});
+// 戻る操作などでキャッシュから復元されたとき（この場合 load は走らない）
+window.addEventListener('pageshow', e => { if (e.persisted) checkStaleScreen(); });
+
 // ---- リマインド設定（実運用モードでの見せ方）----
 // 実装済みの4種（data-job 付きの行）は画面から止められる。設定はサーバに保存され、
 // 日次ジョブも手動実行も同じ設定を見るため、OFF にすればどの経路でも送られない。
@@ -3738,6 +3783,7 @@ async function loadFamiliesLive(){
       loadShiftReqs(), renderStaffInfo(), renderShiftTable(), renderDashboardLive(),
     ]);
     renderRemindLive();
+    checkStaleScreen();
     tsRenderState();
     await tsReloadResv({ quiet: true });
   } catch (err) {

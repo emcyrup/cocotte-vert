@@ -22,6 +22,7 @@ import { createBirthdayJob } from './jobs/birthday.js';
 import { createFollowupClassifier } from './ai/classifyFollowup.js';
 import { createShiftRequestParser } from './ai/parseShiftRequest.js';
 import { createShiftService } from './shifts/service.js';
+import { createPlanService } from './plans/service.js';
 import { createReservationService } from './reservations/service.js';
 import { basicAuth, bearerAuth } from './http/auth.js';
 import { createAdminRouter } from './http/adminRoutes.js';
@@ -49,6 +50,8 @@ const classifier = createFollowupClassifier({ apiKey: config.anthropicApiKey });
 // シフト変更申請（スタッフが公式LINE へ自由記述で送る）
 const shiftParser = createShiftRequestParser({ apiKey: config.anthropicApiKey });
 const shiftService = createShiftService({ pool, lineClient, slack, settings, config });
+// 回数券・保育コースの回数管理（残回数は元帳の合計から導く）
+const planService = createPlanService({ pool });
 
 const app = express();
 
@@ -238,6 +241,7 @@ app.use(
     shiftService,
     reminderSettings,
     customerReminders,
+    planService,
   })
 );
 
@@ -321,6 +325,29 @@ app.use((err, _req, res, next) => {
   console.error(`[http] ${err.message}`);
   return res.status(500).json({ error: 'internal error' });
 });
+
+// 定額プランの月次付与と、期限切れの失効。
+// 毎月1日の 0:30 JST に付与し、失効は毎日確認する（期限は月末とは限らないため）。
+// 付与は部分ユニーク索引で二重にならないので、再実行しても増えない
+cron.schedule('30 0 1 * *', async () => {
+  try {
+    const result = await planService.grantMonthly();
+    console.log(`[plans] 月次付与 加入${result.enrolled}件 / 付与${result.granted}件`);
+  } catch (err) {
+    console.error(`[plans] 月次付与に失敗: ${err.message}`);
+    await slack.notifyError('保育コースの月次付与に失敗', err);
+  }
+}, { timezone: 'Asia/Tokyo' });
+
+cron.schedule('45 0 * * *', async () => {
+  try {
+    const result = await planService.expireOverdue();
+    if (result.expired > 0) console.log(`[plans] 失効 ${result.expired}件 / 計${result.total}回`);
+  } catch (err) {
+    console.error(`[plans] 失効処理に失敗: ${err.message}`);
+    await slack.notifyError('回数の失効処理に失敗', err);
+  }
+}, { timezone: 'Asia/Tokyo' });
 
 // 毎日 10:00 JST の配信ジョブ（Phase 4・5 のジョブもここに追加していく）
 const runner = createJobRunner({ slack, settings, reminders: reminderSettings });

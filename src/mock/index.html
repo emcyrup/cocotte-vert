@@ -1633,9 +1633,38 @@ document.addEventListener('click', e => {
   showToast(member + 'の「' + nm.textContent.replace('個別設定', '').trim() + '」を' + (on ? 'ON' : 'OFF') + 'にしました');
 });
 
+// ---- 回数券・保育コース（実運用モード）----
+// 残回数はサーバの元帳から取る。画面では集計せず、そのまま出す
+let planMaster = [];
+async function loadPlanMaster(){
+  try { ({ plans: planMaster } = await adminApi('/plans?all=1')); } catch { planMaster = []; }
+}
+// カルテが読む形（d.plan / d.ticket / d.lapsed）へ詰め替える。
+// デモ用のデータ構造をそのまま使うので、表示側は1つで済む
+async function loadPetCredits(d){
+  if (!adminLive || d.id == null) return;
+  try {
+    const c = await adminApi('/pets/' + d.id + '/credits');
+    d.credits = c;
+    d.plan = c.plan
+      ? { label: c.plan.name, quota: c.plan.quota, used: c.plan.used,
+          carry: c.plan.carry, carryLimit: c.plan.carryExpiresOn ? c.plan.carryExpiresOn + ' まで' : '' }
+      : null;
+    d.ticket = c.ticket.remaining > 0
+      ? { left: c.ticket.remaining, exp: c.ticket.expiresOn || '期限なし' }
+      : null;
+    d.lapsed = c.lapsed.map(l => [
+      l.effective_on, l.source === 'ticket' ? '回数券' : '保育コース', l.note || '', l.count,
+    ]);
+  } catch (err) {
+    showToast('回数の読み込みに失敗しました: ' + err.message);
+  }
+}
+
 // ---- ペットカルテの描画 ----
 const custbody = document.getElementById('custbody');
-function openCarte(d, o){
+async function openCarte(d, o){
+  await loadPetCredits(d);   // 先に読んでから描く（後から差し込むと画面が跳ねるため）
   const lapsedTotal = d.lapsed.reduce((a, x) => a + x[3], 0);
   const tags = [];
   if (d.plan) tags.push('<span class="pill acc">' + d.plan.label + '</span>');
@@ -1645,11 +1674,38 @@ function openCarte(d, o){
   if (d.first) tags.push('<span class="pill ' + d.first[1] + '">初回後: ' + d.first[0] + '</span>');
   if (o.optOut) tags.push('<span class="pill crit">配信停止中</span>');
 
-  const school = d.plan ? '<div class="card"><div class="hd"><h2>保育コースの利用（7月）</h2></div><div class="bd">'
+  const planActions = adminLive
+    ? '<div class="frow" style="margin-top:10px">'
+      + (d.plan
+        ? '<button class="sbtn" data-credit="use-plan">1回 消化</button>'
+          + '<button class="sbtn mut" data-credit="leave">コースを解約</button>'
+        : '<button class="sbtn" data-credit="join">コースに加入</button>')
+      + '</div>'
+    : '';
+  // 実運用モードでは未加入でもカードを出す（加入させる導線が要るため）
+  const school = adminLive && !d.plan
+    ? '<div class="card"><div class="hd"><h2>保育コース</h2><span class="pill mut">未加入</span></div>'
+      + '<div class="bd"><p style="font-size:12.5px;color:var(--muted);margin:0">'
+      + 'この子は定額コースに加入していません。</p>' + planActions + '</div></div>'
+    : d.plan ? '<div class="card"><div class="hd"><h2>保育コースの利用</h2></div><div class="bd">'
     + '<div style="display:flex;justify-content:space-between;font-size:12.5px"><span>当月分（' + d.plan.label.replace('保育コース ', '') + '）</span><b class="num">' + d.plan.used + ' / ' + d.plan.quota + ' 回</b></div>'
     + '<div class="meter"><i style="width:' + (d.plan.used / d.plan.quota * 100) + '%"></i></div>'
     + (d.plan.carry ? '<div style="display:flex;justify-content:space-between;font-size:12.5px;margin-top:8px"><span>先月からの繰越分</span><b class="num">' + d.plan.carry + ' 回（' + d.plan.carryLimit + '）</b></div><div class="meter"><i style="width:0%;background:var(--honey)"></i></div>' : '')
-    + '<p style="font-size:12px;color:var(--muted);margin:8px 0 0">当月分を優先消化 → その後に繰越分を消化。1週間ご来店がない場合は残回数をご案内します。</p></div></div>' : '';
+    + '<p style="font-size:12px;color:var(--muted);margin:8px 0 0">当月分を優先消化 → その後に繰越分を消化。1週間ご来店がない場合は残回数をご案内します。</p>'
+    + planActions + '</div></div>' : '';
+
+  // 回数券のカード（実運用モードのみ。デモでは見出しのバッジで表している）
+  const tickets = adminLive
+    ? '<div class="card"><div class="hd"><h2>回数券</h2>'
+      + '<span class="pill ' + (d.ticket ? 'hny' : 'mut') + ' num">残 ' + (d.ticket ? d.ticket.left : 0) + ' 回</span></div><div class="bd">'
+      + (d.ticket
+        ? '<p style="font-size:12.5px;margin:0">次の期限: <b>' + d.ticket.exp + '</b></p>'
+        : '<p style="font-size:12.5px;color:var(--muted);margin:0">有効な回数券はありません。</p>')
+      + '<div class="frow" style="margin-top:10px">'
+      + '<button class="sbtn" data-credit="add-ticket">回数券を追加</button>'
+      + (d.ticket ? '<button class="sbtn mut" data-credit="use-ticket">1回 消化</button>' : '')
+      + '</div></div></div>'
+    : '';
 
   // 回数券の失効は実データを持たないため、実運用モードでは出さない
   const lapsed = adminLive && !d.lapsed.length ? '' : '<div class="card"><div class="hd"><h2>失効した回数</h2><span class="pill ' + (lapsedTotal ? 'crit' : 'good') + ' num">累計 ' + lapsedTotal + ' 回</span></div><div class="bd">'
@@ -1697,7 +1753,7 @@ function openCarte(d, o){
         + '<p style="font-size:12px;color:var(--muted);margin:8px 0 0">お預かりの前に期限切れが分かるよう、期限が近い方へ自動でご案内します（スタッフにも通知）。</p>'
       : '')
     + '</div></div>')
-    + school + lapsed + '</div>'
+    + school + tickets + lapsed + '</div>'
     + '<div style="display:grid;gap:16px;align-content:start">'
     + remCard(d, o)
     + '<div class="card"><div class="hd"><h2>来店履歴・カルテ</h2><span class="pill mut">全 ' + d.total + ' 件</span></div>'
@@ -1714,6 +1770,9 @@ function openCarte(d, o){
 
   carteCtx = { d, o };
   loadCustomerReminders(o);   // 読めたらリマインドのカードだけ差し替える
+  custbody.querySelectorAll('[data-credit]').forEach(b => {
+    b.addEventListener('click', () => creditAction(b.dataset.credit, d, o));
+  });
   document.getElementById('bkcarte').addEventListener('click', e => { e.preventDefault(); showCarteList(); });
   document.getElementById('bklist').addEventListener('click', e => { e.preventDefault(); go('list'); });
   if (adminLive) {
@@ -1723,6 +1782,60 @@ function openCarte(d, o){
   }
   go('cust', true);
 }
+// 回数券・保育コースの操作。保存したらカルテを開き直して残数を反映する
+async function creditAction(action, d, o){
+  const reopen = () => openCarte(d, o);
+  try {
+    if (action === 'join') {
+      if (!planMaster.length) await loadPlanMaster();
+      const active = planMaster.filter(p => p.active);
+      if (!active.length) { showToast('先に「メニュー」でコースを登録してください'); return; }
+      openEditModal(d.n + ' をコースに加入', [
+        { key: 'planId', label: 'コース', type: 'select',
+          options: active.map(p => [p.id, p.name]) },
+        { key: 'startedOn', label: '開始日', type: 'date', value: dateOnly(new Date().toISOString()) },
+      ], {
+        onSave: v => adminApi('/pets/' + d.id + '/plan', {
+          method: 'POST', body: JSON.stringify({ planId: Number(v.planId), startedOn: v.startedOn || null }),
+        }),
+        after: reopen,
+      });
+      return;
+    }
+    if (action === 'leave') {
+      // 残っている回数は期限まで使えるため、消えるのは加入だけだと明示する
+      if (!confirm(d.n + ' のコース加入を解約します。\n残っている回数は期限まで使えます。よろしいですか？')) return;
+      await adminApi('/pets/' + d.id + '/plan', { method: 'DELETE' });
+      showToast('解約しました');
+      return reopen();
+    }
+    if (action === 'add-ticket') {
+      openEditModal(d.n + ' の回数券を追加', [
+        { key: 'count', label: '回数', type: 'number', value: '5' },
+        { key: 'expiresOn', label: '有効期限（空なら期限なし）', type: 'date', value: '' },
+        { key: 'note', label: 'メモ（例: 5回券）', value: '' },
+      ], {
+        onSave: v => adminApi('/pets/' + d.id + '/credits', {
+          method: 'POST',
+          body: JSON.stringify({ count: Number(v.count), expiresOn: v.expiresOn || null, note: v.note || null }),
+        }),
+        after: reopen,
+      });
+      return;
+    }
+    if (action === 'use-plan' || action === 'use-ticket') {
+      const source = action === 'use-plan' ? 'plan' : 'ticket';
+      const { consumed, shortfall } = await adminApi('/pets/' + d.id + '/credits/use', {
+        method: 'POST', body: JSON.stringify({ source, count: 1 }),
+      });
+      showToast(shortfall ? '残回数が足りません' : '1回 消化しました（残数を更新しました）');
+      if (consumed) return reopen();
+    }
+  } catch (err) {
+    showToast('エラー: ' + err.message);
+  }
+}
+
 // ---- タブ切替 ----
 const nav = document.getElementById('nav');
 // keepCarte=true はカルテ側からの遷移。それ以外でカルテ画面へ来たときは一覧から始める
@@ -3604,6 +3717,17 @@ function buildEditForm(rows, { onSave, onDelete, after, close }){
       lab.style.cssText = 'display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer';
       inp = document.createElement('input'); inp.type = 'checkbox'; inp.checked = !!r.value;
       lab.append(inp, r.label);
+    } else if (r.type === 'select') {
+      lab.style.cssText = 'display:grid;gap:4px;font-size:12px;color:var(--muted)';
+      inp = document.createElement('select');
+      (r.options || []).forEach(([value, text]) => {
+        const opt = document.createElement('option');
+        opt.value = value; opt.textContent = text;
+        inp.appendChild(opt);
+      });
+      if (r.value != null) inp.value = r.value;
+      inp.style.cssText = 'border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);font:inherit;font-size:13px;padding:9px 10px';
+      lab.append(r.label, inp);
     } else {
       lab.style.cssText = 'display:grid;gap:4px;font-size:12px;color:var(--muted)';
       inp = document.createElement(r.type === 'textarea' ? 'textarea' : 'input');
@@ -3719,7 +3843,7 @@ async function refreshAfterEdit(custId, petId){
   const o = FAMILIES.find(f => String(f.id) === String(custId));
   if (!o) { go('list'); return; }
   const d = (petId != null && o.members.find(m => String(m.id) === String(petId))) || o.members[0];
-  if (d) openCarte(d, o); else go('list');
+  if (d) await openCarte(d, o); else go('list');
 }
 
 // tr を渡すとその行の直下で編集する（顧客一覧）。渡さなければ従来どおりモーダル（カルテ）。

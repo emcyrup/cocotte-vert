@@ -19,6 +19,12 @@ Webhook と LIFF には**固定の HTTPS URL** が必要。構成は3通り。
 
 サブドメインを1つ決め（例 `line.example.com`）、DNS に **A レコード**を追加して EC2 の IP に向ける。
 
+> **`POSTGRES_PASSWORD` に記号を入れないこと。** この値は接続 URL
+> （`postgres://postgres:＜パスワード＞@db:5432/...`）に埋め込まれるため、`/` や `@` が入ると
+> URL として壊れ、起動時に `Invalid URL` だけを出してコンテナが再起動を繰り返す。
+> `openssl rand -base64` は `/` や `+` を含むので**使わない**。`openssl rand -hex 24` を使う。
+> （`ADMIN_PASSWORD` は URL に入らないので記号入りでよい）
+
 ### 2. アプリの起動
 
 ```bash
@@ -33,7 +39,7 @@ nano .env
 
 ```
 # compose 用（追記する）
-POSTGRES_PASSWORD=強いパスワードを生成して設定
+POSTGRES_PASSWORD=（openssl rand -hex 24 で生成。記号を含めない）
 
 # LINE / Slack（テスト用チャネルの値から始める）
 LINE_CHANNEL_ACCESS_TOKEN=...

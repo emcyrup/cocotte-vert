@@ -45,6 +45,11 @@
 [deploy.md](deploy.md) のとおりに VM を1台立てる。ドメインも店舗ごとに要る。
 
 ```bash
+# Docker が未導入なら先に入れる。グループの変更は SSH に入り直すまで効かない
+sudo apt install -y docker.io docker-compose-v2 git nano
+sudo usermod -aG docker $USER
+# ここで一度ログアウト → 再ログインしてから docker ps が通ることを確認する
+
 git clone https://github.com/emcyrup/cocotte-vert.git
 cd cocotte-vert
 cp .env.example .env
@@ -66,6 +71,19 @@ BIRTHDAY_COUPON_URL
 
 `ANTHROPIC_API_KEY` は店舗間で共有してよい。
 **`SEND_MODE` は `dry_run` のまま**にしておく（`.env` に `live` と書かない）。
+
+### つまずきやすい点
+
+実際に2店舗目を立ち上げたときに引っかかった順に並べてある。
+
+| 症状 | 原因と対処 |
+|---|---|
+| 起動して `Invalid URL` だけが繰り返し出る | **`POSTGRES_PASSWORD` に記号が入っている。** この値は接続 URL に埋め込まれるため `/` や `@` があると壊れる。`openssl rand -base64` は使わず **`openssl rand -hex 24`** で作り直す。DB は初回起動時のパスワードを保存するので、`.env` を直すだけでは直らない。**データが無いうちに** `docker compose --profile standalone down -v` でボリュームごと消してから起動し直す |
+| 起動直後に落ち、`SLACK_WEBHOOK_URL が必要です` と出る | `.env.example` の `STAFF_NOTIFY_CHANNEL` は `slack`。Slack を使わないなら **`line` に変える** |
+| `.env` が見当たらない | `.` で始まるので `ls` では見えない。`ls -a` で確認する |
+| `docker ps` が `permission denied` | `usermod -aG docker` のあと**再ログインしていない**。SSH の窓を閉じて入り直す |
+| `nano: command not found` | GCP の Ubuntu イメージには入っていない。`sudo apt install -y nano` |
+| 手元では動くのに Webhook が届かない | **Cloud Shell で作業している。** Cloud Shell は VM とは別のマシン。プロンプトが `@cloudshell` なら間違い |
 
 ### 3. 画面の見た目
 

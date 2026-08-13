@@ -848,7 +848,7 @@ tr.await td{background:var(--warn-soft)}
       <div class="card">
         <div class="hd"><h2>店舗情報</h2></div>
         <div class="bd">
-          <dl class="kv">
+          <dl class="kv" id="storeinfo">
             <dt>住所</dt><dd>〒540-0025 大阪市中央区徳井町2丁目2-5</dd>
             <dt>電話</dt><dd>06-6947-8211<span class="pill mut">ご予約優先</span></dd>
             <dt>営業時間</dt><dd>10:00〜19:00</dd>
@@ -1342,6 +1342,8 @@ const FAMILIES = [
               ['7/6 日','保育コース','line','中村','']] }]},
 ];
 // ---- 顧客一覧の描画 ----
+// 定休日の曜日（0=日）。実運用モードでは店舗プロフィールで上書きされる
+let storeClosedDays = [4];   // 既定は木曜定休
 const ownersEl = document.getElementById('owners'), cntEl = document.getElementById('cnt'), qEl = document.getElementById('q');
 // 行の直下に開く編集欄。renderOwners が初期表示でも closeInline を呼ぶため、ここで宣言しておく
 let inlineRow = null;
@@ -2178,6 +2180,38 @@ async function renderStaffInfo(){
   }
 }
 
+// ---- 店舗プロフィールの反映（実運用モードのみ）----
+// 店舗ごとに変わる表示（店名・ロゴ・営業時間・定休日）はサーバの設定から受け取る。
+// 他店舗へ展開するときに index.html を店舗ごとに書き換えずに済ませるため。
+// 配色は CSS 変数を直接書き換える運用のまま（src/mock/README.md 参照）
+async function applyStoreProfile(){
+  let store;
+  try {
+    ({ store } = await adminApi('/store'));
+  } catch { return; }   // 取れなければ既定の表示のまま
+
+  document.title = store.name + ' 店舗管理';
+  document.querySelector('.brand .logo').innerHTML =
+    '<span class="mark"></span>' + store.name;
+  document.querySelector('.brand .logo .mark').textContent = store.logo;
+  document.querySelector('.brand .store').textContent = store.tagline;
+  document.querySelector('.foot').innerHTML =
+    store.name + ' 管理システム<br><b>実運用モード</b><br>実データに接続しています';
+
+  // 店舗情報カード。持っていない項目（住所・電話）は行ごと出さない
+  const info = document.getElementById('storeinfo');
+  if (info) {
+    const rows = [];
+    if (store.address) rows.push(['住所', store.address]);
+    if (store.phone) rows.push(['電話', store.phone]);
+    rows.push(['営業時間', store.openTime + '〜' + store.closeTime]);
+    rows.push(['定休日', store.closedDayLabel + '（祝日の場合は営業）']);
+    info.innerHTML = rows.map(([k, v]) => '<dt>' + k + '</dt><dd>' + v + '</dd>').join('');
+  }
+  storeClosedDays = store.closedDays;
+  renderShiftTable().catch(() => {});   // 定休日の見出しを引き直す
+}
+
 // ---- 開きっぱなしのタブが古い画面のままになっていないかの確認 ----
 // no-cache を付けていても、タブ一覧から戻ったときに再検証せず描画する端末がある。
 // 「直したはずが反映されていない」と誤解されるため、いま読み込んでいる HTML の
@@ -2408,8 +2442,8 @@ async function renderShiftTable(){
   const head = document.createElement('tr');
   head.innerHTML = '<th style="width:90px">' + days[0].slice(5).replace('-', '/') + '〜</th>'
     + days.map(d => '<th>' + dayLabel(d)
-        // 木曜定休。表の上でも休みの日が分かるようにする
-        + (dowOf(d) === 4 ? '<br><span style="font-weight:600">定休</span>' : '')
+        // 定休日は表の上でも分かるようにする（曜日は店舗プロフィールから）
+        + (storeClosedDays.includes(dowOf(d)) ? '<br><span style="font-weight:600">定休</span>' : '')
         + '</th>').join('');
   table.appendChild(head);
 
@@ -3830,6 +3864,7 @@ async function loadFamiliesLive(){
       loadShiftReqs(), renderStaffInfo(), renderShiftTable(), renderDashboardLive(),
     ]);
     renderRemindLive();
+    await applyStoreProfile();
     checkStaleScreen();
     tsRenderState();
     await tsReloadResv({ quiet: true });
@@ -3843,8 +3878,6 @@ async function loadFamiliesLive(){
   document.getElementById('shift-approve-note').innerHTML =
     '承認すると<b>シフト表に反映</b>され、スタッフへLINEで通知されます。'
     + 'AI の読み違いがないか「原文」を確かめてから承認してください。';
-  document.querySelector('.foot').innerHTML =
-    'ここっとベール 管理システム<br><b>実運用モード</b><br>実データに接続しています';
   // 実運用モードの選択は飼い主様（顧客）単位。初期表示の文言もそろえる
   document.querySelectorAll('#nr-cust option, #ts-cust option').forEach(o => {
     if (o.value === '') o.textContent = '飼い主様を選択';
@@ -3858,7 +3891,6 @@ async function loadFamiliesLive(){
     + '<span class="pill mut">構想</span> 予約カレンダーへの反映はまだです。';
 
   // 実運用モードであることを画面上でも分かるようにする
-  document.title = 'ここっとベール 店舗管理';
   const tag = document.querySelector('.mocktag');
   if (tag) tag.textContent = '実運用モード（実データに接続中）';
   for (const sel of ['#s-dash .sub', '#s-resv .sub', '#s-list .sub']) {

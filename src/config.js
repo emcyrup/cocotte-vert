@@ -55,6 +55,21 @@ export function loadConfig(env = process.env) {
       `THREADS_POST_MODE が不正です: "${threadsPostMode}"（${IG_POST_MODES.join(' | ')} のいずれか）`
     );
   }
+  // 配信の起点となる日数。店舗によって「何日前に確認するか」が変わるため設定にする。
+  // ジョブの SQL にはパラメータとして渡す（値を文字列で埋め込まない）
+  const days = (key, fallback) => {
+    const raw = env[key];
+    if (raw == null || raw === '') return fallback;
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n < 1 || n > 3650) {
+      throw new Error(`${key} が不正です: "${raw}"（1〜3650 の整数）`);
+    }
+    return n;
+  };
+  const preReminderDaysBefore = days('PRE_REMINDER_DAYS_BEFORE', 2);
+  const afterVisitDaysAfter = days('AFTER_VISIT_DAYS_AFTER', 7);
+  const dormantDays = days('DORMANT_DAYS', 90);
+
   const liffId = env.LIFF_ID || null;
 
   return {
@@ -77,6 +92,9 @@ export function loadConfig(env = process.env) {
     sendMode,
     testLineUserId: env.TEST_LINE_USER_ID || null,
     dormantDailyLimit: Number(env.DORMANT_DAILY_LIMIT || 50),
+    preReminderDaysBefore,
+    afterVisitDaysAfter,
+    dormantDays,
     birthdayCouponUrl: env.BIRTHDAY_COUPON_URL || null,
     // 未設定なら管理画面・取り込み API はそれぞれ無効（503）になる
     adminUser: env.ADMIN_USER || null,

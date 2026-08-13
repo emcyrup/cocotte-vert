@@ -15,7 +15,8 @@ export function buildDormantMessage({ customerName }) {
           { type: 'text', text: `${customerName}様`, weight: 'bold', size: 'md' },
           {
             type: 'text',
-            text: 'ご無沙汰しております。その後お変わりありませんか？\n髪や頭皮のことで気になることがあれば、いつでもお気軽にご相談ください。',
+            // 業種に依存しない言い回しにしている（他店舗へ展開しても書き換えずに済むように）
+            text: 'ご無沙汰しております。その後お変わりありませんか？\n気になることがあれば、いつでもお気軽にご相談ください。',
             size: 'sm',
             wrap: true,
           },

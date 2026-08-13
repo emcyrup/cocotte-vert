@@ -2,7 +2,7 @@
 // 販促に近いフォローのため、opt_out の顧客は除外する（preReminder と異なる点）。
 import { buildAfterVisitMessage } from '../line/messages/afterVisit.js';
 
-export function createAfterVisitJob({ pool, lineClient }) {
+export function createAfterVisitJob({ pool, lineClient, daysAfter = 7 }) {
   return async function run() {
     // 同一顧客が対象日に複数回来店している場合は最新の1件のみ（DISTINCT ON）
     const { rows } = await pool.query(
@@ -12,7 +12,7 @@ export function createAfterVisitJob({ pool, lineClient }) {
        JOIN customers c ON c.id = r.customer_id
        WHERE r.status = 'visited'
          AND (r.reserved_at AT TIME ZONE 'Asia/Tokyo')::date
-             = ((now() AT TIME ZONE 'Asia/Tokyo')::date - INTERVAL '7 day')::date
+             = ((now() AT TIME ZONE 'Asia/Tokyo')::date - ($1 * INTERVAL '1 day'))::date
          AND c.line_user_id IS NOT NULL
          AND c.opt_out = false
          AND c.is_blocked = false
@@ -20,7 +20,8 @@ export function createAfterVisitJob({ pool, lineClient }) {
            SELECT 1 FROM customer_reminder_settings s
            WHERE s.customer_id = c.id AND s.job = 'afterVisit' AND s.enabled = false
          )
-       ORDER BY c.id, r.reserved_at DESC`
+       ORDER BY c.id, r.reserved_at DESC`,
+      [daysAfter]
     );
 
     const summary = { total: rows.length, sent: 0, dryRun: 0, skipped: 0, failed: 0, errors: [] };

@@ -70,3 +70,26 @@ test('スタッフ通知: line チャネルは Slack URL 不要、グループ I
 test('スタッフ通知: 不正なチャネルは拒否する', () => {
   assert.throws(() => loadConfig({ ...baseEnv, STAFF_NOTIFY_CHANNEL: 'email' }), /STAFF_NOTIFY_CHANNEL/);
 });
+
+test('配信の日数は既定値があり、設定で変えられる', () => {
+  const c = loadConfig(baseEnv);
+  assert.equal(c.preReminderDaysBefore, 2);
+  assert.equal(c.afterVisitDaysAfter, 7);
+  assert.equal(c.dormantDays, 90);
+
+  const custom = loadConfig({
+    ...baseEnv,
+    PRE_REMINDER_DAYS_BEFORE: '3',
+    AFTER_VISIT_DAYS_AFTER: '14',
+    DORMANT_DAYS: '180',
+  });
+  assert.equal(custom.preReminderDaysBefore, 3);
+  assert.equal(custom.afterVisitDaysAfter, 14);
+  assert.equal(custom.dormantDays, 180);
+});
+
+test('配信の日数の書き間違いは起動時に落とす', () => {
+  assert.throws(() => loadConfig({ ...baseEnv, DORMANT_DAYS: '0' }), /DORMANT_DAYS/);
+  assert.throws(() => loadConfig({ ...baseEnv, DORMANT_DAYS: '90日' }), /DORMANT_DAYS/);
+  assert.throws(() => loadConfig({ ...baseEnv, AFTER_VISIT_DAYS_AFTER: '1.5' }), /AFTER_VISIT_DAYS_AFTER/);
+});

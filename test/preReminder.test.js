@@ -108,9 +108,11 @@ test('skipped（dedupe 済み）と dry_run が集計される', async () => {
 
 test('抽出クエリが仕様の条件を含む', async () => {
   let capturedSql = '';
+  let capturedParams = [];
   const pool = {
-    query: async (sql) => {
+    query: async (sql, params) => {
       capturedSql = sql;
+      capturedParams = params ?? [];
       return { rows: [] };
     },
   };
@@ -119,7 +121,9 @@ test('抽出クエリが仕様の条件を含む', async () => {
 
   assert.match(capturedSql, /status = 'confirmed'/);
   assert.match(capturedSql, /AT TIME ZONE 'Asia\/Tokyo'/, '日付比較は JST に明示変換');
-  assert.match(capturedSql, /INTERVAL '2 day'/);
+  // 何日前に送るかは店舗ごとに変えられる。SQL には埋め込まずパラメータで渡す
+  assert.match(capturedSql, /\$1 \* INTERVAL '1 day'/);
+  assert.deepEqual(capturedParams, [2], '既定は2日前');
   assert.match(capturedSql, /line_user_id IS NOT NULL/);
   assert.match(capturedSql, /is_blocked = false/);
   assert.doesNotMatch(capturedSql, /opt_out/, '予約確認は opt_out を除外条件にしない');
@@ -133,4 +137,11 @@ test('お客様ごとに前々日確認を止めていると対象から外れ�
   await job();
   assert.match(sql, /customer_reminder_settings/);
   assert.match(sql, /s\.job = 'preReminder'/);
+});
+
+test('前々日確認の日数は設定で変えられる', async () => {
+  let params = [];
+  const pool = { query: async (_sql, p) => { params = p; return { rows: [] }; } };
+  await createPreReminderJob({ pool, lineClient: {}, daysBefore: 3 })();
+  assert.deepEqual(params, [3]);
 });

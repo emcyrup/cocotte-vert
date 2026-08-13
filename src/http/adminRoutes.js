@@ -32,6 +32,7 @@ export function createAdminRouter({
   shiftService = null,
   reminderSettings = null,
   customerReminders = null,
+  planService = null,
 }) {
   const router = express.Router();
 
@@ -346,6 +347,147 @@ export function createAdminRouter({
       notes: notes?.trim() || null,
     };
   };
+
+  // ---- 回数券・保育コース（定額プラン）----
+  // 残回数は元帳（plan_credits）の合計。画面はここを読むだけで、集計値は持たない
+  const plansGuard = (res) => {
+    if (planService) return true;
+    res.status(503).json({ error: 'not_configured' });
+    return false;
+  };
+  const PLAN_ERRORS = [
+    'invalid_name', 'invalid_quota', 'invalid_carry_over', 'invalid_source',
+    'invalid_count', 'already_enrolled',
+  ];
+  const planError = (res, err) => {
+    if (PLAN_ERRORS.includes(err.message)) return res.status(400).json({ error: err.message });
+    if (['plan_not_found', 'enrollment_not_found'].includes(err.message)) {
+      return res.status(404).json({ error: err.message });
+    }
+    return null;
+  };
+
+  router.get('/plans', async (req, res, next) => {
+    try {
+      if (!plansGuard(res)) return;
+      res.json({ plans: await planService.listPlans({ all: req.query.all === '1' }) });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.post('/plans', async (req, res, next) => {
+    try {
+      if (!plansGuard(res)) return;
+      const { name, monthlyQuota, carryOverMonths, sortOrder } = req.body ?? {};
+      const id = await planService.createPlan({
+        name, monthlyQuota: Number(monthlyQuota),
+        carryOverMonths: carryOverMonths == null ? 1 : Number(carryOverMonths),
+        sortOrder: Number(sortOrder || 0),
+      });
+      res.json({ ok: true, id });
+    } catch (err) {
+      if (planError(res, err)) return;
+      next(err);
+    }
+  });
+
+  router.patch('/plans/:id', async (req, res, next) => {
+    try {
+      if (!plansGuard(res)) return;
+      const { name, monthlyQuota, carryOverMonths, active, sortOrder } = req.body ?? {};
+      await planService.updatePlan(Number(req.params.id), {
+        name, monthlyQuota: Number(monthlyQuota),
+        carryOverMonths: carryOverMonths == null ? 1 : Number(carryOverMonths),
+        active, sortOrder: Number(sortOrder || 0),
+      });
+      res.json({ ok: true });
+    } catch (err) {
+      if (planError(res, err)) return;
+      next(err);
+    }
+  });
+
+  // わんちゃんの残回数・当月の利用状況・失効履歴をまとめて返す（カルテが1回で読めるように）
+  router.get('/pets/:id/credits', async (req, res, next) => {
+    try {
+      if (!plansGuard(res)) return;
+      const petId = Number(req.params.id);
+      const [summary, lapsed] = await Promise.all([
+        planService.summary(petId),
+        planService.lapsed(petId),
+      ]);
+      res.json({ ...summary, lapsed });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.post('/pets/:id/plan', async (req, res, next) => {
+    try {
+      if (!plansGuard(res)) return;
+      const id = await planService.enroll({
+        petId: Number(req.params.id),
+        planId: Number(req.body?.planId),
+        startedOn: req.body?.startedOn || null,
+      });
+      res.json({ ok: true, enrollmentId: id });
+    } catch (err) {
+      if (planError(res, err)) return;
+      next(err);
+    }
+  });
+
+  router.delete('/pets/:id/plan', async (req, res, next) => {
+    try {
+      if (!plansGuard(res)) return;
+      const { plan } = await planService.summary(Number(req.params.id));
+      if (!plan) return res.status(404).json({ error: 'enrollment_not_found' });
+      await planService.cancelEnrollment(plan.enrollmentId);
+      res.json({ ok: true });
+    } catch (err) {
+      if (planError(res, err)) return;
+      next(err);
+    }
+  });
+
+  // 回数券の付与（購入時）
+  router.post('/pets/:id/credits', async (req, res, next) => {
+    try {
+      if (!plansGuard(res)) return;
+      const { count, expiresOn, note, effectiveOn } = req.body ?? {};
+      const id = await planService.grant({
+        petId: Number(req.params.id),
+        source: 'ticket',
+        count: Number(count),
+        effectiveOn: effectiveOn || new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' }),
+        expiresOn: expiresOn || null,
+        note: note || null,
+      });
+      res.json({ ok: true, id });
+    } catch (err) {
+      if (planError(res, err)) return;
+      next(err);
+    }
+  });
+
+  // 消化（来店時。予約への自動連動は次のフェーズ）
+  router.post('/pets/:id/credits/use', async (req, res, next) => {
+    try {
+      if (!plansGuard(res)) return;
+      const { source, count, note } = req.body ?? {};
+      const result = await planService.consume({
+        petId: Number(req.params.id),
+        source,
+        count: Number(count || 1),
+        note: note || null,
+      });
+      res.json({ ok: true, ...result });
+    } catch (err) {
+      if (planError(res, err)) return;
+      next(err);
+    }
+  });
 
   // ---- お客様ごとのリマインド ON/OFF ----
   // 店舗全体の設定（/reminders）とは別枠で、両方 ON のときだけ送られる。

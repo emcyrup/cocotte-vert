@@ -92,6 +92,8 @@ docker compose exec app node scripts/setup-richmenu.js --image=/app/menu.png
 ```bash
 # メニュー（scripts/seed-menus.js はここっとベールのコース名。店舗に合わせて書き換える）
 docker compose exec app node scripts/seed-menus.js
+# 定額コース（保育コース 月4回 / 月8回）
+docker compose exec app node scripts/seed-plans.js
 ```
 
 - スタッフを管理画面から登録し、LINE と連携する（[shift-requests.md](shift-requests.md)）

@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { middleware, SignatureValidationFailed } from '@line/bot-sdk';
 import { loadConfig } from './config.js';
+import { loadStoreProfile } from './store.js';
 import { pool } from './db/pool.js';
 import { createLineClient } from './line/client.js';
 import { createIdTokenVerifier } from './line/verifyIdToken.js';
@@ -33,6 +34,7 @@ import { mkdirSync, statSync } from 'node:fs';
 import cron from 'node-cron';
 
 const config = loadConfig();
+const store = loadStoreProfile();
 const lineClient = createLineClient({ config, pool });
 const settings = createSettings({ pool });
 const reminderSettings = createReminderSettings({ settings });
@@ -245,6 +247,10 @@ app.use(
 const mockDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'mock');
 app.use('/mock', adminGuard, express.static(mockDir, noStaleCache));
 
+// 店舗プロフィール。画面はこれを読んで店名・営業時間などを差し替える
+// （店舗ごとにコードを分岐させないため、値は .env に置く）
+app.get('/api/admin/store', adminGuard, (_req, res) => res.json({ store }));
+
 // いま配信している画面ファイルの更新時刻。開きっぱなしのタブが古い画面のままでも
 // 気付けるよう、画面側が自分の Last-Modified と突き合わせて再読み込みを促す。
 // （no-cache を付けていても、タブ一覧から戻ったときに再検証せず描画する端末がある）
@@ -320,9 +326,11 @@ app.use((err, _req, res, next) => {
 const runner = createJobRunner({ slack, settings, reminders: reminderSettings });
 runner.scheduleDaily(
   {
-    preReminder: createPreReminderJob({ pool, lineClient }),
-    afterVisit: createAfterVisitJob({ pool, lineClient }),
-    dormant: createDormantJob({ pool, lineClient, dailyLimit: config.dormantDailyLimit }),
+    preReminder: createPreReminderJob({ pool, lineClient, daysBefore: config.preReminderDaysBefore }),
+    afterVisit: createAfterVisitJob({ pool, lineClient, daysAfter: config.afterVisitDaysAfter }),
+    dormant: createDormantJob({
+      pool, lineClient, dailyLimit: config.dormantDailyLimit, dormantDays: config.dormantDays,
+    }),
     birthday: createBirthdayJob({ pool, lineClient, couponUrl: config.birthdayCouponUrl }),
   },
   {

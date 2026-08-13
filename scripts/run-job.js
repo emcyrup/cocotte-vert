@@ -44,9 +44,11 @@ const slack = createStaffNotifier({ config, slack: slackChannel, lineClient, set
 const runner = createJobRunner({ slack, settings, reminders: createReminderSettings({ settings }) });
 
 const jobs = {
-  preReminder: createPreReminderJob({ pool, lineClient }),
-  afterVisit: createAfterVisitJob({ pool, lineClient }),
-  dormant: createDormantJob({ pool, lineClient, dailyLimit: config.dormantDailyLimit }),
+  preReminder: createPreReminderJob({ pool, lineClient, daysBefore: config.preReminderDaysBefore }),
+  afterVisit: createAfterVisitJob({ pool, lineClient, daysAfter: config.afterVisitDaysAfter }),
+  dormant: createDormantJob({
+    pool, lineClient, dailyLimit: config.dormantDailyLimit, dormantDays: config.dormantDays,
+  }),
   birthday: createBirthdayJob({ pool, lineClient, couponUrl: config.birthdayCouponUrl }),
 };
 

@@ -3,12 +3,12 @@
 import { buildDormantMessage } from '../line/messages/dormant.js';
 import { jstToday } from '../util/jst.js';
 
-export function createDormantJob({ pool, lineClient, dailyLimit = 50 }) {
+export function createDormantJob({ pool, lineClient, dailyLimit = 50, dormantDays = 90 }) {
   return async function run() {
     const today = jstToday();
 
-    // `= 90日` ではなく `<= 90日` にしている理由:
-    // バッチが1日でも失敗すると、ちょうど90日の顧客が永久に漏れるため（spec 2-3）
+    // `= N日` ではなく `<= N日` にしている理由:
+    // バッチが1日でも失敗すると、ちょうど N 日の顧客が永久に漏れるため（spec 2-3）
     const { rows } = await pool.query(
       `SELECT c.id, c.line_user_id, c.name, c.last_visit_at
        FROM customers c
@@ -20,7 +20,7 @@ export function createDormantJob({ pool, lineClient, dailyLimit = 50 }) {
            WHERE s.customer_id = c.id AND s.job = 'dormant' AND s.enabled = false
          )
          AND c.last_visit_at IS NOT NULL
-         AND c.last_visit_at <= (now() AT TIME ZONE 'Asia/Tokyo')::date - INTERVAL '90 day'
+         AND c.last_visit_at <= (now() AT TIME ZONE 'Asia/Tokyo')::date - ($2 * INTERVAL '1 day')
          -- 未来の予約（確定・承認待ち）がある顧客は除外
          AND NOT EXISTS (
            SELECT 1 FROM reservations r
@@ -28,15 +28,15 @@ export function createDormantJob({ pool, lineClient, dailyLimit = 50 }) {
              AND r.status IN ('confirmed', 'requested')
              AND r.reserved_at > now()
          )
-         -- 直近90日以内に休眠フォローを送っていない（送信は90日に1回まで）
+         -- 同じ間隔のうちに休眠フォローを送っていない（送信はその期間に1回まで）
          AND NOT EXISTS (
            SELECT 1 FROM message_logs m
            WHERE m.customer_id = c.id AND m.job_type = 'dormant'
-             AND m.sent_at > now() - INTERVAL '90 day'
+             AND m.sent_at > now() - ($2 * INTERVAL '1 day')
          )
        ORDER BY c.last_visit_at ASC
        LIMIT $1`,
-      [dailyLimit]
+      [dailyLimit, dormantDays]
     );
 
     const summary = { total: rows.length, sent: 0, dryRun: 0, skipped: 0, failed: 0, errors: [] };

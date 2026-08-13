@@ -34,9 +34,11 @@ test('dedupe_key は after_visit:res:{id}', async () => {
 
 test('抽出クエリが仕様の条件を含む', async () => {
   let capturedSql = '';
+  let capturedParams = [];
   const pool = {
-    query: async (sql) => {
+    query: async (sql, params) => {
       capturedSql = sql;
+      capturedParams = params ?? [];
       return { rows: [] };
     },
   };
@@ -44,7 +46,9 @@ test('抽出クエリが仕様の条件を含む', async () => {
   await job();
 
   assert.match(capturedSql, /status = 'visited'/);
-  assert.match(capturedSql, /\(now\(\) AT TIME ZONE 'Asia\/Tokyo'\)::date - INTERVAL '7 day'/, '基準日も DB の TZ 設定に依存させない');
+  assert.match(capturedSql, /\(now\(\) AT TIME ZONE 'Asia\/Tokyo'\)::date - \(\$1 \* INTERVAL '1 day'\)/, '基準日も DB の TZ 設定に依存させない');
+  // 何日後に送るかは店舗ごとに変えられる。SQL には埋め込まずパラメータで渡す
+  assert.deepEqual(capturedParams, [7], '既定は7日後');
   assert.match(capturedSql, /AT TIME ZONE 'Asia\/Tokyo'/, '日付比較は JST に明示変換');
   assert.match(capturedSql, /opt_out = false/, 'フォローは opt_out を除外する');
   assert.match(capturedSql, /is_blocked = false/);
@@ -76,4 +80,11 @@ test('お客様ごとに止めていると対象から外れる（SQL に条件�
   await createAfterVisitJob({ pool, lineClient: { deliver: async () => ({}) } })();
   assert.match(sql, /customer_reminder_settings/);
   assert.match(sql, /s\.job = 'afterVisit'/);
+});
+
+test('来店フォローの日数は設定で変えられる', async () => {
+  let params = [];
+  const pool = { query: async (_sql, p) => { params = p; return { rows: [] }; } };
+  await createAfterVisitJob({ pool, lineClient: {}, daysAfter: 14 })();
+  assert.deepEqual(params, [14]);
 });

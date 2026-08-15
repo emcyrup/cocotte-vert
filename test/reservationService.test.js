@@ -134,3 +134,36 @@ test('setStatus: 不正なステータスは拒否する', async () => {
   const service = createReservationService({ pool: {}, slack: {} });
   assert.deepEqual(await service.setStatus(1, 'deleted'), { ok: false, error: 'invalid_status' });
 });
+
+test('所要時間は任意。指定があれば保存し、無ければコースに従う（NULL）', async () => {
+  const inserts = [];
+  const pool = {
+    query: async (sql, params) => {
+      if (/SELECT name FROM customers/.test(sql)) return { rows: [{ name: '山田' }] };
+      if (/INSERT INTO reservations/.test(sql)) { inserts.push(params); return { rows: [{ id: 1 }] }; }
+      return { rows: [] };
+    },
+  };
+  const svc = createReservationService({ pool, slack: { notify: async () => {} }, lineClient: {} });
+
+  await svc.createManual({ customerId: 1, reservedAt: '2026-08-16T13:00:00+09:00', menu: 'A', staffId: null });
+  assert.equal(inserts[0][4], null, '未指定はコースの所要時間に従う');
+
+  await svc.createManual({
+    customerId: 1, reservedAt: '2026-08-16T13:00:00+09:00', menu: 'A', staffId: null, durationMinutes: 150,
+  });
+  assert.equal(inserts[1][4], 150);
+});
+
+test('ありえない所要時間は保存しない', async () => {
+  const pool = {
+    query: async (sql) => (/SELECT name FROM customers/.test(sql) ? { rows: [{ name: '山田' }] } : { rows: [{ id: 1 }] }),
+  };
+  const svc = createReservationService({ pool, slack: { notify: async () => {} }, lineClient: {} });
+  const base = { customerId: 1, reservedAt: '2026-08-16T13:00:00+09:00', menu: 'A', staffId: null };
+
+  assert.equal((await svc.createManual({ ...base, durationMinutes: 0 })).error, 'invalid_duration');
+  assert.equal((await svc.createManual({ ...base, durationMinutes: -30 })).error, 'invalid_duration');
+  assert.equal((await svc.createManual({ ...base, durationMinutes: 1441 })).error, 'invalid_duration');
+  assert.equal((await svc.createManual({ ...base, durationMinutes: 12.5 })).error, 'invalid_duration');
+});

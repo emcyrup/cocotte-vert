@@ -265,8 +265,10 @@ button.trow2:focus-visible{outline:2px solid var(--accent); outline-offset:-2px}
 .rbody .slot:hover{background:var(--accent-soft)}
 .rbody .slot:focus-visible{outline:2px solid var(--accent); outline-offset:-2px}
 .vhint{font-size:12px; color:var(--muted)}
-.wk .rlab{width:96px; cursor:pointer}
+.wk .rlab{width:96px; cursor:pointer; background:none; color:inherit; border:0;
+  border-right:1px solid var(--line); font:inherit; font-size:13px; font-weight:700; text-align:left}
 .wk .rlab:hover{background:var(--accent-soft)}
+.wk .rlab:focus-visible{outline:2px solid var(--accent); outline-offset:-2px}
 .wk .rlab.sat{color:#3E6FA8} .wk .rlab.sun{color:var(--crit)}
 .wk .rbody{height:64px}
 .wk .tev{font-size:11px; cursor:default}
@@ -1970,6 +1972,8 @@ function menuMinutes(name){
   const m = MENUS.find(x => x.name === name);
   return m?.min || 60;
 }
+// 予約の所要時間。個別に指定があればそちらを優先する
+const resvMinutes = (r) => r.duration_minutes || menuMinutes(r.menu);
 const jpMonthDay = (iso) => Number(iso.slice(5, 7)) + '/' + Number(iso.slice(8, 10));
 
 const DEMO_ROWS = [
@@ -2107,7 +2111,7 @@ function renderDayView(){
     makeEv({
       row: idx,
       s: hourOf(r.reserved_at),
-      d: (menuMinutes(r.menu) / 60),
+      d: resvMinutes(r) / 60,
       cls: r.status === 'requested' ? 'trial' : '',
       html: '<b>' + (r.customer_name || 'お客様') + ' ' + (r.menu || 'ご予約') + '</b>'
         + (r.status === 'requested' ? '<span class="src">承認待ち</span>' : ''),
@@ -2170,7 +2174,7 @@ function renderWeekView(){
     const evs = adminLive
       ? calResv.filter(r => dateOnly(r.reserved_at) === iso).map(r => ({
           s: hourOf(r.reserved_at),
-          dur: menuMinutes(r.menu) / 60,
+          dur: resvMinutes(r) / 60,
           cls: r.status === 'requested' ? 'trial' : '',
           t: (r.customer_name || 'お客様') + ' ' + (r.menu || 'ご予約'),
         }))
@@ -2375,26 +2379,39 @@ async function openNewReservationAt(dateIso, hour, staffId){
   }
   if (!customers.length) { showToast('先に飼い主様を登録してください'); return; }
 
-  openEditModal(jpMonthDay(dateIso) + '（' + WD[dowOf(dateIso)] + '） ' + time + ' に新規予約', [
+  // 終了時刻の初期値は、最初のコースの所要時間から置く（あとから直せる）
+  const menus = MENUS.filter(m => m.active);
+  const endTime = fmt(hour + (menus[0] ? menus[0].min : 60) / 60).padStart(5, '0');
+
+  openEditModal(jpMonthDay(dateIso) + '（' + WD[dowOf(dateIso)] + '）の新規予約', [
     { key: 'customerId', label: '飼い主様', type: 'select',
       options: customers.map(c => [c.id, c.name + ' 様' + (c.pet_names ? '（' + c.pet_names + '）' : '')]) },
     { key: 'menu', label: 'コース', type: 'select',
-      options: MENUS.filter(m => m.active).map(m => [m.name, m.name]) },
+      options: menus.map(m => [m.name, m.name]) },
     { key: 'staffId', label: '担当（任意）', type: 'select',
       options: [['', '担当未定'], ...calStaff.map(st => [st.id, st.name])],
       value: staffId == null ? '' : String(staffId) },
-    { key: 'at', label: '日時', type: 'datetime-local', value: dateIso + 'T' + time },
+    { key: 'date', label: '日付', type: 'date', value: dateIso },
+    { key: 'start', label: '開始時刻', type: 'time', value: time },
+    { key: 'end', label: '終了時刻', type: 'time', value: endTime },
   ], {
-    onSave: v => adminApi('/reservations', {
-      method: 'POST',
-      body: JSON.stringify({
-        customerId: Number(v.customerId),
-        // datetime-local は JST 前提。オフセットを明示して送る
-        reservedAt: v.at + ':00+09:00',
-        menu: v.menu,
-        staffId: v.staffId || null,
-      }),
-    }),
+    onSave: v => {
+      if (!v.date || !v.start || !v.end) throw new Error('invalid_time');
+      const minutes = (t) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+      const duration = minutes(v.end) - minutes(v.start);
+      if (duration <= 0) throw new Error('invalid_time_order');
+      return adminApi('/reservations', {
+        method: 'POST',
+        body: JSON.stringify({
+          customerId: Number(v.customerId),
+          // 時刻は JST 前提。オフセットを明示して送る
+          reservedAt: v.date + 'T' + v.start + ':00+09:00',
+          menu: v.menu,
+          staffId: v.staffId || null,
+          durationMinutes: duration,
+        }),
+      });
+    },
     after: async () => { await calReload(); await rvReload().catch(() => {}); },
   });
 }
@@ -3981,8 +3998,11 @@ const EDIT_ERRORS = {
   invalid_line_user_id: 'LINE ID の形式が違います（U から始まる33文字）',
   line_user_id_exists: 'この LINE ID は別のスタッフに設定済みです',
   staff_in_use: '予約の担当として登録があるため削除できません。「在職中」を外して退職にしてください',
-  invalid_time: '時刻の形式が不正です',
+  invalid_time: '日付と時刻を入力してください',
   invalid_time_order: '終了は開始より後の時刻にしてください',
+  invalid_duration: '所要時間が不正です（1分〜24時間）',
+  invalid_reserved_at: '日時の形式が不正です',
+  customer_not_found: '飼い主様が見つかりません',
 };
 
 // 入力欄と保存・削除ボタンを組み立てる。モーダルとインライン編集で中身を共有する

@@ -587,7 +587,7 @@ export function createAdminRouter({
       const to = req.query.to || null;
       const { rows } = await pool.query(
         `SELECT r.id, r.reserved_at, r.menu, r.status, r.confirmed_by_customer, r.note,
-                c.id AS customer_id, c.name AS customer_name, s.name AS staff_name
+                r.staff_id, c.id AS customer_id, c.name AS customer_name, s.name AS staff_name
          FROM reservations r
          JOIN customers c ON c.id = r.customer_id
          LEFT JOIN staff s ON s.id = r.staff_id

@@ -587,7 +587,8 @@ export function createAdminRouter({
       const to = req.query.to || null;
       const { rows } = await pool.query(
         `SELECT r.id, r.reserved_at, r.menu, r.status, r.confirmed_by_customer, r.note,
-                r.staff_id, c.id AS customer_id, c.name AS customer_name, s.name AS staff_name
+                r.staff_id, r.duration_minutes,
+                c.id AS customer_id, c.name AS customer_name, s.name AS staff_name
          FROM reservations r
          JOIN customers c ON c.id = r.customer_id
          LEFT JOIN staff s ON s.id = r.staff_id
@@ -607,12 +608,13 @@ export function createAdminRouter({
 
   router.post('/reservations', async (req, res, next) => {
     try {
-      const { customerId, reservedAt, menu, staffId } = req.body ?? {};
+      const { customerId, reservedAt, menu, staffId, durationMinutes } = req.body ?? {};
       const result = await reservationService.createManual({
         customerId: Number(customerId),
         reservedAt,
         menu,
         staffId: staffId ? Number(staffId) : null,
+        durationMinutes: durationMinutes == null || durationMinutes === '' ? null : Number(durationMinutes),
       });
       if (!result.ok) return res.status(400).json(result);
       res.json(result);

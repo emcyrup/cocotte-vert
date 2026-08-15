@@ -132,10 +132,15 @@ export function createReservationService({ pool, slack, lineClient = null }) {
   }
 
   /** 管理画面からの手入力予約 */
-  async function createManual({ customerId, reservedAt, menu, staffId }) {
+  async function createManual({ customerId, reservedAt, menu, staffId, durationMinutes = null }) {
     if (!Number.isInteger(customerId)) return { ok: false, error: 'invalid_customer' };
     if (!reservedAt || Number.isNaN(Date.parse(reservedAt))) {
       return { ok: false, error: 'invalid_reserved_at' };
+    }
+    // 所要時間の指定は任意。未指定（null）ならコースの所要時間に従う
+    if (durationMinutes != null
+      && (!Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 1440)) {
+      return { ok: false, error: 'invalid_duration' };
     }
 
     const { rows: customers } = await pool.query(`SELECT name FROM customers WHERE id = $1`, [
@@ -144,9 +149,9 @@ export function createReservationService({ pool, slack, lineClient = null }) {
     if (customers.length === 0) return { ok: false, error: 'customer_not_found' };
 
     const { rows } = await pool.query(
-      `INSERT INTO reservations (customer_id, staff_id, menu, reserved_at)
-       VALUES ($1, $2, $3, $4) RETURNING id`,
-      [customerId, staffId || null, menu || null, reservedAt]
+      `INSERT INTO reservations (customer_id, staff_id, menu, reserved_at, duration_minutes)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+      [customerId, staffId || null, menu || null, reservedAt, durationMinutes]
     );
 
     let staffName = null;

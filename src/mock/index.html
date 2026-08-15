@@ -257,6 +257,13 @@ button.trow2:focus-visible{outline:2px solid var(--accent); outline-offset:-2px}
 .seg button.on{background:var(--surface); color:var(--accent); box-shadow:var(--shadow)}
 .seg button:focus-visible{outline:2px solid var(--accent); outline-offset:1px}
 .vrange{font-size:13px; font-weight:700}
+.calnav{display:flex; gap:6px; align-items:center; flex-wrap:wrap}
+.calnav input[type="date"]{border:1px solid var(--line); border-radius:8px; background:var(--surface);
+  color:var(--ink); font:inherit; font-size:12.5px; padding:5px 8px; min-width:0}
+/* 空き時間。押すと新規予約に進めることが分かるようにする */
+.rbody .slot{position:absolute; top:0; bottom:0; background:none; border:0; padding:0; cursor:pointer}
+.rbody .slot:hover{background:var(--accent-soft)}
+.rbody .slot:focus-visible{outline:2px solid var(--accent); outline-offset:-2px}
 .vhint{font-size:12px; color:var(--muted)}
 .wk .rlab{width:96px; cursor:pointer}
 .wk .rlab:hover{background:var(--accent-soft)}
@@ -669,6 +676,12 @@ tr.await td{background:var(--warn-soft)}
       <button data-v="week">週</button>
       <button data-v="month">月</button>
     </div>
+    <span class="calnav">
+      <button class="sbtn mut" id="cal-prev" type="button">&#9664; 前</button>
+      <button class="sbtn mut" id="cal-today" type="button">今日</button>
+      <button class="sbtn mut" id="cal-next" type="button">次 &#9654;</button>
+      <input type="date" id="cal-date" aria-label="表示する日">
+    </span>
     <span class="vrange" id="vrange"></span>
   </div>
 
@@ -1202,6 +1215,29 @@ function telJp(v){
 
 // pg の DATE は UTC の ISO 文字列（前日 15:00Z）で返るため、単純な slice だと1日ずれる。
 // JST の日付として取り出す
+const WD = ['日', '月', '火', '水', '木', '金', '土'];
+// 「今日」は JST の暦日として取り出す
+const isoDate = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tokyo',
+  year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+// 以降の日付計算は暦日そのものを扱う。UTC 0時として解釈すれば、
+// ブラウザのタイムゾーンに関係なく曜日と加減算が一致する
+const asDate = (iso) => new Date(iso + 'T00:00:00Z');
+const toIso = (d) => d.toISOString().slice(0, 10);
+const dowOf = (iso) => asDate(iso).getUTCDay();
+function mondayOf(dateOrIso){
+  const d = asDate(typeof dateOrIso === 'string' ? dateOrIso : isoDate(dateOrIso));
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+  return toIso(d);
+}
+function addDays(iso, n){
+  const d = asDate(iso);
+  d.setUTCDate(d.getUTCDate() + n);
+  return toIso(d);
+}
+const SHIFT_CELL_LABELS = {
+  work: '出勤', am: 'AM半休', pm: 'PM半休', koukyu: '公休', yukyu: '有休', jikan: '時間休',
+};
+
 function dateOnly(v) {
   if (!v) return null;
   const s = String(v);
@@ -1864,220 +1900,6 @@ window.addEventListener('hashchange', () => {
   if (document.getElementById('s-' + s)) go(s);
 });
 
-// ---- 予約カレンダー（横タイムライン 7:00-22:00） ----
-const DAY_START = 8, DAY_HOURS = 13;                // 8:00-21:00
-const CORE_OPEN = 10, CORE_CLOSE = 19;              // 通常営業（一時預かりの対応時間に合わせる）
-function periodCls(s, e){                            // 時間帯による色分け
-  if (s < CORE_OPEN && e > CORE_CLOSE) return 'both';
-  if (s < CORE_OPEN) return 'early';
-  if (e > CORE_CLOSE) return 'late';
-  return '';
-}
-const tax = document.getElementById('tax');
-for (let h = 0; h <= DAY_HOURS; h++) {
-  const s = document.createElement('span');
-  s.style.left = (h / DAY_HOURS * 100) + '%';
-  if (h === DAY_HOURS) s.style.transform = 'translateX(-100%)';
-  s.textContent = (DAY_START + h) + ':00';
-  tax.appendChild(s);
-}
-const rows = [
-  {name:'送迎',    role:'5頭まで'},
-  {name:'佐藤',    role:'トリマー', st:true},
-  {name:'高橋',    role:'トリマー・AM半休', st:true, off:[8,13,'AM半休']},
-  {name:'中村',    role:'保育担当・公休',   st:true, off:[8,21,'公休']},
-  {name:'山本',    role:'保育担当', st:true},
-  {name:'ホテル',  role:'宿泊・一時預かり'},
-];
-const evs = [
-  {row:0, s:9,    d:1,   cls:'pickup', html:'<b>お迎え 3件</b>マロン・ソラ・レオ'},
-  {row:0, s:17.5, d:1,   cls:'pickup', html:'<b>お送り 3件</b>'},
-  {row:1, s:9,    d:1.5, cls:'',       html:'<b>ラテ シャンプー</b>早朝枠 <span class="src">電話</span>'},
-  {row:1, s:10.5, d:2,   cls:'',       html:'<b>マロン シャンプー＆カット</b><span class="src">EPARK</span>'},
-  {row:1, s:13,   d:1,   cls:'',       html:'<b>ココ シャンプー</b><span class="src">LINE</span>'},
-  {row:1, s:14.5, d:2,   cls:'', nc:1, html:'<b>ルナ シャンプー＆カット</b>初回 <span class="src">EPARK</span>'},
-  {row:1, s:17,   d:1,   cls:'trial',  html:'<b>チョコ 初回相談</b><span class="src">LINE</span>'},
-  {row:2, s:13,   d:2,   cls:'',       html:'<b>プリン シャンプー＆カット</b><span class="src">EPARK</span>'},
-  {row:2, s:15.5, d:0.5, cls:'',       html:'<b>レオ 爪切り・耳掃除</b><span class="src">電話</span>'},
-  {row:2, s:19,   d:1.5, cls:'',       html:'<b>ベル 夜間のお迎え対応</b><span class="src">LINE</span>'},
-  {row:4, s:10,   d:8,   cls:'school', html:'<b>保育コース 6頭</b>マロン・ソラ ほか'},
-  {row:5, s:8,    d:11,  cls:'',       html:'<b>ベル 宿泊（レギュラー）</b>1泊2日・ワンず写メ日記あり <span class="src">LINE</span>'},
-];
-const tl = document.getElementById('tl');
-const bodies = [];
-rows.forEach(r => {
-  const tr = document.createElement('div'); tr.className = 'trow';
-  const lb = document.createElement('div'); lb.className = 'rlab';
-  lb.innerHTML = '<span style="display:flex;align-items:center;gap:2px">' + r.name
-    + (r.st ? '<button class="star" data-star="' + r.name + '" aria-label="' + r.name + 'の新人マーク">&#9734;</button>' : '')
-    + '</span><span class="role">' + r.role + '</span>';
-  const bd = document.createElement('div'); bd.className = 'rbody';
-  if (r.off) {
-    const h = document.createElement('div'); h.className = 'hatch';
-    h.style.left  = ((r.off[0] - DAY_START) / DAY_HOURS * 100) + '%';
-    h.style.width = ((r.off[1] - r.off[0]) / DAY_HOURS * 100) + '%';
-    h.textContent = r.off[2];
-    bd.appendChild(h);
-  }
-  tr.append(lb, bd); tl.appendChild(tr); bodies.push(bd);
-});
-function fmt(t){ const h = Math.floor(t), m = Math.round((t - h) * 60); return h + ':' + String(m).padStart(2, '0'); }
-function makeEv(e){
-  const d = document.createElement('div');
-  const pc = periodCls(e.s, e.s + e.d);
-  const ext = e.nc ? 0.5 : 0;                        // 新規顧客は+30分の準備枠
-  d.className = 'tev ' + e.cls + (pc ? ' ' + pc : '');
-  d.style.left  = ((e.s - DAY_START) / DAY_HOURS * 100) + '%';
-  d.style.width = ((e.d + ext) / DAY_HOURS * 100) + '%';
-  d.innerHTML = e.html
-    + (e.nc ? '<span class="ncx" style="width:' + (0.5 / (e.d + 0.5) * 100) + '%">＋30</span>' : '')
-    + '<span class="rz">&#8596;</span><span class="hz l"></span><span class="hz r"></span>';
-  if (e.nc) d.title = '初めてのわんちゃんのため +30分の枠を自動確保（' + fmt(e.s) + '〜' + fmt(e.s + e.d + 0.5) + '）';
-  d.dataset.s = e.s; d.dataset.d = e.d; d.dataset.cls = e.cls; d.dataset.html = e.html; d.dataset.nc = e.nc ? '1' : '0';
-  d.addEventListener('contextmenu', ev => ev.preventDefault());
-  bodies[e.row].appendChild(d);
-}
-evs.forEach(makeEv);
-
-// ================= 週表示 =================
-const WEEK = [
-  { d:'7/20', w:'月', evs:[
-      {s:10,  dur:8,   cls:'school', t:'保育コース 5頭'},
-      {s:11,  dur:2,   cls:'',       t:'ベル シャンプー＆カット'},
-      {s:14,  dur:1,   cls:'',       t:'ココ シャンプー'},
-      {s:16,  dur:2,   cls:'',       t:'モカ シャンプー＆カット'}] },
-  { d:'7/21', w:'火', evs:[
-      {s:10,  dur:8,   cls:'school', t:'保育コース 6頭'},
-      {s:11,  dur:1.5, cls:'trial',  t:'ソラ 保育（体験）'},
-      {s:14,  dur:1.5, cls:'trial',  t:'ハナ 保育（体験）'},
-      {s:16.5,dur:0.5, cls:'',       t:'レオ 爪切り'}] },
-  { d:'7/22', w:'水', evs:[
-      {s:10,  dur:8,   cls:'school', t:'保育コース 4頭'},
-      {s:10.5,dur:2,   cls:'',       t:'プリン シャンプー＆カット'},
-      {s:14,  dur:1.5, cls:'',       t:'ムギ シャンプー'},
-      {s:17,  dur:0.5, cls:'',       t:'ラテ 爪切り'}] },
-  { d:'7/23', w:'木', closed:true, evs:[] },
-  { d:'7/24', w:'金', today:true, evs:[
-      {s:10,  dur:8,   cls:'school', t:'保育コース 6頭'},
-      {s:9,   dur:1.5, cls:'',       t:'ラテ シャンプー'},
-      {s:10.5,dur:2,   cls:'',       t:'マロン シャンプー＆カット'},
-      {s:13,  dur:1,   cls:'',       t:'ココ シャンプー'},
-      {s:13,  dur:2,   cls:'',       t:'プリン シャンプー＆カット'},
-      {s:15,  dur:2,   cls:'',       t:'モカ シャンプー＆カット'},
-      {s:17,  dur:1,   cls:'trial',  t:'チョコ 初回相談'},
-      {s:19,  dur:1.5, cls:'',       t:'ベル 夜間のお迎え対応'}] },
-  { d:'7/25', w:'土', evs:[
-      {s:10,  dur:2,   cls:'',       t:'マロン シャンプー＆カット'},
-      {s:11,  dur:1.5, cls:'',       t:'ムギ シャンプー'},
-      {s:12.5,dur:2,   cls:'',       t:'チョコ シャンプー'},
-      {s:15,  dur:2,   cls:'',       t:'レオ シャンプー＆カット'},
-      {s:17,  dur:1.5, cls:'',       t:'きなこ シャンプー'}] },
-  { d:'7/26', w:'日', evs:[
-      {s:10,  dur:8,   cls:'school', t:'保育コース 3頭'},
-      {s:11,  dur:2,   cls:'',       t:'ベル シャンプー＆カット'},
-      {s:14,  dur:2,   cls:'',       t:'ラテ シャンプー＆カット'}] },
-];
-const wtax = document.getElementById('wtax'), wtl = document.getElementById('wtl');
-for (let h = 0; h <= DAY_HOURS; h++) {
-  const s = document.createElement('span');
-  s.style.left = (h / DAY_HOURS * 100) + '%';
-  if (h === DAY_HOURS) s.style.transform = 'translateX(-100%)';
-  s.textContent = (DAY_START + h) + ':00';
-  wtax.appendChild(s);
-}
-WEEK.forEach(day => {
-  const tr = document.createElement('div'); tr.className = 'trow';
-  const lb = document.createElement('button'); lb.className = 'rlab' + (day.w === '土' ? ' sat' : day.w === '日' ? ' sun' : '');
-  lb.type = 'button';
-  lb.innerHTML = day.d + '（' + day.w + '）<span class="role">' + (day.closed ? '定休日' : day.evs.length + ' 件') + (day.today ? '・本日' : '') + '</span>';
-  lb.addEventListener('click', () => setView('day'));
-  const bd = document.createElement('div'); bd.className = 'rbody';
-  if (day.closed) {
-    const h = document.createElement('div'); h.className = 'hatch';
-    h.style.left = '0'; h.style.width = '100%'; h.textContent = '定休日';
-    bd.appendChild(h);
-  }
-  day.evs.forEach(e => {
-    const el = document.createElement('div');
-    const school = e.cls === 'school';
-    const pc = periodCls(e.s, e.s + e.dur);
-    el.className = 'tev ' + e.cls + (pc ? ' ' + pc : '') + (school ? ' laneA' : ' laneB');   // 保育コースは上段、トリミングは下段
-    el.style.left  = ((e.s - DAY_START) / DAY_HOURS * 100) + '%';
-    el.style.width = (e.dur / DAY_HOURS * 100) + '%';
-    el.innerHTML = school
-      ? '<b>' + e.t + '</b>　' + fmt(e.s) + '〜' + fmt(e.s + e.dur)
-      : '<b>' + e.t + '</b>' + fmt(e.s) + '〜' + fmt(e.s + e.dur);
-    el.title = day.d + ' ' + fmt(e.s) + '〜' + fmt(e.s + e.dur) + '　' + e.t;
-    bd.appendChild(el);
-  });
-  tr.append(lb, bd); wtl.appendChild(tr);
-});
-
-// ================= 月表示 =================
-// [日, トリミング件数, 保育コース頭数, 初回のわんちゃん]（0 = 定休日）
-// 木曜定休（2026年7月は 2・9・16・23・30 日）。20〜26日は週表示の内容と一致
-const MONTH = [
-  [1,6,5,1],[2,0,0,0],[3,8,6,0],[4,9,0,1],[5,5,3,0],[6,4,5,0],[7,6,6,1],
-  [8,7,4,0],[9,0,0,0],[10,8,6,1],[11,11,0,0],[12,4,3,0],[13,5,5,0],[14,6,6,2],
-  [15,6,4,0],[16,0,0,0],[17,9,6,1],[18,10,0,1],[19,3,3,0],[20,3,5,0],[21,1,6,2],
-  [22,3,4,0],[23,0,0,0],[24,6,6,1],[25,5,0,0],[26,2,3,0],[27,4,5,0],[28,6,6,1],
-  [29,7,4,0],[30,0,0,0],[31,8,6,0],
-];
-const mgrid = document.getElementById('mgrid');
-['月','火','水','木','金','土','日'].forEach((w, i) => {
-  const d = document.createElement('div');
-  d.className = 'dow' + (i === 5 ? ' sat' : i === 6 ? ' sun' : '');
-  d.textContent = w;
-  mgrid.appendChild(d);
-});
-for (let i = 0; i < 2; i++) {                       // 2026/7/1 は水曜 → 月・火は前月分
-  const c = document.createElement('div'); c.className = 'mcell out';
-  c.innerHTML = '<span class="dnum">' + (29 + i) + '</span>';
-  mgrid.appendChild(c);
-}
-MONTH.forEach(([day, salon, school, trial]) => {
-  const dow = (day + 1) % 7;                        // 0=月 … 5=土, 6=日
-  const c = document.createElement('button'); c.type = 'button';
-  c.className = 'mcell' + (day === 24 ? ' today' : '') + (salon === 0 ? ' out' : '');
-  let html = '<span class="dnum' + (dow === 5 ? ' sat' : dow === 6 ? ' sun' : '') + '">' + day + '</span>';
-  if (salon === 0) {
-    html += '<span class="closed">定休日</span>';
-  } else {
-    html += '<span class="mline"><i style="background:var(--accent)"></i><span>トリミング</span><b>' + salon + '</b></span>';
-    if (school) html += '<span class="mline"><i style="background:var(--honey)"></i><span>保育</span><b>' + school + '</b></span>';
-    if (trial)  html += '<span class="mline"><i style="background:var(--good)"></i><span>初回</span><b>' + trial + '</b></span>';
-  }
-  c.innerHTML = html;
-  if (salon) c.addEventListener('click', () => setView('day'));
-  mgrid.appendChild(c);
-});
-for (let i = 0; i < 2; i++) {                       // 7/31 は金曜 → 土・日は翌月分
-  const c = document.createElement('div'); c.className = 'mcell out';
-  c.innerHTML = '<span class="dnum">' + (1 + i) + '</span>';
-  mgrid.appendChild(c);
-}
-const mt = MONTH.reduce((a, x) => [a[0] + x[1], a[1] + x[2], a[2] + x[3]], [0, 0, 0]);
-document.getElementById('msum').innerHTML =
-  '7月合計　トリミング <b>' + mt[0] + ' 件</b>　保育コース延べ <b>' + mt[1] + ' 頭</b>　初回 <b>' + mt[2] + ' 件</b>　営業 <b>' + MONTH.filter(x => x[1]).length + ' 日</b>（木曜定休）';
-
-// ---- 表示切替 ----
-const VIEWS = {
-  day:   { range:'2026年7月24日（金）8:00〜21:00', sub:'横軸が時間（8:00〜21:00）・縦が担当の表示。<b>10:00以前の予定は青、19:00以降は紫、両方にまたがる予定はグラデーション</b>で色分けされます。<b>初めてのわんちゃんは自動で+30分の枠（斜線）を確保</b>。スタッフ名の☆で新人マーク&#11088;を付与。タップで詳細、長押し（PCはドラッグ）でコピー、両端スライドで時間変更ができます（30分単位）。' },
-  week:  { range:'2026年7月20日（月）〜 7月26日（日）', sub:'1週間の予約を一覧で確認できます。日付をタップするとその日の詳細（日表示）に切り替わります。' },
-  month: { range:'2026年7月', sub:'日ごとの件数を俯瞰できます。日付をタップするとその日の詳細（日表示）に切り替わります。' },
-};
-function setView(v){
-  document.querySelectorAll('#vseg button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
-  ['day', 'week', 'month'].forEach(x => document.getElementById('v-' + x).style.display = x === v ? '' : 'none');
-  document.getElementById('vrange').textContent = VIEWS[v].range;
-  document.getElementById('calsub').innerHTML = VIEWS[v].sub;
-}
-document.getElementById('vseg').addEventListener('click', e => {
-  const b = e.target.closest('button[data-v]');
-  if (b) setView(b.dataset.v);
-});
-setView('day');
-
 // ---- 新人スタッフの⭐マーク（カレンダー・シフトで共通） ----
 const ROOKIE = new Set(['伊藤', '山本']);
 function updateStars(){
@@ -2097,6 +1919,487 @@ document.addEventListener('click', e => {
   updateStars();
 });
 updateStars();
+
+// ---- 予約カレンダー（横タイムライン 7:00-22:00） ----
+const DAY_START = 8, DAY_HOURS = 13;                // 8:00-21:00
+const CORE_OPEN = 10, CORE_CLOSE = 19;              // 通常営業（一時預かりの対応時間に合わせる）
+function periodCls(s, e){                            // 時間帯による色分け
+  if (s < CORE_OPEN && e > CORE_CLOSE) return 'both';
+  if (s < CORE_OPEN) return 'early';
+  if (e > CORE_CLOSE) return 'late';
+  return '';
+}
+const tax = document.getElementById('tax');
+for (let h = 0; h <= DAY_HOURS; h++) {
+  const s = document.createElement('span');
+  s.style.left = (h / DAY_HOURS * 100) + '%';
+  if (h === DAY_HOURS) s.style.transform = 'translateX(-100%)';
+  s.textContent = (DAY_START + h) + ':00';
+  tax.appendChild(s);
+}
+// 表示中の日付（ISO）。日表示はこの日、週表示はこの日を含む月〜日、月表示はこの月
+let calDate = isoDate(new Date());
+// 実運用モードで読み込んだ予約・シフト・スタッフ（この画面用に生の値のまま持つ）
+let calResv = [];
+let calShifts = {};   // "スタッフid|日付" → シフト行
+let calStaff = [];
+
+const WEEK_LABEL = WD;
+// 休みを斜線で示す時間帯。時間休は入力された時刻を使う
+const SHIFT_OFF_SPAN = {
+  koukyu: [DAY_START, DAY_START + DAY_HOURS],
+  yukyu: [DAY_START, DAY_START + DAY_HOURS],
+  am: [DAY_START, CORE_OPEN + 3],
+  pm: [CORE_OPEN + 3, DAY_START + DAY_HOURS],
+  jikan: [CORE_OPEN, CORE_OPEN + 2],
+};
+const hhmmToHour = (t) => {
+  const [h, m] = String(t).split(':').map(Number);
+  return h + (m || 0) / 60;
+};
+// 予約時刻を「時」（小数）で取り出す。JST 固定で見る
+function hourOf(iso){
+  const p = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(new Date(iso));
+  const g = (t) => Number(p.find(x => x.type === t).value);
+  return g('hour') + g('minute') / 60;
+}
+// コース名から所要時間（分）を引く。分からないものは60分として置く
+function menuMinutes(name){
+  const m = MENUS.find(x => x.name === name);
+  return m?.min || 60;
+}
+const jpMonthDay = (iso) => Number(iso.slice(5, 7)) + '/' + Number(iso.slice(8, 10));
+
+const DEMO_ROWS = [
+  {name:'送迎',    role:'5頭まで'},
+  {name:'佐藤',    role:'トリマー', st:true},
+  {name:'高橋',    role:'トリマー・AM半休', st:true, off:[8,13,'AM半休']},
+  {name:'中村',    role:'保育担当・公休',   st:true, off:[8,21,'公休']},
+  {name:'山本',    role:'保育担当', st:true},
+  {name:'ホテル',  role:'宿泊・一時預かり'},
+];
+const DEMO_EVS = [
+  {row:0, s:9,    d:1,   cls:'pickup', html:'<b>お迎え 3件</b>マロン・ソラ・レオ'},
+  {row:0, s:17.5, d:1,   cls:'pickup', html:'<b>お送り 3件</b>'},
+  {row:1, s:9,    d:1.5, cls:'',       html:'<b>ラテ シャンプー</b>早朝枠 <span class="src">電話</span>'},
+  {row:1, s:10.5, d:2,   cls:'',       html:'<b>マロン シャンプー＆カット</b><span class="src">EPARK</span>'},
+  {row:1, s:13,   d:1,   cls:'',       html:'<b>ココ シャンプー</b><span class="src">LINE</span>'},
+  {row:1, s:14.5, d:2,   cls:'', nc:1, html:'<b>ルナ シャンプー＆カット</b>初回 <span class="src">EPARK</span>'},
+  {row:1, s:17,   d:1,   cls:'trial',  html:'<b>チョコ 初回相談</b><span class="src">LINE</span>'},
+  {row:2, s:13,   d:2,   cls:'',       html:'<b>プリン シャンプー＆カット</b><span class="src">EPARK</span>'},
+  {row:2, s:15.5, d:0.5, cls:'',       html:'<b>レオ 爪切り・耳掃除</b><span class="src">電話</span>'},
+  {row:2, s:19,   d:1.5, cls:'',       html:'<b>ベル 夜間のお迎え対応</b><span class="src">LINE</span>'},
+  {row:4, s:10,   d:8,   cls:'school', html:'<b>保育コース 6頭</b>マロン・ソラ ほか'},
+  {row:5, s:8,    d:11,  cls:'',       html:'<b>ベル 宿泊（レギュラー）</b>1泊2日・ワンず写メ日記あり <span class="src">LINE</span>'},
+];
+const tl = document.getElementById('tl');
+let bodies = [];
+let dayRows = [];   // 日表示の行定義（ドラッグ・詳細表示から参照する）
+function fmt(t){ const h = Math.floor(t), m = Math.round((t - h) * 60); return h + ':' + String(m).padStart(2, '0'); }
+function makeEv(e){
+  const d = document.createElement('div');
+  const pc = periodCls(e.s, e.s + e.d);
+  const ext = e.nc ? 0.5 : 0;                        // 新規顧客は+30分の準備枠
+  d.className = 'tev ' + e.cls + (pc ? ' ' + pc : '');
+  d.style.left  = ((e.s - DAY_START) / DAY_HOURS * 100) + '%';
+  d.style.width = ((e.d + ext) / DAY_HOURS * 100) + '%';
+  d.innerHTML = e.html
+    + (e.nc ? '<span class="ncx" style="width:' + (0.5 / (e.d + 0.5) * 100) + '%">＋30</span>' : '')
+    + '<span class="rz">&#8596;</span><span class="hz l"></span><span class="hz r"></span>';
+  if (e.nc) d.title = '初めてのわんちゃんのため +30分の枠を自動確保（' + fmt(e.s) + '〜' + fmt(e.s + e.d + 0.5) + '）';
+  d.dataset.s = e.s; d.dataset.d = e.d; d.dataset.cls = e.cls; d.dataset.html = e.html; d.dataset.nc = e.nc ? '1' : '0';
+  d.addEventListener('contextmenu', ev => ev.preventDefault());
+  bodies[e.row].appendChild(d);
+}
+
+// 空き時間の受け皿。押した位置から時刻を割り出して新規予約へ進む。
+// 予定の上を押したときは反応させない（予定の操作と取り合いになるため）
+function addSlotLayer(bd, { date, staffId = null }){
+  const slot = document.createElement('button');
+  slot.type = 'button';
+  slot.className = 'slot';
+  slot.style.left = '0';
+  slot.style.width = '100%';
+  slot.title = '押すと新規予約を登録できます';
+  slot.addEventListener('click', (ev) => {
+    const rect = slot.getBoundingClientRect();
+    const ratio = (ev.clientX - rect.left) / rect.width;
+    // 30分単位に丸める。営業時間の外は端に寄せる
+    const raw = DAY_START + ratio * DAY_HOURS;
+    const hour = Math.min(DAY_START + DAY_HOURS - 0.5, Math.max(DAY_START, Math.round(raw * 2) / 2));
+    openNewReservationAt(date, hour, staffId);
+  });
+  // 予定より下に敷く（予定のクリック・ドラッグを邪魔しない）
+  bd.insertBefore(slot, bd.firstChild);
+}
+
+// ---- 日表示 ----
+function renderDayView(){
+  tl.innerHTML = '';
+  bodies = [];
+  const closed = storeClosedDays.includes(dowOf(calDate));
+
+  if (!adminLive) {
+    dayRows = DEMO_ROWS;
+    DEMO_ROWS.forEach(r => {
+      const tr = document.createElement('div'); tr.className = 'trow';
+      const lb = document.createElement('div'); lb.className = 'rlab';
+      lb.innerHTML = '<span style="display:flex;align-items:center;gap:2px">' + r.name
+        + (r.st ? '<button class="star" data-star="' + r.name + '" aria-label="' + r.name + 'の新人マーク">&#9734;</button>' : '')
+        + '</span><span class="role">' + r.role + '</span>';
+      const bd = document.createElement('div'); bd.className = 'rbody';
+      if (r.off) {
+        const h = document.createElement('div'); h.className = 'hatch';
+        h.style.left  = ((r.off[0] - DAY_START) / DAY_HOURS * 100) + '%';
+        h.style.width = ((r.off[1] - r.off[0]) / DAY_HOURS * 100) + '%';
+        h.textContent = r.off[2];
+        bd.appendChild(h);
+      }
+      addSlotLayer(bd, { date: calDate });
+      tr.append(lb, bd); tl.appendChild(tr); bodies.push(bd);
+    });
+    DEMO_EVS.forEach(makeEv);
+    updateStars();
+    return;
+  }
+
+  // 実運用モード: 行はスタッフ＋「担当未定」。予約はその日のぶんだけ置く
+  const list = calStaff.filter(st => st.active !== false);
+  const rowsDef = [...list.map(st => ({ id: st.id, name: st.name, role: 'スタッフ', st: true })),
+    { id: null, name: '担当未定', role: '担当が決まっていない予約' }];
+  const rowIndex = new Map(rowsDef.map((r, i) => [String(r.id), i]));
+  dayRows = rowsDef;
+
+  rowsDef.forEach(r => {
+    const tr = document.createElement('div'); tr.className = 'trow';
+    const lb = document.createElement('div'); lb.className = 'rlab';
+    lb.innerHTML = '<span style="display:flex;align-items:center;gap:2px">' + r.name
+      + (r.st ? '<button class="star" data-star="' + r.name + '" aria-label="' + r.name + 'の新人マーク">&#9734;</button>' : '')
+      + '</span><span class="role">' + r.role + '</span>';
+    const bd = document.createElement('div'); bd.className = 'rbody';
+    // シフトが入っていれば休みを斜線で示す（未入力の日は何も出さない）
+    const sh = calShifts[r.id + '|' + calDate];
+    if (sh && sh.kind && sh.kind !== 'work') {
+      const span = SHIFT_OFF_SPAN[sh.kind] || null;
+      if (span) {
+        const h = document.createElement('div'); h.className = 'hatch';
+        const from = sh.kind === 'jikan' && sh.start_time ? hhmmToHour(sh.start_time) : span[0];
+        const to = sh.kind === 'jikan' && sh.end_time ? hhmmToHour(sh.end_time) : span[1];
+        h.style.left  = ((Math.max(DAY_START, from) - DAY_START) / DAY_HOURS * 100) + '%';
+        h.style.width = ((Math.min(DAY_START + DAY_HOURS, to) - Math.max(DAY_START, from)) / DAY_HOURS * 100) + '%';
+        h.textContent = SHIFT_CELL_LABELS[sh.kind] || '休み';
+        bd.appendChild(h);
+      }
+    }
+    if (closed) {
+      const h = document.createElement('div'); h.className = 'hatch';
+      h.style.left = '0'; h.style.width = '100%'; h.textContent = '定休日';
+      bd.appendChild(h);
+    }
+    addSlotLayer(bd, { date: calDate, staffId: r.id });
+    tr.append(lb, bd); tl.appendChild(tr); bodies.push(bd);
+  });
+
+  calResv.filter(r => dateOnly(r.reserved_at) === calDate).forEach(r => {
+    const idx = rowIndex.get(String(r.staff_id ?? null)) ?? rowsDef.length - 1;
+    makeEv({
+      row: idx,
+      s: hourOf(r.reserved_at),
+      d: (menuMinutes(r.menu) / 60),
+      cls: r.status === 'requested' ? 'trial' : '',
+      html: '<b>' + (r.customer_name || 'お客様') + ' ' + (r.menu || 'ご予約') + '</b>'
+        + (r.status === 'requested' ? '<span class="src">承認待ち</span>' : ''),
+    });
+  });
+  updateStars();
+}
+
+// ================= 週表示 =================
+// デモ用のサンプル。曜日ごとに当てはめる（月=0 … 日=6）。日付は実際の週から作る
+const DEMO_WEEK = [
+  [ {s:10,dur:8,cls:'school',t:'保育コース 5頭'},
+    {s:11,dur:2,cls:'',t:'ベル シャンプー＆カット'},
+    {s:14,dur:1,cls:'',t:'ココ シャンプー'},
+    {s:16,dur:2,cls:'',t:'モカ シャンプー＆カット'} ],
+  [ {s:10,dur:8,cls:'school',t:'保育コース 6頭'},
+    {s:11,dur:1.5,cls:'trial',t:'ソラ 保育（体験）'},
+    {s:14,dur:1.5,cls:'trial',t:'ハナ 保育（体験）'},
+    {s:16.5,dur:0.5,cls:'',t:'レオ 爪切り'} ],
+  [ {s:10,dur:8,cls:'school',t:'保育コース 4頭'},
+    {s:10.5,dur:2,cls:'',t:'プリン シャンプー＆カット'},
+    {s:14,dur:1.5,cls:'',t:'ムギ シャンプー'},
+    {s:17,dur:0.5,cls:'',t:'ラテ 爪切り'} ],
+  [],
+  [ {s:10,dur:8,cls:'school',t:'保育コース 6頭'},
+    {s:9,dur:1.5,cls:'',t:'ラテ シャンプー'},
+    {s:10.5,dur:2,cls:'',t:'マロン シャンプー＆カット'},
+    {s:13,dur:1,cls:'',t:'ココ シャンプー'},
+    {s:15,dur:2,cls:'',t:'モカ シャンプー＆カット'},
+    {s:17,dur:1,cls:'trial',t:'チョコ 初回相談'} ],
+  [ {s:10,dur:2,cls:'',t:'マロン シャンプー＆カット'},
+    {s:11,dur:1.5,cls:'',t:'ムギ シャンプー'},
+    {s:12.5,dur:2,cls:'',t:'チョコ シャンプー'},
+    {s:15,dur:2,cls:'',t:'レオ シャンプー＆カット'},
+    {s:17,dur:1.5,cls:'',t:'きなこ シャンプー'} ],
+  [ {s:10,dur:8,cls:'school',t:'保育コース 3頭'},
+    {s:11,dur:2,cls:'',t:'ベル シャンプー＆カット'},
+    {s:14,dur:2,cls:'',t:'ラテ シャンプー＆カット'} ],
+];
+const wtax = document.getElementById('wtax'), wtl = document.getElementById('wtl');
+for (let h = 0; h <= DAY_HOURS; h++) {
+  const s = document.createElement('span');
+  s.style.left = (h / DAY_HOURS * 100) + '%';
+  if (h === DAY_HOURS) s.style.transform = 'translateX(-100%)';
+  s.textContent = (DAY_START + h) + ':00';
+  wtax.appendChild(s);
+}
+
+// ---- 週表示 ----
+// 日付は calDate を含む月〜日から組み立てる（固定の文字列を持たない）
+function renderWeekView(){
+  wtl.innerHTML = '';
+  const monday = mondayOf(asDate(calDate));
+  const todayIso = dateOnly(new Date().toISOString());
+
+  for (let i = 0; i < 7; i++) {
+    const iso = addDays(monday, i);
+    const dow = dowOf(iso);
+    const closed = storeClosedDays.includes(dow);
+    const evs = adminLive
+      ? calResv.filter(r => dateOnly(r.reserved_at) === iso).map(r => ({
+          s: hourOf(r.reserved_at),
+          dur: menuMinutes(r.menu) / 60,
+          cls: r.status === 'requested' ? 'trial' : '',
+          t: (r.customer_name || 'お客様') + ' ' + (r.menu || 'ご予約'),
+        }))
+      // デモは曜日ごとのサンプルを当てはめる（日付は実際の週に合わせる）
+      : (DEMO_WEEK[(dow + 6) % 7] || []).map(e => ({ ...e }));
+
+    const tr = document.createElement('div'); tr.className = 'trow';
+    const lb = document.createElement('button');
+    lb.className = 'rlab' + (dow === 6 ? ' sat' : dow === 0 ? ' sun' : '');
+    lb.type = 'button';
+    lb.innerHTML = jpMonthDay(iso) + '（' + WEEK_LABEL[dow] + '）'
+      + '<span class="role">' + (closed ? '定休日' : evs.length + ' 件')
+      + (iso === todayIso ? '・本日' : '') + '</span>';
+    lb.addEventListener('click', () => { calDate = iso; setView('day'); });
+
+    const bd = document.createElement('div'); bd.className = 'rbody';
+    if (closed) {
+      const h = document.createElement('div'); h.className = 'hatch';
+      h.style.left = '0'; h.style.width = '100%'; h.textContent = '定休日';
+      bd.appendChild(h);
+    }
+    addSlotLayer(bd, { date: iso });
+    evs.forEach(e => {
+      const el = document.createElement('div');
+      const school = e.cls === 'school';
+      const pc = periodCls(e.s, e.s + e.dur);
+      el.className = 'tev ' + e.cls + (pc ? ' ' + pc : '') + (school ? ' laneA' : ' laneB');
+      el.style.left  = ((e.s - DAY_START) / DAY_HOURS * 100) + '%';
+      el.style.width = (e.dur / DAY_HOURS * 100) + '%';
+      el.innerHTML = school
+        ? '<b>' + e.t + '</b>　' + fmt(e.s) + '〜' + fmt(e.s + e.dur)
+        : '<b>' + e.t + '</b>' + fmt(e.s) + '〜' + fmt(e.s + e.dur);
+      el.title = jpMonthDay(iso) + ' ' + fmt(e.s) + '〜' + fmt(e.s + e.dur) + '　' + e.t;
+      bd.appendChild(el);
+    });
+    tr.append(lb, bd); wtl.appendChild(tr);
+  }
+}
+
+// ================= 月表示 =================
+// calDate の月を組み立てる。件数は実運用モードでは実データ、デモではサンプル
+const DEMO_MONTH_COUNTS = [3,6,4,5,6,7,4,8,5,6,3,4,6,5,7,4,6,8,3,5,6,4,7,5,6,3,4,6,5,7,8];
+const mgrid = document.getElementById('mgrid');
+
+function renderMonthView(){
+  mgrid.innerHTML = '';
+  ['月','火','水','木','金','土','日'].forEach((w, i) => {
+    const d = document.createElement('div');
+    d.className = 'dow' + (i === 5 ? ' sat' : i === 6 ? ' sun' : '');
+    d.textContent = w;
+    mgrid.appendChild(d);
+  });
+
+  const year = Number(calDate.slice(0, 4)), month = Number(calDate.slice(5, 7));
+  const first = `${year}-${String(month).padStart(2, '0')}-01`;
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const lead = (dowOf(first) + 6) % 7;          // 月曜始まりにするための前月ぶん
+  const todayIso = isoDate(new Date());
+
+  for (let i = lead; i > 0; i--) {
+    const iso = addDays(first, -i);
+    const c = document.createElement('div'); c.className = 'mcell out';
+    c.innerHTML = '<span class="dnum">' + Number(iso.slice(8, 10)) + '</span>';
+    mgrid.appendChild(c);
+  }
+
+  let total = 0, openDays = 0;
+  for (let day = 1; day <= daysInMonth; day++) {
+    const iso = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const dow = dowOf(iso);
+    const closed = storeClosedDays.includes(dow);
+    const count = closed ? 0 : adminLive
+      ? calResv.filter(r => dateOnly(r.reserved_at) === iso).length
+      : DEMO_MONTH_COUNTS[day - 1];
+    if (!closed) { openDays++; total += count; }
+
+    const c = document.createElement('button'); c.type = 'button';
+    c.className = 'mcell' + (iso === todayIso ? ' today' : '') + (closed ? ' out' : '');
+    const wcls = dow === 6 ? ' sat' : dow === 0 ? ' sun' : '';
+    let html = '<span class="dnum' + wcls + '">' + day + '</span>';
+    html += closed
+      ? '<span class="closed">定休日</span>'
+      : '<span class="mline"><i style="background:var(--accent)"></i><span>ご予約</span><b>' + count + '</b></span>';
+    c.innerHTML = html;
+    // 定休日でも日表示は開ける（お預かりの受付があるため）
+    c.addEventListener('click', () => { calDate = iso; setView('day'); });
+    mgrid.appendChild(c);
+  }
+
+  const last = `${year}-${String(month).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
+  const tail = (7 - ((lead + daysInMonth) % 7)) % 7;
+  for (let i = 1; i <= tail; i++) {
+    const iso = addDays(last, i);
+    const c = document.createElement('div'); c.className = 'mcell out';
+    c.innerHTML = '<span class="dnum">' + Number(iso.slice(8, 10)) + '</span>';
+    mgrid.appendChild(c);
+  }
+
+  document.getElementById('msum').innerHTML =
+    month + '月合計　ご予約 <b>' + total + ' 件</b>　営業 <b>' + openDays + ' 日</b>'
+    + '（' + (storeClosedDays.length ? storeClosedDays.map(d => WD[d] + '曜').join('・') + '定休' : '定休日なし') + '）';
+}
+
+// ---- 表示切替と日付の移動 ----
+let calView = 'day';
+const calDateEl = document.getElementById('cal-date');
+
+function calRangeLabel(){
+  const jp = (iso) => Number(iso.slice(0, 4)) + '年' + Number(iso.slice(5, 7)) + '月'
+    + Number(iso.slice(8, 10)) + '日（' + WD[dowOf(iso)] + '）';
+  if (calView === 'day') return jp(calDate) + ' ' + DAY_START + ':00〜' + (DAY_START + DAY_HOURS) + ':00';
+  if (calView === 'week') {
+    const monday = mondayOf(calDate);
+    return jp(monday) + ' 〜 ' + jpMonthDay(addDays(monday, 6));
+  }
+  return Number(calDate.slice(0, 4)) + '年' + Number(calDate.slice(5, 7)) + '月';
+}
+
+const CAL_SUB = {
+  day: '横軸が時間・縦が担当の表示。<b>空いているところを押すと新規予約を登録できます。</b>',
+  week: '1週間の予約を一覧で確認できます。日付を押すとその日の詳細に切り替わります。空いているところを押すと新規予約を登録できます。',
+  month: '日ごとの件数を俯瞰できます。日付を押すとその日の詳細に切り替わります。',
+};
+
+function renderCal(){
+  if (calView === 'day') renderDayView();
+  else if (calView === 'week') renderWeekView();
+  else renderMonthView();
+  document.getElementById('vrange').textContent = calRangeLabel();
+  document.getElementById('calsub').innerHTML = CAL_SUB[calView];
+  calDateEl.value = calDate;
+}
+
+function setView(v){
+  calView = v;
+  document.querySelectorAll('#vseg button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+  ['day', 'week', 'month'].forEach(x => document.getElementById('v-' + x).style.display = x === v ? '' : 'none');
+  renderCal();
+}
+
+// 移動幅は表示に合わせる（日表示なら1日、週表示なら1週、月表示なら1ヶ月）
+function calMove(direction){
+  if (calView === 'day') calDate = addDays(calDate, direction);
+  else if (calView === 'week') calDate = addDays(calDate, direction * 7);
+  else {
+    const y = Number(calDate.slice(0, 4)), m = Number(calDate.slice(5, 7));
+    const d = new Date(Date.UTC(y, m - 1 + direction, 1));
+    calDate = toIso(d);
+  }
+  calReload();
+}
+document.getElementById('cal-prev').addEventListener('click', () => calMove(-1));
+document.getElementById('cal-next').addEventListener('click', () => calMove(1));
+document.getElementById('cal-today').addEventListener('click', () => { calDate = isoDate(new Date()); calReload(); });
+calDateEl.addEventListener('change', () => {
+  if (calDateEl.value) { calDate = calDateEl.value; calReload(); }
+});
+document.getElementById('vseg').addEventListener('click', e => {
+  const b = e.target.closest('button[data-v]');
+  if (b) { setView(b.dataset.v); calReload(); }
+});
+
+// 表示している範囲の予約とシフトを読み直してから描く
+async function calReload(){
+  if (!adminLive) { renderCal(); return; }
+  const from = calView === 'month'
+    ? addDays(calDate.slice(0, 8) + '01', -7)
+    : calView === 'week' ? mondayOf(calDate) : calDate;
+  const to = calView === 'month'
+    ? addDays(calDate.slice(0, 8) + '01', 38)
+    : calView === 'week' ? addDays(mondayOf(calDate), 6) : calDate;
+  try {
+    const [{ reservations }, shiftRes] = await Promise.all([
+      adminApi('/reservations?from=' + from + '&to=' + to),
+      adminApi('/shifts?from=' + from + '&to=' + to).catch(() => ({ shifts: [] })),
+    ]);
+    // 取消・無断キャンセルは枠を占めないので出さない
+    calResv = reservations.filter(r => !['cancelled', 'no_show'].includes(r.status));
+    calShifts = {};
+    (shiftRes.shifts || []).forEach(sh => {
+      calShifts[sh.staff_id + '|' + dateOnly(sh.work_date)] = sh;
+    });
+  } catch (err) {
+    showToast('カレンダーの読み込みに失敗しました: ' + err.message);
+  }
+  renderCal();
+}
+
+// 空き枠を押したときの新規予約。日時と担当を埋めた状態で開く
+async function openNewReservationAt(dateIso, hour, staffId){
+  const time = fmt(hour).padStart(5, '0');
+  if (!adminLive) {
+    showToast(jpMonthDay(dateIso) + ' ' + time + ' に新規予約（モックのため登録されません）');
+    return;
+  }
+  let customers = [];
+  try {
+    ({ customers } = await adminApi('/customers'));
+  } catch (err) {
+    showToast('お客様の読み込みに失敗しました: ' + err.message);
+    return;
+  }
+  if (!customers.length) { showToast('先に飼い主様を登録してください'); return; }
+
+  openEditModal(jpMonthDay(dateIso) + '（' + WD[dowOf(dateIso)] + '） ' + time + ' に新規予約', [
+    { key: 'customerId', label: '飼い主様', type: 'select',
+      options: customers.map(c => [c.id, c.name + ' 様' + (c.pet_names ? '（' + c.pet_names + '）' : '')]) },
+    { key: 'menu', label: 'コース', type: 'select',
+      options: MENUS.filter(m => m.active).map(m => [m.name, m.name]) },
+    { key: 'staffId', label: '担当（任意）', type: 'select',
+      options: [['', '担当未定'], ...calStaff.map(st => [st.id, st.name])],
+      value: staffId == null ? '' : String(staffId) },
+    { key: 'at', label: '日時', type: 'datetime-local', value: dateIso + 'T' + time },
+  ], {
+    onSave: v => adminApi('/reservations', {
+      method: 'POST',
+      body: JSON.stringify({
+        customerId: Number(v.customerId),
+        // datetime-local は JST 前提。オフセットを明示して送る
+        reservedAt: v.at + ':00+09:00',
+        menu: v.menu,
+        staffId: v.staffId || null,
+      }),
+    }),
+    after: async () => { await calReload(); await rvReload().catch(() => {}); },
+  });
+}
+
+setView('day');   // 初期表示。実運用モードでは初期化のあとに実データで描き直す
 
 // ---- LINE botからのシフト変更申請 ----
 // 実運用モードでは管理 API の実データ（スタッフが公式LINE へ送った申請）を表示し、
@@ -2495,33 +2798,11 @@ async function renderDashboardLive(){
 // スタッフを追加すると、その人の行が次の描画から自動で増える。
 // マスをクリックすると区分が巡回し、その都度サーバへ保存する。
 const SHIFT_CYCLE = ['work', 'am', 'pm', 'koukyu', 'yukyu', 'jikan', null];  // null は未入力
-const SHIFT_CELL_LABELS = {
-  work: '出勤', am: 'AM半休', pm: 'PM半休', koukyu: '公休', yukyu: '有休', jikan: '時間休',
-};
-const WD = ['日', '月', '火', '水', '木', '金', '土'];
 // 表示中の期間。既定は今週（月〜日）だが、日付を指定して任意の期間に変えられる
 let shFrom = null;
 let shTo = null;
 const SH_MAX_DAYS = 31;   // 列が増えすぎると表として読めなくなるため
 
-// 「今日」は JST の暦日として取り出す
-const isoDate = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tokyo',
-  year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
-// 以降の日付計算は暦日そのものを扱う。UTC 0時として解釈すれば、
-// ブラウザのタイムゾーンに関係なく曜日と加減算が一致する
-const asDate = (iso) => new Date(iso + 'T00:00:00Z');
-const toIso = (d) => d.toISOString().slice(0, 10);
-const dowOf = (iso) => asDate(iso).getUTCDay();
-function mondayOf(dateOrIso){
-  const d = asDate(typeof dateOrIso === 'string' ? dateOrIso : isoDate(dateOrIso));
-  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
-  return toIso(d);
-}
-function addDays(iso, n){
-  const d = asDate(iso);
-  d.setUTCDate(d.getUTCDate() + n);
-  return toIso(d);
-}
 const dayLabel = (iso) => WD[dowOf(iso)] + ' ' + Number(iso.split('-')[2]);
 
 function shiftCellText(s){
@@ -2743,7 +3024,7 @@ let pop = null;
 function closePop(){ if (pop) { pop.back.remove(); pop.el.remove(); pop = null; } }
 function openPop(ev, x, y){
   closePop();
-  const row = rows[bodies.indexOf(ev.parentElement)];
+  const row = dayRows[bodies.indexOf(ev.parentElement)] || { name: '', role: '' };
   const s = parseFloat(ev.dataset.s), d = parseFloat(ev.dataset.d);
   const title = (ev.querySelector('b') || {}).textContent || '予約';
   const back = document.createElement('div'); back.className = 'popback';
@@ -2867,7 +3148,7 @@ function endDrag(commit){
   const sameSpot = target === ev.parentElement && t === parseFloat(ev.dataset.s);
   if (commit && target && !sameSpot) {
     makeEvIn(target, { s: t, d: parseFloat(ev.dataset.d), cls: ev.dataset.cls, html: ev.dataset.html, nc: ev.dataset.nc === '1' ? 1 : 0 });
-    const nm = rows[bodies.indexOf(target)].name;
+    const nm = (dayRows[bodies.indexOf(target)] || {}).name || '';
     showToast('コピーしました：' + nm + ' ' + fmt(t) + '〜');
   }
   g.remove(); ev.classList.remove('lift');
@@ -3911,6 +4192,7 @@ function editPet(o, p, tr = null){   // p が null なら追加
 // 管理 API に疎通できたら、この画面全体を実データの管理画面として動かす。
 async function loadStaffLive(){
   const { staff } = await adminApi('/staff');
+  calStaff = staff;   // 予約カレンダーの行に使う
   const sel = document.getElementById('nr-staff');
   sel.innerHTML = '<option value="">担当（任意）</option>';
   staff.forEach(s => {
@@ -3989,6 +4271,7 @@ async function loadFamiliesLive(){
     ]);
     renderRemindLive();
     await applyStoreProfile();
+    await calReload();
     checkStaleScreen();
     tsRenderState();
     await tsReloadResv({ quiet: true });

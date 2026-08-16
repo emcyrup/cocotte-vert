@@ -121,3 +121,4 @@ docker compose exec app node scripts/seed-plans.js   # 保育コース 月4回 /
 | 回数券・保育コース | `docs/plans.md` |
 | スタッフ勤怠 | `docs/shift-requests.md` |
 | 運用中アカウントへの接続 | `docs/switch-account.md` |
+| 店舗スタッフへの説明 | `docs/staff-manual.md`（アルバイト向けの操作マニュアル。そのまま渡せる） |

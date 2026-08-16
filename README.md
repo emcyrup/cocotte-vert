@@ -117,7 +117,13 @@ Meta 側のセットアップは [docs/instagram.md](docs/instagram.md) を参�
 切り分けの詳細は [src/mock/README.md](src/mock/README.md) を参照。
 
 店舗スタッフ・アルバイト向けの操作マニュアルは [docs/staff-manual.md](docs/staff-manual.md)。
-画面ごとではなく「こんなときどうする」で並べてあり、そのまま配布・掲示できる。
+画面ごとではなく「こんなときどうする」で並べてある。店頭で配る PDF は次で作る
+（依存は増やさず、Chrome / Chromium の印刷機能を使う。表紙・ページ番号・目次のページ番号つき）。
+
+```bash
+node scripts/build-manual-pdf.js            # docs/staff-manual.pdf に出力
+STORE_NAME="FREE WAN" node scripts/build-manual-pdf.js  # 別店舗の名前で表紙を作る
+```
 
 ## 回数券・保育コース
 

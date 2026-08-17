@@ -82,6 +82,13 @@ Meta 側のセットアップは [docs/instagram.md](docs/instagram.md) を参�
 その分だけが別の投稿としてスレッズへ出る（`THREADS_POST_MODE=dry_run` が既定）。
 設定は [docs/threads.md](docs/threads.md) を参照。
 
+### キャプションの自動生成
+
+「自動で書く」を押すと、その投稿の写真を Claude に見せてキャプションの**下書き**を作る。
+Instagram とスレッズで別々に作れる（スレッズはチェックを入れた写真だけを見て、短く書く）。
+できるのは下書きだけで、投稿は従来どおりスタッフが確認してから押す。詳細は
+[docs/sns-caption.md](docs/sns-caption.md) を参照。
+
 ## テスト送信
 
 管理画面 `/mock/#test` から、顧客へ送りうるメッセージを**全種類**テスト送信できる

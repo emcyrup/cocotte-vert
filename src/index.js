@@ -20,6 +20,7 @@ import { createAfterVisitJob } from './jobs/afterVisit.js';
 import { createDormantJob } from './jobs/dormant.js';
 import { createBirthdayJob } from './jobs/birthday.js';
 import { createFollowupClassifier } from './ai/classifyFollowup.js';
+import { createCaptionWriter } from './ai/writeCaption.js';
 import { createShiftRequestParser } from './ai/parseShiftRequest.js';
 import { createShiftService } from './shifts/service.js';
 import { createPlanService } from './plans/service.js';
@@ -283,7 +284,13 @@ app.use('/sns-media', express.static(snsDataDir, { maxAge: '7d', immutable: true
 const instagram = createInstagramClient({ config, settings });
 const threads = createThreadsClient({ config, settings });
 const snsPublisher = createSnsPublisher({ pool, instagram, threads, slack, config });
-app.use('/api/admin/sns', adminGuard, createSnsRouter({ pool, publisher: snsPublisher, dataDir: snsDataDir }));
+// API キー未設定なら渡さない（キャプション生成だけ 503 になり、投稿機能は動く）
+const captionWriter = config.anthropicApiKey
+  ? createCaptionWriter({ apiKey: config.anthropicApiKey, model: config.captionModel })
+  : null;
+app.use('/api/admin/sns', adminGuard, createSnsRouter({
+  pool, publisher: snsPublisher, dataDir: snsDataDir, captionWriter, storeName: store.name,
+}));
 
 // 予約投稿の時刻チェック（5分おき）。深夜帯の投稿も予約どおり実行する（SNS は顧客への Push ではないため）
 cron.schedule('*/5 * * * *', async () => {

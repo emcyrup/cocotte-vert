@@ -3,7 +3,7 @@
 // 写真は管理画面のブラウザ側で JPEG へ正規化してから、1枚ずつ raw ボディで受け取る
 // （multipart パーサを足さず依存を増やさないため）。保存名は推測不能なランダム値。
 import { randomBytes } from 'node:crypto';
-import { writeFile, unlink } from 'node:fs/promises';
+import { writeFile, unlink, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import express from 'express';
 
@@ -11,8 +11,9 @@ const MAX_PHOTOS = 20; // 10枚×2投稿ぶんまで
 const MAX_CAPTION = 2200; // Instagram の上限
 const MAX_THREADS_TEXT = 500; // Threads の上限（Instagram より短い）
 const PLATFORMS = ['instagram', 'threads'];
+const PHOTO_NAME = /^[0-9a-f]{24}\.jpg$/;
 
-export function createSnsRouter({ pool, publisher, dataDir }) {
+export function createSnsRouter({ pool, publisher, dataDir, captionWriter = null, storeName = '当店' }) {
   const router = express.Router();
 
   // ---- 写真アップロード（正規化済み JPEG を1枚ずつ）----
@@ -40,12 +41,44 @@ export function createSnsRouter({ pool, publisher, dataDir }) {
   router.delete('/photos/:file', async (req, res, next) => {
     try {
       const { file } = req.params;
-      if (!/^[0-9a-f]{24}\.jpg$/.test(file)) return res.status(400).json({ error: 'invalid_file' });
+      if (!PHOTO_NAME.test(file)) return res.status(400).json({ error: 'invalid_file' });
       const { rows } = await pool.query(`SELECT 1 FROM sns_photos WHERE file = $1 LIMIT 1`, [file]);
       if (rows.length > 0) return res.status(400).json({ error: 'file_in_use' });
       await unlink(path.join(dataDir, file)).catch(() => {});
       res.json({ ok: true });
     } catch (err) {
+      next(err);
+    }
+  });
+
+  // ---- キャプションの下書き生成 ----
+  // 生成するだけで、投稿は別操作。スタッフが画面で確認してから投稿する前提。
+  router.post('/caption', async (req, res, next) => {
+    try {
+      if (!captionWriter) return res.status(503).json({ error: 'no_api_key' });
+      const { files, platform = 'instagram', hint = '' } = req.body ?? {};
+      if (!PLATFORMS.includes(platform)) return res.status(400).json({ error: 'invalid_platform' });
+      if (!Array.isArray(files) || files.length === 0) return res.status(400).json({ error: 'no_photos' });
+      if (files.length > MAX_PHOTOS) return res.status(400).json({ error: 'too_many_photos' });
+      if (!files.every((f) => PHOTO_NAME.test(f))) return res.status(400).json({ error: 'invalid_file' });
+      if (typeof hint !== 'string' || hint.length > 200) return res.status(400).json({ error: 'invalid_hint' });
+
+      const images = [];
+      for (const file of files) {
+        const buf = await readFile(path.join(dataDir, file));
+        images.push({ mediaType: 'image/jpeg', data: buf.toString('base64') });
+      }
+
+      const { caption } = await captionWriter.write({ images, platform, storeName, hint });
+      res.json({ ok: true, caption });
+    } catch (err) {
+      // 生成側の失敗は画面で理由を出したいので、コードをそのまま返す。
+      // 想定外の例外だけ通常のエラーハンドラへ送る
+      const known = ['no_api_key', 'no_images', 'invalid_platform', 'refused', 'too_long', 'api_error', 'bad_response'];
+      if (known.includes(err.message)) {
+        return res.status(err.message === 'api_error' ? 502 : 400).json({ error: err.message });
+      }
+      if (err.code === 'ENOENT') return res.status(400).json({ error: 'photo_missing' });
       next(err);
     }
   });
@@ -64,7 +97,7 @@ export function createSnsRouter({ pool, publisher, dataDir }) {
         return res.status(400).json({ error: 'invalid_caption' });
       }
       // アップロード API が発行した名前だけを受け付ける（パス操作の防止）
-      if (!files.every((f) => /^[0-9a-f]{24}\.jpg$/.test(f))) {
+      if (!files.every((f) => PHOTO_NAME.test(f))) {
         return res.status(400).json({ error: 'invalid_file' });
       }
       let when = null;

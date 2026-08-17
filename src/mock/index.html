@@ -1123,10 +1123,16 @@ tr.await td{background:var(--warn-soft)}
     </div>
     <div style="display:grid;gap:16px;align-content:start">
       <div class="card">
-        <div class="hd"><h2>キャプション</h2></div>
+        <div class="hd"><h2>キャプション</h2>
+          <button class="sbtn" id="cap-ig" type="button" style="margin-left:auto">&#10024; 自動で書く</button>
+        </div>
         <div class="bd">
+          <div class="frow" style="margin-bottom:8px">
+            <input type="text" id="cap-hint" placeholder="ひとこと補足（任意。例：今日は保育コースの遠足）" maxlength="200">
+          </div>
           <textarea rows="6" id="snscap">今日の保育コースのようす🐾 みんなでボール遊び！ ソラくんは初めてのシャンプーもがんばりました。#ここっとベール #犬のようちえん #トリミングサロン</textarea>
-          <p style="font-size:12px;color:var(--muted);margin:8px 0 12px">2投稿に分かれる場合、投稿2には「つづき（2/2）」が自動で追記されます。</p>
+          <p style="font-size:12px;color:var(--muted);margin:8px 0 12px">2投稿に分かれる場合、投稿2には「つづき（2/2）」が自動で追記されます。<br>
+          「自動で書く」は写真を見て下書きを作ります。<b>必ず読んでから投稿してください。</b></p>
           <button class="btn block" id="sns-now" type="button">今すぐ投稿</button>
           <div class="frow" style="margin-top:8px">
             <input type="datetime-local" id="sns-at" value="2026-07-24T19:00" aria-label="予約日時">
@@ -1135,7 +1141,9 @@ tr.await td{background:var(--warn-soft)}
         </div>
       </div>
       <div class="card">
-        <div class="hd"><h2>スレッズ投稿</h2><span class="pill acc" id="th-count">0枚</span></div>
+        <div class="hd"><h2>スレッズ投稿</h2><span class="pill acc" id="th-count">0枚</span>
+          <button class="sbtn" id="cap-th" type="button" style="margin-left:auto">&#10024; 自動で書く</button>
+        </div>
         <div class="bd">
           <p style="font-size:12px;color:var(--muted);margin:0 0 8px">写真の左上にチェックを入れた分だけを投稿します（20枚・本文500文字まで）。</p>
           <textarea rows="4" id="thcap" placeholder="スレッズの本文（Instagram のキャプションとは別に書けます）"></textarea>
@@ -3565,6 +3573,58 @@ document.getElementById('th-later').addEventListener('click', () => {
   if (!at) { showToast('予約日時を指定してください'); return; }
   threadsSubmit(at);
 });
+
+// ---- キャプションの自動生成 ----
+// 写真を見て下書きを作るだけ。投稿は従来どおりスタッフが別に押す
+const CAPTION_ERRORS = {
+  no_api_key: 'キャプションの自動生成が設定されていません（店長に連絡してください）',
+  no_photos: '先に写真を追加してください',
+  refused: '写真の内容から文章を作れませんでした。別の写真でお試しください',
+  too_long: '文章が長くなりすぎました。もう一度お試しください',
+  api_error: '文章の作成に失敗しました。少し待ってからお試しください',
+  bad_response: 'うまく書けませんでした。もう一度お試しください',
+  photo_missing: '写真が見つかりません。追加し直してください',
+};
+async function generateCaption({ platform, items, target, btn }){
+  if (!items.length) {
+    showToast(platform === 'threads' ? 'スレッズに出す写真にチェックを入れてください' : '先に写真を追加してください');
+    return;
+  }
+  if (!snsLive) { showToast('モックのため自動生成はされません'); return; }
+  const label = btn.innerHTML;
+  btn.disabled = true;
+  btn.textContent = '書いています…';
+  try {
+    const res = await fetch(`${SNS_API}/caption`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        platform,
+        files: items.map((i) => i.file),
+        hint: document.getElementById('cap-hint').value.trim(),
+      }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || !body.ok) throw new Error(body.error || `HTTP ${res.status}`);
+    // 書きかけを勝手に消さない。入っているときだけ置き換えの確認を挟む
+    if (target.value.trim() && !confirm('いま入っている文章を、書き直したものに置き換えますか？')) return;
+    target.value = body.caption;
+    showToast('下書きができました。内容を確かめてから投稿してください');
+  } catch (err) {
+    showToast(CAPTION_ERRORS[err.message] || `エラー: ${err.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = label;
+  }
+}
+document.getElementById('cap-ig').addEventListener('click', (e) => generateCaption({
+  platform: 'instagram', items: snsItems,
+  target: document.getElementById('snscap'), btn: e.currentTarget,
+}));
+document.getElementById('cap-th').addEventListener('click', (e) => generateCaption({
+  platform: 'threads', items: threadsPicked(),
+  target: document.getElementById('thcap'), btn: e.currentTarget,
+}));
 
 // 初期化: API に届けば実投稿モード、届かなければデモのまま
 (async () => {

@@ -1,4 +1,8 @@
 // 来店7日後フォローの Flex Message テンプレート。
+//
+// 宛先は飼い主様だが、聞きたいのは「わんちゃんの様子」。主語を人にすると
+// 飼い主様ご本人の体調を尋ねているように読めるため、わんちゃんの話だと分かる書き方にする。
+// わんちゃんの名前は入れない（同じお宅で複数頭いる場合に取り違えるため）。
 
 export function buildAfterVisitMessage({ customerName, reservationId }) {
   return {
@@ -14,13 +18,13 @@ export function buildAfterVisitMessage({ customerName, reservationId }) {
           { type: 'text', text: `${customerName}様`, weight: 'bold', size: 'md' },
           {
             type: 'text',
-            text: '先日はご来店いただきありがとうございました。\nその後の調子はいかがでしょうか？',
+            text: '先日はご来店いただきありがとうございました。\nその後、わんちゃんのご様子はいかがでしょうか？',
             size: 'sm',
             wrap: true,
           },
           {
             type: 'text',
-            text: '気になる点があれば、このままメッセージでお知らせください。',
+            text: '皮膚のかゆみ、カットの仕上がりなど、気になることがあればこのままメッセージでお知らせください。',
             size: 'sm',
             wrap: true,
             margin: 'md',
@@ -37,9 +41,9 @@ export function buildAfterVisitMessage({ customerName, reservationId }) {
             style: 'primary',
             action: {
               type: 'postback',
-              label: '調子いいです',
+              label: '元気にしています',
               data: `action=followup&res=${reservationId}&v=good`,
-              displayText: '調子いいです',
+              displayText: '元気にしています',
             },
           },
           {

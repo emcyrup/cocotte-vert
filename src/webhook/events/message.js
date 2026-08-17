@@ -89,7 +89,7 @@ export function createMessageHandler({
       const replyText =
         label === 'good'
           ? 'お知らせいただきありがとうございます！またのご来店をお待ちしております。'
-          : 'ご連絡ありがとうございます。内容を確認し、担当者よりご連絡いたします。';
+          : 'ご連絡ありがとうございます。わんちゃんのご様子を確認し、担当者よりご連絡いたします。';
       await lineClient.reply(event.replyToken, [{ type: 'text', text: replyText }], {
         customerId: customer.id,
       });

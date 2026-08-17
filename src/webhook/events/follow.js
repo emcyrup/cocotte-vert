@@ -29,7 +29,7 @@ export function createFollowHandler({ pool, lineClient, liffUrl = null }) {
     if (event.replyToken) {
       const lines = [
         '友だち追加ありがとうございます！',
-        'ご予約の確認やご案内をお届けするため、お客様情報のご登録をお願いいたします。',
+        'わんちゃんのご予約の確認やご案内をお届けするため、お客様情報のご登録をお願いいたします。',
       ];
       if (liffUrl) {
         lines.push('', `▼ご登録はこちら（1分で完了します）`, liffUrl);

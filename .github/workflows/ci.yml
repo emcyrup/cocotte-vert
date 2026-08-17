@@ -6,6 +6,12 @@
 #        Secrets:   VM_HOST（IP またはドメイン） / VM_USER / VM_SSH_KEY（秘密鍵の中身）
 #        Variables: DEPLOY_ENABLED = true
 #   DEPLOY_ENABLED を設定するまでデプロイジョブはスキップされる（テストだけ動く）
+#
+# 任意の Secret:
+#   ANTHROPIC_API_KEY … 登録するとデプロイのたびに VM の .env へ反映する。
+#     未登録なら VM の .env はそのまま（既存の値を消さない）。
+#   他の値は VM の .env で直接管理する。ここで配るのは、鍵の差し替えを
+#   サーバーに入らずに済ませたいものだけに絞っている。
 name: ci
 
 on:
@@ -44,13 +50,27 @@ jobs:
             exit 1
           fi
           ssh-keyscan -H "${{ secrets.VM_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+          # 鍵は標準入力で渡す。コマンド引数に入れると VM の ps に見えてしまうため
+          printf '%s' "$ANTHROPIC_API_KEY" |
           ssh -i ~/.ssh/deploy_key "${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}" '
             set -e
+            IFS= read -r KEY || true
             cd cocotte-vert
             git fetch origin main
             git checkout main
             git pull --ff-only origin main
+            # Secret があるときだけ .env を書き換える（未登録なら既存の値を残す）。
+            # sed で値を埋め込むと記号で壊れるため、行を消してから printf で足す
+            if [ -n "$KEY" ]; then
+              touch .env
+              grep -v "^ANTHROPIC_API_KEY=" .env > .env.new || true
+              printf "ANTHROPIC_API_KEY=%s\n" "$KEY" >> .env.new
+              mv .env.new .env
+              chmod 600 .env
+            fi
             docker compose --profile standalone up -d --build
             sleep 5
             curl -sf http://127.0.0.1:3000/health
           '
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

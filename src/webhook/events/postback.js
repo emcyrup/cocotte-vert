@@ -44,7 +44,7 @@ export function createPostbackHandler({ pool, lineClient, slack }) {
       if (event.replyToken) {
         await lineClient.reply(
           event.replyToken,
-          [{ type: 'text', text: 'ご確認ありがとうございます。お待ちしております！' }],
+          [{ type: 'text', text: 'ご確認ありがとうございます。わんちゃんのご来店をお待ちしております！' }],
           { customerId: reservation.customer_id }
         );
       }
@@ -98,7 +98,7 @@ export function createPostbackHandler({ pool, lineClient, slack }) {
           [
             {
               type: 'text',
-              text: 'ありがとうございます！またのご来店をお待ちしております。',
+              text: 'ありがとうございます！元気に過ごされていて安心しました。またのご来店をお待ちしております。',
             },
           ],
           { customerId: reservation.customer_id }
@@ -115,7 +115,7 @@ export function createPostbackHandler({ pool, lineClient, slack }) {
           [
             {
               type: 'text',
-              text: 'ご不便をおかけしております。詳しい状況をこのままメッセージでお知らせいただけますか？担当者より折り返しご連絡いたします。',
+              text: 'ご心配をおかけしております。わんちゃんのご様子をこのままメッセージでお知らせいただけますか？担当者より折り返しご連絡いたします。',
             },
           ],
           { customerId: reservation.customer_id }

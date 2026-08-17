@@ -4,7 +4,7 @@ import { formatJstDateTime } from '../../util/jst.js';
 
 function detailLines({ reservedAt, menu, staffName }) {
   const lines = [`【日時】${formatJstDateTime(new Date(reservedAt))}`];
-  if (menu) lines.push(`【メニュー】${menu}`);
+  if (menu) lines.push(`【コース】${menu}`);
   if (staffName) lines.push(`【担当】${staffName}`);
   return lines.join('\n');
 }
@@ -27,7 +27,7 @@ export function buildConfirmedMessage({ customerName, reservedAt, menu, staffNam
     text:
       `${customerName}様\nご予約が確定いたしました。\n\n` +
       `${detailLines({ reservedAt, menu, staffName })}\n\n` +
-      `ご来店を心よりお待ちしております。`,
+      `わんちゃんのご来店を心よりお待ちしております。`,
   };
 }
 

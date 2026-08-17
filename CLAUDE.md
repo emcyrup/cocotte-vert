@@ -20,7 +20,7 @@
 - LINE Messaging API（`@line/bot-sdk`）
 - LIFF（顧客情報登録フォーム）
 - Slack Incoming Webhook（スタッフ通知）
-- Claude API（Haiku。フォロー回答のネガポジ分類のみに使用）
+- Claude API（フォロー回答のネガポジ分類・シフト申請の読み取り・SNSキャプションの下書き。顧客へ送る文面は生成させない）
 - Vanilla JS（管理画面・LIFF画面。フレームワークは入れない）
 
 依存は最小限に保つ。新しいライブラリを追加する前に必ず提案して確認を取ること。

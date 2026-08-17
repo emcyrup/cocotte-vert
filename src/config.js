@@ -89,6 +89,10 @@ export function loadConfig(env = process.env) {
     staffNotifyChannel,
     staffLineGroupId: env.STAFF_LINE_GROUP_ID || null,
     anthropicApiKey: env.ANTHROPIC_API_KEY || null,
+    // SNS キャプションの下書きに使うモデル。写真を見て文章を書く用途なので、
+    // 分類（Haiku）より上のモデルを既定にしている。費用を抑えたい店舗は
+    // claude-haiku-4-5 に落とせるよう設定で変えられるようにしてある
+    captionModel: env.CAPTION_MODEL || 'claude-opus-5',
     sendMode,
     testLineUserId: env.TEST_LINE_USER_ID || null,
     dormantDailyLimit: Number(env.DORMANT_DAILY_LIMIT || 50),

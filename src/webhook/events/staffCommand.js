@@ -8,6 +8,7 @@
 import { SETTING_KEYS } from '../../settings.js';
 import { toPlainText } from '../../notify/staffNotifier.js';
 import { parseLinkCommand, parseBareCode } from './linkCommand.js';
+import { parseReservationQuery } from './reservationQuery.js';
 
 // 表記ゆれを吸収する。スペースと記号だけ落として比較する
 const COMMANDS = {
@@ -25,7 +26,9 @@ const linkedMessage = (name) =>
   'これから、Botとの1対1のトークにシフトのご希望を送っていただければ申請できます。\n' +
   '例：8/1 有休でお願いします';
 
-export function createStaffCommandHandler({ settings, lineClient, config, shiftService = null }) {
+export function createStaffCommandHandler({
+  settings, lineClient, config, shiftService = null, reservationQuery = null,
+}) {
   async function resolveGroupId() {
     const stored = await settings.get(SETTING_KEYS.staffLineGroupId).catch(() => null);
     return stored ?? config?.staffLineGroupId ?? null;
@@ -67,7 +70,8 @@ export function createStaffCommandHandler({ settings, lineClient, config, shiftS
     const link = shiftService ? parseLinkCommand(text) : null;
     const bare = shiftService && !link ? parseBareCode(text) : null;
     const command = COMMANDS[normalize(text)];
-    if (!command && !link && !bare) return false;
+    const resvQuery = reservationQuery && !link && !bare ? parseReservationQuery(text) : null;
+    if (!command && !link && !bare && !resvQuery) return false;
 
     const staffGroupId = await resolveGroupId();
     const isStaffGroup = Boolean(staffGroupId) && event.source.groupId === staffGroupId;
@@ -114,6 +118,21 @@ export function createStaffCommandHandler({ settings, lineClient, config, shiftS
 
     // 問い合わせ系のコマンドは、店内の数字を第三者に見せないため対象グループ以外では黙る
     if (!isStaffGroup) return false;
+
+    // 予約の問い合わせ。読み取り専用なので、返すのは一覧だけ（ここからは変更できない）
+    if (resvQuery) {
+      // お客様の氏名を含む本文を出すため、ログには日付と件数だけ残す
+      console.log(`[resv-query] date=${resvQuery.date}`);
+      let body;
+      try {
+        body = await reservationQuery.summarize(resvQuery.date);
+      } catch (err) {
+        console.error(`[resv-query] 取得に失敗: ${err.message}`);
+        body = '予約を取得できませんでした。少し待ってからもう一度お試しください。';
+      }
+      await replyText(event, body);
+      return true;
+    }
 
     if (command === 'jobSummary') {
       const summary = await settings.get(SETTING_KEYS.lastJobSummary);

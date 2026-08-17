@@ -15,7 +15,8 @@ export function buildPreReminderMessage({ customerName, reservedAt, menu, staffN
   });
 
   const details = [detailRow('日時', when)];
-  if (menu) details.push(detailRow('メニュー', menu));
+  // 店舗のメニュー表記に合わせて「コース」と呼ぶ（画面・料金表と揃える）
+  if (menu) details.push(detailRow('コース', menu));
   if (staffName) details.push(detailRow('担当', staffName));
 
   return {
@@ -31,7 +32,7 @@ export function buildPreReminderMessage({ customerName, reservedAt, menu, staffN
           { type: 'text', text: `${customerName}様`, weight: 'bold', size: 'md' },
           {
             type: 'text',
-            text: 'ご予約日が近づいてまいりましたのでご連絡いたします。',
+            text: 'わんちゃんのご予約日が近づいてまいりましたので、ご連絡いたします。',
             size: 'sm',
             wrap: true,
           },

@@ -268,3 +268,74 @@ test('期限切れの連携コードはコードとして案内する（名前�
 
   assert.match(replies[0], /連携コードを確認できませんでした/);
 });
+
+// ---- 予約の問い合わせ（グループ限定）----
+// お客様の氏名を含む一覧を返すため、「設定済みのスタッフグループ以外では返さない」ことが
+// この機能でいちばん大事な性質。壊れると顧客情報が第三者に見える
+
+function makeResvDeps({ staffLineGroupId = STAFF_GROUP } = {}) {
+  const replies = [];
+  const asked = [];
+  return {
+    replies,
+    asked,
+    handler: createStaffCommandHandler({
+      settings: { get: async () => null, set: async () => {} },
+      lineClient: { reply: async (_t, m) => replies.push(m[0].text) },
+      config: { staffLineGroupId },
+      reservationQuery: {
+        summarize: async (date) => {
+          asked.push(date);
+          return `${date} の一覧です`;
+        },
+      },
+    }),
+  };
+}
+
+test('スタッフグループの「今日の予約」には一覧を返す', async () => {
+  const { handler, replies, asked } = makeResvDeps();
+  assert.equal(await handler(groupEvent('今日の予約'), '今日の予約'), true);
+  assert.equal(asked.length, 1);
+  assert.match(replies[0], /の一覧です/);
+});
+
+test('別のグループには予約を返さない（顧客名を第三者に見せない）', async () => {
+  const { handler, replies, asked } = makeResvDeps();
+  assert.equal(await handler(groupEvent('今日の予約', 'C-other'), '今日の予約'), false);
+  assert.deepEqual(asked, []);
+  assert.deepEqual(replies, []);
+});
+
+test('スタッフグループが未設定なら予約を返さない', async () => {
+  const { handler, replies, asked } = makeResvDeps({ staffLineGroupId: null });
+  assert.equal(await handler(groupEvent('今日の予約'), '今日の予約'), false);
+  assert.deepEqual(asked, []);
+  assert.deepEqual(replies, []);
+});
+
+test('1対1トーク（顧客）からは予約を返さない', async () => {
+  const { handler, replies, asked } = makeResvDeps();
+  const dm = { source: { type: 'user', userId: 'U-customer' }, replyToken: 'rt' };
+  assert.equal(await handler(dm, '今日の予約'), false);
+  assert.deepEqual(asked, []);
+  assert.deepEqual(replies, []);
+});
+
+test('予約と関係ない発言はグループでも横取りしない', async () => {
+  const { handler, asked } = makeResvDeps();
+  assert.equal(await handler(groupEvent('おつかれさまです'), 'おつかれさまです'), false);
+  assert.deepEqual(asked, []);
+});
+
+test('取得に失敗しても落ちず、その旨を返す', async () => {
+  const replies = [];
+  const handler = createStaffCommandHandler({
+    settings: { get: async () => null, set: async () => {} },
+    lineClient: { reply: async (_t, m) => replies.push(m[0].text) },
+    config: { staffLineGroupId: STAFF_GROUP },
+    reservationQuery: { summarize: async () => { throw new Error('db down'); } },
+  });
+  assert.equal(await handler(groupEvent('今日の予約'), '今日の予約'), true);
+  assert.match(replies[0], /取得できませんでした/);
+});

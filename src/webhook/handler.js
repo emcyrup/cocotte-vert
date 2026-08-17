@@ -8,6 +8,7 @@ import { createJoinHandler } from './events/join.js';
 import { createLeaveHandler } from './events/leave.js';
 import { createStaffCommandHandler } from './events/staffCommand.js';
 import { createStaffShiftHandler } from './events/staffShift.js';
+import { createReservationQuery } from './events/reservationQuery.js';
 
 export function createWebhookHandler({
   pool,
@@ -21,7 +22,11 @@ export function createWebhookHandler({
   config = null,
   liffUrl = null,
 }) {
-  const staffCommand = createStaffCommandHandler({ settings, lineClient, config, shiftService });
+  // 予約の問い合わせはスタッフグループ限定（staffCommand 側で判定）。読み取りだけを渡す
+  const reservationQuery = createReservationQuery({ pool });
+  const staffCommand = createStaffCommandHandler({
+    settings, lineClient, config, shiftService, reservationQuery,
+  });
   const staffShift =
     shiftService && shiftParser
       ? createStaffShiftHandler({ shiftService, shiftParser, lineClient, slack })

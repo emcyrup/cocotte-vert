@@ -32,6 +32,7 @@ import { createAdminRouter } from './http/adminRoutes.js';
 import { createImportRouter } from './http/importRoutes.js';
 import { createAdminImportRouter, MAX_CSV_BYTES } from './http/adminImportRoutes.js';
 import { createStaffLinkRouter } from './http/staffLinkRoutes.js';
+import { createStaffReserveRouter } from './http/staffReserveRoutes.js';
 import { createSnsRouter } from './http/snsRoutes.js';
 import { createInstagramClient } from './instagram/client.js';
 import { createThreadsClient } from './threads/client.js';
@@ -92,6 +93,7 @@ app.post(
     config,
     liffUrl: config.liffUrl,
     liffStaffUrl: config.liffStaffUrl,
+    liffStaffReserveUrl: config.liffStaffReserveUrl,
   })
 );
 
@@ -219,6 +221,13 @@ app.post('/liff/reserve/options', async (req, res) => {
 // 本人確認とグループ参加の確認はルーター側にまとめてある
 app.use('/liff/staff', createStaffLinkRouter({
   verifyIdToken, settings, config, lineClient, shiftService,
+}));
+
+// スタッフ用の予約登録フォーム。「予約登録」と送ると返るボタンから開く。
+// 文章の読み取りと違い、お客様は探して選ぶので取り違えが起きない
+app.use('/liff/staff-reserve', createStaffReserveRouter({
+  verifyIdToken, settings, config, lineClient, shiftService,
+  pool, reservationService, drafts: reservationDrafts, store,
 }));
 
 app.post('/liff/reserve', async (req, res) => {

@@ -218,5 +218,9 @@ export function createReservationDrafts({ pool, reservationService }) {
     }
   }
 
-  return { findCustomers, findStaffByName, create, get, pickCustomer, cancel, register };
+  // createCustomer は予約登録フォーム（LIFF）からも使う。電話番号の重なりを
+  // 同じ扱いにしたいので、入口ごとに書かず1つを共有する
+  return {
+    findCustomers, findStaffByName, create, get, pickCustomer, cancel, register, createCustomer,
+  };
 }

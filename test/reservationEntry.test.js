@@ -42,7 +42,7 @@ function makeFakes({
   const calls = [];
   return {
     replies, created, errors, calls,
-    lineClient: { reply: async (_t, messages) => replies.push(messages[0]) },
+    lineClient: { reply: async (_t, messages) => replies.push(...messages) },
     slack: { notify: async () => {}, notifyError: async (c, e) => errors.push({ c, m: e.message }) },
     entryParser: { parse: async (args) => { calls.push(args); return entry; } },
     drafts: {
@@ -133,6 +133,36 @@ test('同名が複数いたら、どの方かを選ばせる（勝手に決め�
   assert.match(labels[0], /下4桁 2222/);
   assert.doesNotMatch(JSON.stringify(message), /09011112222/);
   assert.match(labels[1], /電話未登録/);
+});
+
+test('「予約登録」だけなら、フォームのボタンを返す（読み取りに頼らせない）', async () => {
+  const f = makeFakes();
+  const entry = createReservationEntry({ ...f, formUrl: 'https://liff.line.me/1-x/staff-reserve.html' });
+
+  await entry.handle(groupEvent, '');
+
+  assert.equal(f.replies.length, 2, '案内文とボタンの2通');
+  assert.match(f.replies[0].text, /予約の登録ですね/);
+  assert.equal(f.replies[1].type, 'flex');
+  assert.match(JSON.stringify(f.replies[1]), /staff-reserve\.html/);
+  assert.equal(f.calls.length, 0, '読み取りには回さない');
+});
+
+test('読み取れなかったときも、フォームのボタンを添える', async () => {
+  const f = makeFakes({ entry: { isRequest: false } });
+  const entry = createReservationEntry({ ...f, formUrl: 'https://liff.line.me/1-x/staff-reserve.html' });
+
+  await entry.handle(groupEvent, 'よろしく');
+
+  assert.match(f.replies[0].text, /フォームからも入れられます/);
+  assert.equal(f.replies[1].type, 'flex');
+});
+
+test('フォームが使えない環境では、これまでどおり書き方を案内する', async () => {
+  const f = makeFakes();
+  await createReservationEntry(f).handle(groupEvent, '');
+  assert.equal(f.replies.length, 1);
+  assert.match(f.replies[0].text, /予約登録 8\/20 14時/);
 });
 
 test('読み取れない・本文が無いときは書き方を案内する', async () => {

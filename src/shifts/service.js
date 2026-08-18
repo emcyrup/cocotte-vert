@@ -18,6 +18,9 @@ const KIND_LABELS = {
 
 const LINK_CODE_TTL_HOURS = 24;
 
+// スタッフ名の長さの上限。表やシフト表の列が崩れない範囲に収める
+const MAX_STAFF_NAME = 30;
+
 const weekdayFmt = new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', weekday: 'short' });
 
 /** 「8/1(土) 有休」「7/31(金) 時間休 10:00〜12:00」の形に整える */
@@ -95,17 +98,56 @@ export function createShiftService({ pool, lineClient, slack, settings = null, c
     return { ok: true, staff: rows[0] };
   }
 
-  /**
-   * LIFF のスタッフ登録画面に出す一覧。
-   * 本人が自分の名前を選ぶだけにすることで、同姓のスタッフがいても取り違えが起きない。
-   * line_user_id そのものは返さない（画面に出す必要がない）。
-   */
-  async function listStaffForLink() {
+  /** 名前が一致する在職スタッフ。姓名の間の空白は入れ方が揺れるため、除いて比べる */
+  async function listActiveStaffByName(name) {
     const { rows } = await pool.query(
       `SELECT id, name, (line_user_id IS NOT NULL) AS linked
-         FROM staff WHERE active = true ORDER BY id`
+         FROM staff
+        WHERE active = true
+          AND replace(replace(name, ' ', ''), '　', '')
+            = replace(replace($1, ' ', ''), '　', '')
+        ORDER BY id`,
+      [name]
     );
     return rows;
+  }
+
+  /**
+   * スタッフ登録画面で入力された名前で紐付ける。
+   *
+   * 名簿に無ければ新しいスタッフとして作る（店長が先に登録しておかなくても始められる）。
+   * 同姓が複数いるときは決めようがないため、候補を返して本人に選んでもらう。
+   */
+  async function linkStaffByTypedName({ lineUserId, name }) {
+    const clean = String(name ?? '').replace(/[\s　]+/g, ' ').trim();
+    if (!clean || clean.length > MAX_STAFF_NAME) return { ok: false, error: 'invalid_name' };
+
+    // この LINE が今どのスタッフのものか。同姓の判断にも使う
+    const mine = await findStaffByLineUserId(lineUserId);
+
+    const matches = await listActiveStaffByName(clean);
+    if (matches.length > 1) return { ok: false, error: 'ambiguous', candidates: matches };
+    if (matches.length === 1) {
+      const only = matches[0];
+      // 同じ名前の人が既に別の LINE で登録済み。黙って上書きすると先に登録した人の
+      // 連携が消えるため、区別の付く名前を入れ直してもらう
+      if (only.linked && String(mine?.id ?? '') !== String(only.id)) {
+        return { ok: false, error: 'name_taken', staff: { name: only.name } };
+      }
+      return linkStaffById({ lineUserId, staffId: only.id });
+    }
+
+    // 名簿に無いので新しく作る。作る前に、この LINE が既に別のスタッフのものでないかを見る
+    // （先に作ってから弾くと、誰も使わないスタッフが名簿に残るため）
+    if (mine) return { ok: false, error: 'already_linked_to_other', staff: mine };
+
+    // 退職者と同じ名前でも止めない。前任者と姓が同じだけの別人、ということがあるため
+    // （在職者に同じ名前がいる場合だけ、上の name_taken で入れ直してもらう）
+    const { rows } = await pool.query(
+      `INSERT INTO staff (name, line_user_id) VALUES ($1, $2) RETURNING id, name`,
+      [clean, lineUserId]
+    );
+    return { ok: true, staff: rows[0], created: true };
   }
 
   /**
@@ -116,6 +158,9 @@ export function createShiftService({ pool, lineClient, slack, settings = null, c
     const { rows } = await pool.query(
       `UPDATE staff SET line_user_id = $1, link_code = NULL, link_code_expires_at = NULL
        WHERE id = $2 AND active = true
+         -- 既に別の人の LINE が入っているスタッフは奪えない（先に登録した人の連携が消えるため）
+         AND (line_user_id IS NULL OR line_user_id = $1)
+         -- この LINE が別のスタッフのものになっていないこと
          AND NOT EXISTS (SELECT 1 FROM staff o WHERE o.line_user_id = $1 AND o.id <> $2)
        RETURNING id, name`,
       [lineUserId, staffId]
@@ -123,11 +168,14 @@ export function createShiftService({ pool, lineClient, slack, settings = null, c
     if (rows.length > 0) return { ok: true, staff: rows[0] };
 
     // 更新できなかった理由を分けて返す。画面の案内文が変わるため
-    const { rows: exists } = await pool.query(
-      `SELECT 1 FROM staff WHERE id = $1 AND active = true`,
+    const { rows: target } = await pool.query(
+      `SELECT line_user_id FROM staff WHERE id = $1 AND active = true`,
       [staffId]
     );
-    if (exists.length === 0) return { ok: false, error: 'not_found' };
+    if (target.length === 0) return { ok: false, error: 'not_found' };
+    if (target[0].line_user_id && target[0].line_user_id !== lineUserId) {
+      return { ok: false, error: 'staff_taken' };
+    }
     return { ok: false, error: 'already_linked_to_other' };
   }
 
@@ -367,7 +415,8 @@ export function createShiftService({ pool, lineClient, slack, settings = null, c
     issueLinkCode,
     linkStaffByCode,
     linkStaffByName,
-    listStaffForLink,
+    listActiveStaffByName,
+    linkStaffByTypedName,
     linkStaffById,
     listStaffLineStatus,
     upsertShift,

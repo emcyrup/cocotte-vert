@@ -189,7 +189,7 @@ WHERE c.line_user_id IS NOT NULL
 | `follow` | `customers` に line_user_id を upsert。あいさつメッセージ（**通数無料**）で LIFF 登録を案内 |
 | `unfollow` | `is_blocked = true` を立てる。以降の全配信対象から外れる |
 | `message` | スタッフグループのコマンド（4-2）→ 電話番号らしき文字列なら突合 → それ以外はフォロー回答として分類 |
-| `postback` | `action` で分岐（confirm / followup / opt_out / shift） |
+| `postback` | `action` で分岐（confirm / followup / opt_out / shift / resv） |
 
 署名検証（`x-line-signature`）は必須。検証失敗は 401 で即返す。
 

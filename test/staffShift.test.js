@@ -284,3 +284,44 @@ test('連携済みスタッフが6桁を送っても、シフト申請の処理�
   assert.equal(handled, true);
   assert.match(f.replies[0].text, /読み取れませんでした/, 'コード不一致で処理が逸れない');
 });
+
+// ---- 1:1 からの予約登録 ----
+
+test('連携済みスタッフの「予約登録 …」は予約の処理へ渡す', async () => {
+  const f = makeFakes({
+    staff: { id: 3, name: '高橋' },
+    parsed: { isRequest: true, entries: [{ date: '2026-08-01', kind: 'yukyu', startTime: null, endTime: null, reason: null }] },
+  });
+  const handled = [];
+  const handler = createStaffShiftHandler({
+    ...f,
+    reservationEntry: { handle: async (_e, body) => { handled.push(body); return true; }, decide: async () => {} },
+  });
+
+  const text = '予約登録 8/20 14時 田中花子 カット';
+  assert.equal(await handler(userEvent(text), text), true);
+  assert.deepEqual(handled, ['8/20 14時 田中花子 カット']);
+  // お客様の予約をシフト申請として保存してしまわない
+  assert.equal(f.created.length, 0);
+  assert.equal(f.replies.length, 0);
+});
+
+test('未連携（＝顧客）が「予約登録」と送っても予約にしない', async () => {
+  const f = makeFakes({ staff: null });
+  const handled = [];
+  const handler = createStaffShiftHandler({
+    ...f,
+    reservationEntry: { handle: async (_e, body) => { handled.push(body); return true; }, decide: async () => {} },
+  });
+
+  assert.equal(await handler(userEvent('予約登録 8/20 14時 山田'), '予約登録 8/20 14時 山田'), false);
+  assert.deepEqual(handled, []);
+});
+
+test('予約の登録を渡していなければ、これまでどおりシフトとして扱う', async () => {
+  const f = makeFakes({ staff: { id: 3, name: '高橋' }, parsed: { isRequest: false, entries: [] } });
+  const handler = createStaffShiftHandler(f);
+
+  assert.equal(await handler(userEvent('予約登録 8/20 14時 田中'), '予約登録 8/20 14時 田中'), true);
+  assert.match(f.replies[0].text, /読み取れませんでした/);
+});

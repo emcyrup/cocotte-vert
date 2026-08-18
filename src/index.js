@@ -22,6 +22,8 @@ import { createBirthdayJob } from './jobs/birthday.js';
 import { createFollowupClassifier } from './ai/classifyFollowup.js';
 import { createCaptionWriter } from './ai/writeCaption.js';
 import { createShiftRequestParser } from './ai/parseShiftRequest.js';
+import { createReservationEntryParser } from './ai/parseReservationEntry.js';
+import { createReservationDrafts } from './reservations/draftService.js';
 import { createShiftService } from './shifts/service.js';
 import { createPlanService } from './plans/service.js';
 import { createReservationService } from './reservations/service.js';
@@ -51,6 +53,12 @@ const classifier = createFollowupClassifier({ apiKey: config.anthropicApiKey });
 // シフト変更申請（スタッフが公式LINE へ自由記述で送る）
 const shiftParser = createShiftRequestParser({ apiKey: config.anthropicApiKey });
 const shiftService = createShiftService({ pool, lineClient, slack, settings, config });
+// 予約の書き込みは必ずこのアダプタを通す。webhook より前に用意する必要があるため、
+// 取り込み・LIFF より先にここで作る
+const reservationService = createReservationService({ pool, slack, lineClient });
+// スタッフが公式LINE から入れる予約。読み取った内容は下書きに置き、押されたときだけ本予約にする
+const entryParser = createReservationEntryParser({ apiKey: config.anthropicApiKey });
+const reservationDrafts = createReservationDrafts({ pool, reservationService });
 // 回数券・保育コースの回数管理（残回数は元帳の合計から導く）
 const planService = createPlanService({ pool });
 
@@ -76,6 +84,8 @@ app.post(
     settings,
     shiftService,
     shiftParser,
+    reservationDrafts,
+    entryParser,
     config,
     liffUrl: config.liffUrl,
   })
@@ -168,7 +178,6 @@ app.post('/liff/register', async (req, res) => {
 });
 
 // ---- 予約データの取り込み（Phase 6）----
-const reservationService = createReservationService({ pool, slack, lineClient });
 
 // LIFF 予約フォーム。顧客の特定は ID トークン検証で得た sub のみを信用する
 app.post('/liff/reserve/options', async (req, res) => {

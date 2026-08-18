@@ -7,6 +7,7 @@
 
 import { formatShift } from '../../shifts/service.js';
 import { parseLinkCommand, parseBareCode } from './linkCommand.js';
+import { parseEntryCommand } from './reservationEntry.js';
 
 const jstDateFmt = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Asia/Tokyo',
@@ -130,7 +131,9 @@ const linkedMessage = (name) =>
   '内容を確認のうえお返ししますので、よろしければ「確定」を押すとシフト表に入ります。\n' +
   '例：8/1 有休でお願いします';
 
-export function createStaffShiftHandler({ shiftService, shiftParser, lineClient, slack, now = () => new Date() }) {
+export function createStaffShiftHandler({
+  shiftService, shiftParser, lineClient, slack, reservationEntry = null, now = () => new Date(),
+}) {
   const handleShiftAnswer = createShiftAnswerHandler({ shiftService, lineClient, slack });
 
   async function replyText(event, text) {
@@ -197,6 +200,10 @@ export function createStaffShiftHandler({ shiftService, shiftParser, lineClient,
 
     const staff = await shiftService.findStaffByLineUserId(event.source.userId);
     if (!staff) return false;
+
+    // 予約の登録。シフトの解釈へ回す前に見る（お客様の予約をシフト申請と読ませないため）
+    const entryBody = reservationEntry ? parseEntryCommand(text) : null;
+    if (entryBody !== null) return reservationEntry.handle(event, entryBody);
 
     // 内容確認への返事。申請の解釈より先に見る（「確定」を新しい申請と読ませないため）
     const answer = parseShiftAnswer(text);

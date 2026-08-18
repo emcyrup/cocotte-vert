@@ -172,3 +172,25 @@ test('シフトの返事として知らない値は無視する', async () => {
   assert.deepEqual(calls, []);
   assert.equal(f.replies.length, 0);
 });
+
+test('予約の確認ボタンは予約側の処理へ渡す', async () => {
+  const f = makeFakes();
+  const calls = [];
+  const handler = createPostbackHandler({
+    ...f,
+    reservationEntry: { handle: async () => true, decide: async (_e, params) => calls.push(params.get('v')) },
+  });
+
+  await handler(makeEvent('action=resv&v=ok&d=7'));
+  await handler(makeEvent('action=resv&v=no&d=7'));
+  await handler(makeEvent('action=resv&v=pick&d=7&c=3'));
+
+  assert.deepEqual(calls, ['ok', 'no', 'pick']);
+});
+
+test('予約の処理を渡していなければ、何も起きない', async () => {
+  const f = makeFakes();
+  const handler = createPostbackHandler(f);
+  await handler(makeEvent('action=resv&v=ok&d=7'));
+  assert.equal(f.replies.length, 0);
+});

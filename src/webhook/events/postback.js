@@ -2,10 +2,11 @@
 //   confirm  — 前々日確認への返答（ok / change）
 //   followup — 来店7日後フォローへの返答（good / concern）
 //   opt_out  — 販促配信の停止希望
+//   shift    — スタッフ本人のシフト変更確認への返答（confirm / hold / cancel）
 // 応答メッセージは通数無料のため、必ず reply で返す。
 import { formatJstDateTime } from '../../util/jst.js';
 
-export function createPostbackHandler({ pool, lineClient, slack }) {
+export function createPostbackHandler({ pool, lineClient, slack, shiftAnswer = null }) {
   // 本人の予約であることを確認してから処理する（他人の予約 ID を投げられても無視）
   async function findOwnReservation(reservationId, lineUserId) {
     const { rows } = await pool.query(
@@ -172,6 +173,12 @@ export function createPostbackHandler({ pool, lineClient, slack }) {
       await handleFollowup(event, params);
     } else if (action === 'opt_out') {
       await handleOptOut(event);
+    } else if (action === 'shift') {
+      // 連携済みスタッフ以外が押しても handleShiftAnswer が false を返すだけで何も起きない
+      const answer = params.get('v');
+      if (shiftAnswer && ['confirm', 'hold', 'cancel'].includes(answer)) {
+        await shiftAnswer(event, answer);
+      }
     }
     // 未知の action は将来のフェーズ用。ログだけ残して無視する
     else if (action) {

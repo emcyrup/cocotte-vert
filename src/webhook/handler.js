@@ -7,7 +7,7 @@ import { createPostbackHandler } from './events/postback.js';
 import { createJoinHandler } from './events/join.js';
 import { createLeaveHandler } from './events/leave.js';
 import { createStaffCommandHandler } from './events/staffCommand.js';
-import { createStaffShiftHandler } from './events/staffShift.js';
+import { createStaffShiftHandler, createShiftAnswerHandler } from './events/staffShift.js';
 import { createReservationQuery } from './events/reservationQuery.js';
 
 export function createWebhookHandler({
@@ -31,6 +31,10 @@ export function createWebhookHandler({
     shiftService && shiftParser
       ? createStaffShiftHandler({ shiftService, shiftParser, lineClient, slack })
       : null;
+  // 内容確認のボタン（確定・保留・やめる）は postback で返るため、文字での返事と同じ処理へ回す
+  const shiftAnswer = shiftService
+    ? createShiftAnswerHandler({ shiftService, lineClient, slack })
+    : null;
   // グループの「会員情報」コマンドで案内する店舗管理画面（顧客一覧 → カルテで参照・編集）の URL
   const adminUrl = config?.publicBaseUrl ? `${config.publicBaseUrl}/mock/#list` : null;
   const handlers = {
@@ -39,7 +43,7 @@ export function createWebhookHandler({
     message: createMessageHandler({
       pool, lineClient, slack, linkService, classifier, staffCommand, staffShift, adminUrl,
     }),
-    postback: createPostbackHandler({ pool, lineClient, slack }),
+    postback: createPostbackHandler({ pool, lineClient, slack, shiftAnswer }),
     join: createJoinHandler({ lineClient, settings, slack }),
     leave: createLeaveHandler({ settings, slack }),
   };

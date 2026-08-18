@@ -1097,16 +1097,18 @@ tr.await td{background:var(--warn-soft)}
         <div class="chat">
           <span class="tstamp">今日 21:47</span>
           <div class="bub staff"><span class="who">高橋</span>8/1(土) 有休お願いします。子どもの行事のため</div>
-          <div class="bub bot"><span class="who">ここっとベール bot</span>シフト変更を受け付けました。<br><b>高橋さん：8/1(土) 有休</b><br>店長の承認後にシフト表・予約カレンダーへ反映されます。</div>
+          <div class="bub bot"><span class="who">ここっとベール bot</span>この内容でよろしいですか？<br><b>高橋さん：8/1(土) 有休</b><br>［確定］［保留］［やめる］</div>
+          <div class="bub staff"><span class="who">高橋</span>確定</div>
+          <div class="bub bot"><span class="who">ここっとベール bot</span>シフト表に反映しました。<br><b>8/1(土) 有休</b></div>
           <span class="tstamp">今日 22:03</span>
           <div class="bub staff"><span class="who">山本</span>7/31 10時から12時まで時間休もらえますか</div>
-          <div class="bub bot"><span class="who">ここっとベール bot</span>シフト変更を受け付けました。<br><b>山本さん：7/31(金) 時間休 10:00〜12:00</b><br>承認待ちです。</div>
+          <div class="bub bot"><span class="who">ここっとベール bot</span>この内容でよろしいですか？<br><b>山本さん：7/31(金) 時間休 10:00〜12:00</b><br>［確定］［保留］［やめる］</div>
         </div>
         <p style="font-size:12px;color:var(--muted);margin:10px 0 0">スタッフが普段の公式LINEにメッセージを送るだけで申請できます（スタッフのLINEアカウントは事前登録で識別。顧客には通常のメニューが表示されます）。</p>
       </div>
     </div>
     <div class="card">
-      <div class="hd"><h2>承認待ちの申請</h2><span class="pill warn" id="reqcnt">2件</span></div>
+      <div class="hd"><h2>シフト変更の申請</h2><span class="pill warn" id="reqcnt">2件</span></div>
       <div id="reqs"></div>
       <div class="bd" style="border-top:1px solid var(--line)">
         <p style="font-size:12px;color:var(--muted);margin:0" id="shift-approve-note">「承認」すると上のシフト表と予約カレンダーに即時反映され、申請したスタッフへLINEで結果が自動通知されます（実際に承認を押して試せます）。</p>
@@ -2432,7 +2434,12 @@ const SHIFT_REQS = [
   { name:'山本', day:'7/31(金)', col:5, kind:'jikan', cell:'時間休<br>10-12', short:'時間休 10:00〜12:00', note:'' },
 ];
 const SHIFT_KIND_LABELS = { work:'出勤', am:'AM半休', pm:'PM半休', koukyu:'公休', yukyu:'有休', jikan:'時間休' };
-const SHIFT_STATUS = { pending:['承認待ち','warn'], approved:['承認済み','good'], rejected:['却下','mut'] };
+// pending は「Bot が内容を返して本人の返事を待っている」状態。
+// held は本人が「保留」と答えたもので、店長が判断する
+const SHIFT_STATUS = {
+  pending:['本人の返事待ち','mut'], held:['本人が保留','warn'],
+  approved:['反映済み','good'], rejected:['取りやめ','mut'],
+};
 const reqsEl = document.getElementById('reqs'), reqcnt = document.getElementById('reqcnt');
 let pendingReqs = SHIFT_REQS.length;
 let shiftReqs = SHIFT_REQS;   // 実運用モードではサーバの実データに差し替わる
@@ -2472,8 +2479,11 @@ function renderShiftReqs(){
       // 解釈がずれていないか承認前に確かめられるよう、申請の原文も見せる
       + (r.raw ? '<br><span style="opacity:.85">原文: ' + r.raw + '</span>' : '') + '</div></div>';
     const acts = document.createElement('div'); acts.className = 'acts2';
-    if (adminLive && r.status !== 'pending') {
-      const [label, cls] = SHIFT_STATUS[r.status];
+    // 決着済み（反映済み・取りやめ）は状態だけを見せる。
+    // 本人の返事待ちと保留は、店長が代わりに承認・却下できる余地を残す
+    const open = !adminLive || r.status === 'pending' || r.status === 'held';
+    if (!open) {
+      const [label, cls] = SHIFT_STATUS[r.status] || [r.status, 'mut'];
       acts.innerHTML = '<span class="pill ' + cls + '">' + label + '</span>';
     } else {
       const done = msg => {
@@ -2510,13 +2520,19 @@ function renderShiftReqs(){
         r.name + ' ' + r.day + ' を' + r.short + 'に更新し、LINEで通知しました',
         r.col != null ? { col: r.col, kind: r.kind, cell: r.cell } : null));
       ng.addEventListener('click', () => decide('rejected', r.name + 'へ却下をLINEで通知しました', null));
+      // 「本人の返事待ち」と「本人が保留」は同じボタンを出すため、どちらなのかを添える
+      if (adminLive) {
+        const [label, cls] = SHIFT_STATUS[r.status] || [r.status, 'mut'];
+        const st = document.createElement('span'); st.className = 'pill ' + cls; st.textContent = label;
+        acts.appendChild(st);
+      }
       acts.append(ok, ng);
     }
     row.appendChild(acts);
     reqsEl.appendChild(row);
   });
   if (adminLive) {
-    const waiting = shiftReqs.filter(r => r.status === 'pending').length;
+    const waiting = shiftReqs.filter(r => r.status === 'pending' || r.status === 'held').length;
     reqcnt.textContent = waiting ? waiting + '件' : 'なし';
     reqcnt.className = 'pill ' + (waiting ? 'warn' : 'mut');
   }
@@ -4365,6 +4381,8 @@ async function loadFamiliesLive(){
   document.getElementById('shift-line-bd').innerHTML =
     '<p class="hint">連携したスタッフが公式LINEに希望を送ると、申請として右に届きます。'
     + '文章は自由です（例：<b>8/1 有休お願いします</b>）。</p>'
+    + '<p class="hint">送るとBotが読み取った内容を返します。本人が<b>確定</b>と答えるとシフト表へ反映、'
+    + '<b>保留</b>と答えたものは店長の判断待ちとして右に残ります。</p>'
     + '<p class="hint"><b>連携のしかた</b><br>'
     + '① 上の「連携コード発行」を押し、本人が公式LINEへ<b>その6桁を送る</b><br>'
     + '② スタッフ用グループで、本人が「<b>スタッフ登録 高橋</b>」と名前を送る<br>'
@@ -4388,10 +4406,11 @@ async function loadFamiliesLive(){
   renderMenus(); fillMenuSelect();
   renderOwners(qEl.value);
 
-  // 週のシフト表そのものはまだ実データを持たないため、承認結果は下の一覧に出ることを明示する
+  // 誰が確定させるのかが変わったため、店長が押す場面を先に書く
   document.getElementById('shift-approve-note').innerHTML =
-    '承認すると<b>シフト表に反映</b>され、スタッフへLINEで通知されます。'
-    + 'AI の読み違いがないか「原文」を確かめてから承認してください。';
+    '申請は<b>本人が公式LINEで「確定」と答えた時点でシフト表に反映</b>されます。'
+    + '<b>本人が保留</b>と答えたものだけ、店長が内容を見て承認・却下してください。'
+    + 'AI の読み違いがないか「原文」を確かめてから承認すると安全です。';
   // 実運用モードの選択は飼い主様（顧客）単位。初期表示の文言もそろえる
   document.querySelectorAll('#nr-cust option, #ts-cust option').forEach(o => {
     if (o.value === '') o.textContent = '飼い主様を選択';

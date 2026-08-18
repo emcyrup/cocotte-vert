@@ -129,8 +129,8 @@ export function createShiftService({ pool, lineClient, slack, settings = null, c
 
   /**
    * 解釈済みの申請を保存する。
-   * 同じ日について承認待ちが残っていると承認者がどちらを採るか判断できないため、
-   * 新しい申請で置き換える（承認済みの履歴には手を付けない）。
+   * 同じ日について未決着（返事待ち・保留）が残っていると、どちらを採るか判断できないため、
+   * 新しい申請で置き換える（確定・却下済みの履歴には手を付けない）。
    */
   async function createRequests({ staffId, entries, rawText }) {
     const created = [];
@@ -138,7 +138,7 @@ export function createShiftService({ pool, lineClient, slack, settings = null, c
     for (const e of entries) {
       const { rowCount } = await pool.query(
         `DELETE FROM shift_requests
-         WHERE staff_id = $1 AND target_date = $2 AND status = 'pending'`,
+         WHERE staff_id = $1 AND target_date = $2 AND status IN ('pending', 'held')`,
         [staffId, e.date]
       );
       replaced += rowCount;
@@ -163,7 +163,7 @@ export function createShiftService({ pool, lineClient, slack, settings = null, c
        FROM shift_requests r
        JOIN staff s ON s.id = r.staff_id
        WHERE ($1::text IS NULL OR r.status::text = $1)
-       ORDER BY (r.status = 'pending') DESC, r.target_date, r.id
+       ORDER BY (r.status IN ('pending', 'held')) DESC, r.target_date, r.id
        LIMIT 200`,
       [status]
     );
@@ -219,13 +219,15 @@ export function createShiftService({ pool, lineClient, slack, settings = null, c
    * 承認・却下。結果は必ず申請したスタッフへ LINE で伝える。
    * 通知に失敗しても判断自体は確定させ、Slack でスタッフに知らせる
    * （握り潰すと「承認したのに本人が知らない」状態になるため）。
+   *
+   * 本人が「保留」と答えた held も店長の判断対象。決着済み（approved / rejected）は動かさない。
    */
   async function decide({ id, status }) {
     if (!['approved', 'rejected'].includes(status)) return { ok: false, error: 'invalid_status' };
 
     const { rows } = await pool.query(
       `UPDATE shift_requests SET status = $2, decided_at = now()
-       WHERE id = $1 AND status = 'pending'
+       WHERE id = $1 AND status IN ('pending', 'held')
        RETURNING id`,
       [id, status]
     );
@@ -270,6 +272,61 @@ export function createShiftService({ pool, lineClient, slack, settings = null, c
     return { ok: true, request, notified: delivery === 'sent', delivery };
   }
 
+
+  // ---- 本人がチャットで確定・保留する ----
+  //
+  // 店長の承認を挟まず、申請した本人の「確定」でシフト表へ反映する運用。
+  // 取り違えを防ぐため、更新できるのは **その本人の pending の申請だけ** に絞る
+  // （staff_id を条件に入れる。id だけで更新すると他人の申請を動かせてしまう）。
+
+  /** 本人の返事待ちになっている申請を、新しい順に返す */
+  async function listPendingForStaff(staffId) {
+    const { rows } = await pool.query(
+      `SELECT ${REQUEST_COLUMNS}
+       FROM shift_requests r JOIN staff s ON s.id = r.staff_id
+       WHERE r.staff_id = $1 AND r.status = 'pending'
+       ORDER BY r.target_date, r.id`,
+      [staffId]
+    );
+    return rows;
+  }
+
+  /**
+   * 本人の返事を反映する。
+   * @param {'confirm'|'hold'|'cancel'} answer
+   */
+  async function answerOwnRequests({ staffId, answer }) {
+    const pending = await listPendingForStaff(staffId);
+    if (pending.length === 0) return { ok: false, error: 'no_pending' };
+
+    const status = { confirm: 'approved', hold: 'held', cancel: 'rejected' }[answer];
+    if (!status) return { ok: false, error: 'invalid_answer' };
+
+    const ids = pending.map((r) => r.id);
+    const { rows } = await pool.query(
+      `UPDATE shift_requests SET status = $3, decided_at = now()
+       WHERE id = ANY($1::bigint[]) AND staff_id = $2 AND status = 'pending'
+       RETURNING id`,
+      [ids, staffId, status]
+    );
+    // 別経路（店長の画面操作など）で先に決まっていた場合は、取れた分だけを反映する
+    const decided = pending.filter((r) => rows.some((x) => String(x.id) === String(r.id)));
+    if (decided.length === 0) return { ok: false, error: 'no_pending' };
+
+    if (status === 'approved') {
+      for (const r of decided) {
+        await upsertShift({
+          staffId,
+          date: r.target_date,
+          kind: r.kind,
+          startTime: r.start_time,
+          endTime: r.end_time,
+        });
+      }
+    }
+    return { ok: true, status, requests: decided };
+  }
+
   return {
     issueLinkCode,
     linkStaffByCode,
@@ -281,5 +338,7 @@ export function createShiftService({ pool, lineClient, slack, settings = null, c
     createRequests,
     listRequests,
     decide,
+    listPendingForStaff,
+    answerOwnRequests,
   };
 }

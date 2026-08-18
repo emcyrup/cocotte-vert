@@ -142,3 +142,33 @@ test('未知の action は何もしない', async () => {
   await handler(makeEvent('action=unknown&x=1'));
   assert.equal(queries.length, 0);
 });
+
+test('シフトの確定ボタンはシフト側の処理へ渡す', async () => {
+  const f = makeFakes();
+  const calls = [];
+  const handler = createPostbackHandler({
+    ...f,
+    shiftAnswer: async (event, answer) => { calls.push(answer); return true; },
+  });
+
+  await handler(makeEvent('action=shift&v=confirm'));
+  await handler(makeEvent('action=shift&v=hold'));
+  await handler(makeEvent('action=shift&v=cancel'));
+
+  assert.deepEqual(calls, ['confirm', 'hold', 'cancel']);
+});
+
+test('シフトの返事として知らない値は無視する', async () => {
+  const f = makeFakes();
+  const calls = [];
+  const handler = createPostbackHandler({
+    ...f,
+    shiftAnswer: async (_event, answer) => { calls.push(answer); return true; },
+  });
+
+  await handler(makeEvent('action=shift&v=approved'));
+  await handler(makeEvent('action=shift'));
+
+  assert.deepEqual(calls, []);
+  assert.equal(f.replies.length, 0);
+});

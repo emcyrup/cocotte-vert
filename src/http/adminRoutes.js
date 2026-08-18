@@ -58,7 +58,9 @@ export function createAdminRouter({
            (SELECT count(*) FROM reservations
              WHERE (reserved_at AT TIME ZONE 'Asia/Tokyo')::date = (SELECT today FROM jst)
                AND status IN ('confirmed', 'visited')) AS today_reservations,
-           (SELECT count(*) FROM shift_requests WHERE status = 'pending') AS pending_shift_requests`
+           -- 本人が保留にしたものは店長の判断待ちなので、返事待ちと同じく件数に含める
+           (SELECT count(*) FROM shift_requests
+             WHERE status IN ('pending', 'held')) AS pending_shift_requests`
       );
       // count() は bigint で文字列になるため、画面で扱いやすい数値へ揃える
       res.json(Object.fromEntries(Object.entries(rows[0]).map(([k, v]) => [k, Number(v)])));
@@ -642,7 +644,7 @@ export function createAdminRouter({
     try {
       if (!shiftService) return res.status(503).json({ error: 'shift_disabled' });
       const status = req.query.status || null;
-      if (status && !['pending', 'approved', 'rejected'].includes(status)) {
+      if (status && !['pending', 'held', 'approved', 'rejected'].includes(status)) {
         return res.status(400).json({ error: 'invalid_status' });
       }
       res.json({ requests: await shiftService.listRequests({ status }) });

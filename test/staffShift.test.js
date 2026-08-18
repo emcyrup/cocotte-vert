@@ -1,16 +1,29 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createStaffShiftHandler } from '../src/webhook/events/staffShift.js';
+import { createStaffShiftHandler, createShiftAnswerHandler, parseShiftAnswer } from '../src/webhook/events/staffShift.js';
 
-function makeFakes({ staff = null, parsed = { isRequest: false, entries: [] }, link = { ok: false, error: 'invalid_code' } } = {}) {
+const YUKYU_0801 = { id: 7, target_date: '2026-08-01', kind: 'yukyu', start_time: null, end_time: null };
+
+function makeFakes({
+  staff = null,
+  parsed = { isRequest: false, entries: [] },
+  link = { ok: false, error: 'invalid_code' },
+  answer = { ok: false, error: 'no_pending' },
+} = {}) {
   const replies = [];
   const notices = [];
   const created = [];
+  const answers = [];
   return {
     replies,
     notices,
     created,
-    lineClient: { reply: async (token, messages) => replies.push({ token, text: messages[0].text }) },
+    answers,
+    // Flex も受け取るため、本文だけでなくメッセージ全体を残す
+    lineClient: {
+      reply: async (token, messages) =>
+        replies.push({ token, text: messages[0].text, message: messages[0] }),
+    },
     slack: { notify: async (text) => notices.push(text) },
     shiftParser: { parse: async () => parsed },
     shiftService: {
@@ -20,9 +33,14 @@ function makeFakes({ staff = null, parsed = { isRequest: false, entries: [] }, l
         created.push(args);
         return { created: args.entries.map((e) => ({ target_date: e.date, kind: e.kind, start_time: e.startTime, end_time: e.endTime })), replaced: 0 };
       },
+      answerOwnRequests: async (args) => { answers.push(args); return answer; },
     },
   };
 }
+
+/** Flex の中から postback ボタンの label を集める */
+const buttonLabels = (message) =>
+  (message.contents?.footer?.contents ?? []).map((c) => c.action?.label);
 
 const userEvent = (text) => ({
   type: 'message',
@@ -31,7 +49,7 @@ const userEvent = (text) => ({
   message: { type: 'text', text },
 });
 
-test('連携済みスタッフの申請を受け付け、内容を復唱する', async () => {
+test('連携済みスタッフの申請には、確定・保留・やめる を聞き返す', async () => {
   const f = makeFakes({
     staff: { id: 3, name: '高橋' },
     parsed: { isRequest: true, entries: [{ date: '2026-08-01', kind: 'yukyu', startTime: null, endTime: null, reason: null }] },
@@ -41,10 +59,116 @@ test('連携済みスタッフの申請を受け付け、内容を復唱する',
   const handled = await handler(userEvent('8/1 有休お願いします'), '8/1 有休お願いします');
 
   assert.equal(handled, true, '顧客向けの処理へは渡さない');
-  assert.match(f.replies[0].text, /受け付けました/);
+  const [{ message }] = f.replies;
+  assert.equal(message.type, 'flex');
+  assert.match(JSON.stringify(message), /8\/1\(土\) 有休/);
+  assert.deepEqual(buttonLabels(message), ['確定', '保留', 'やめる']);
+  // AI の読み違いをそのまま入れないため、この時点ではシフト表に触れない
+  assert.equal(f.answers.length, 0);
+  assert.equal(f.notices.length, 0, '本人が答える前に店長を呼ばない');
+});
+
+test('「確定」でシフト表へ反映し、店長へも知らせる', async () => {
+  const f = makeFakes({
+    staff: { id: 3, name: '高橋' },
+    answer: { ok: true, status: 'approved', requests: [YUKYU_0801] },
+  });
+  const handler = createStaffShiftHandler(f);
+
+  const handled = await handler(userEvent('確定'), '確定');
+
+  assert.equal(handled, true);
+  assert.deepEqual(f.answers[0], { staffId: 3, answer: 'confirm' });
+  assert.match(f.replies[0].text, /シフト表に反映しました/);
   assert.match(f.replies[0].text, /8\/1\(土\) 有休/);
-  assert.match(f.replies[0].text, /承認後/);
-  assert.equal(f.notices.length, 1, '承認待ちに気付けるよう店長へ通知する');
+  assert.equal(f.notices.length, 1);
+  assert.match(f.notices[0], /確定しました/);
+});
+
+test('「保留」は店長の判断待ちとして通知する', async () => {
+  const f = makeFakes({
+    staff: { id: 3, name: '高橋' },
+    answer: { ok: true, status: 'held', requests: [YUKYU_0801] },
+  });
+  const handler = createStaffShiftHandler(f);
+
+  await handler(userEvent('保留'), '保留');
+
+  assert.deepEqual(f.answers[0], { staffId: 3, answer: 'hold' });
+  assert.match(f.replies[0].text, /保留にしました/);
+  assert.match(f.notices[0], /保留になりました/);
+  assert.match(f.notices[0], /管理画面/);
+});
+
+test('確認待ちがないのに返事だけ来たら、送り方を案内する', async () => {
+  const f = makeFakes({ staff: { id: 3, name: '高橋' }, answer: { ok: false, error: 'no_pending' } });
+  const handler = createStaffShiftHandler(f);
+
+  const handled = await handler(userEvent('確定'), '確定');
+
+  assert.equal(handled, true);
+  assert.match(f.replies[0].text, /確認待ちのシフト変更はありません/);
+  assert.equal(f.notices.length, 0, '何も決まっていないのに店長へ流さない');
+});
+
+test('返事は申請より先に読む（「やめる」を新しい申請にしない）', async () => {
+  const f = makeFakes({
+    staff: { id: 3, name: '高橋' },
+    parsed: { isRequest: true, entries: [{ date: '2026-08-01', kind: 'yukyu', startTime: null, endTime: null, reason: null }] },
+    answer: { ok: true, status: 'rejected', requests: [YUKYU_0801] },
+  });
+  const handler = createStaffShiftHandler(f);
+
+  await handler(userEvent('やめる'), 'やめる');
+
+  assert.equal(f.created.length, 0, '申請として保存しない');
+  assert.match(f.replies[0].text, /取りやめました/);
+});
+
+test('返事の表記ゆれを吸収する', async () => {
+  const cases = {
+    確定: 'confirm', 'OK': 'confirm', はい: 'confirm', 'お願いします。': 'confirm',
+    保留: 'hold', ほりゅう: 'hold', 考えます: 'hold',
+    やめる: 'cancel', キャンセル: 'cancel', 取り消し: 'cancel',
+  };
+  for (const [text, expected] of Object.entries(cases)) {
+    assert.equal(parseShiftAnswer(text), expected, text);
+  }
+  // シフトの希望そのものを返事と取り違えない
+  for (const text of ['8/1 有休お願いします', 'お疲れさまです', '']) {
+    assert.equal(parseShiftAnswer(text), null, text);
+  }
+});
+
+test('ボタン（postback）でも文字と同じ処理に入る', async () => {
+  const f = makeFakes({
+    staff: { id: 3, name: '高橋' },
+    answer: { ok: true, status: 'approved', requests: [YUKYU_0801] },
+  });
+  const handleShiftAnswer = createShiftAnswerHandler(f);
+
+  const handled = await handleShiftAnswer(
+    { type: 'postback', replyToken: 'r1', source: { type: 'user', userId: 'U-staff' }, postback: { data: 'action=shift&v=confirm' } },
+    'confirm'
+  );
+
+  assert.equal(handled, true);
+  assert.deepEqual(f.answers[0], { staffId: 3, answer: 'confirm' });
+  assert.match(f.replies[0].text, /シフト表に反映しました/);
+});
+
+test('未連携の相手がボタンを押しても何も起きない', async () => {
+  const f = makeFakes({ staff: null });
+  const handleShiftAnswer = createShiftAnswerHandler(f);
+
+  const handled = await handleShiftAnswer(
+    { type: 'postback', replyToken: 'r1', source: { type: 'user', userId: 'U-guest' }, postback: { data: 'action=shift&v=confirm' } },
+    'confirm'
+  );
+
+  assert.equal(handled, false);
+  assert.equal(f.replies.length, 0);
+  assert.equal(f.answers.length, 0);
 });
 
 test('未連携（＝顧客）の発言は従来の処理へ渡す', async () => {

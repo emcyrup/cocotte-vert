@@ -17,7 +17,6 @@ function makeApp({
   const linkCalls = [];
   const nameCalls = [];
   const membershipCalls = [];
-  const notices = [];
   const app = express();
   app.use(express.json());
   app.use('/liff/staff', createStaffLinkRouter({
@@ -32,10 +31,9 @@ function makeApp({
       linkStaffById: async (args) => { linkCalls.push(args); return link(args); },
       linkStaffByTypedName: async (args) => { nameCalls.push(args); return linkByName(args); },
     } : shiftService,
-    slack: { notify: async (t) => notices.push(t) },
   }));
   app.use((_err, _req, res, _next) => res.status(500).json({ error: 'internal' }));
-  return { app, linkCalls, nameCalls, membershipCalls, notices };
+  return { app, linkCalls, nameCalls, membershipCalls };
 }
 
 async function post(app, path, body) {
@@ -136,26 +134,23 @@ test('通った人には、登録済みかどうかだけを返す（名簿は�
   assert.equal(res.body.staff, undefined, '名前は本人が入力するので、名簿は返さない');
 });
 
-test('入力された名前で登録し、店長にも分かるよう通知する', async () => {
-  const { app, nameCalls, notices } = makeApp();
+test('入力された名前で登録する', async () => {
+  const { app, nameCalls } = makeApp();
 
   const res = await post(app, '/liff/staff/link', { idToken: 'good', name: '佐藤' });
 
   assert.deepEqual(res.body, { ok: true, staff: { id: 1, name: '佐藤' }, created: false });
-  assert.deepEqual(nameCalls[0], { lineUserId: 'U-me', name: '佐藤', createNew: false });
-  assert.equal(notices.length, 1, '身に覚えのない登録に気付けるようにする');
-  assert.match(notices[0], /佐藤/);
+  assert.deepEqual(nameCalls[0], { lineUserId: 'U-me', name: '佐藤' });
 });
 
-test('新しく作られたときは、その旨も通知に残す', async () => {
-  const { app, notices } = makeApp({
+test('新しく作られたときは、その旨を返す', async () => {
+  const { app } = makeApp({
     linkByName: async () => ({ ok: true, staff: { id: 9, name: '新人' }, created: true }),
   });
 
   const res = await post(app, '/liff/staff/link', { idToken: 'good', name: '新人' });
 
   assert.equal(res.body.created, true);
-  assert.match(notices[0], /新しく作成/);
 });
 
 test('同姓が複数いたら、候補を返して選ばせる', async () => {
@@ -199,42 +194,22 @@ test('名前の書き方の問題は 400 で返す', async () => {
 });
 
 test('紐付けに失敗した理由をそのまま画面へ返す', async () => {
-  const { app, notices } = makeApp({ link: async () => ({ ok: false, error: 'already_linked_to_other' }) });
-
-  const res = await post(app, '/liff/staff/link', { idToken: 'good', staffId: 1 });
-
-  assert.equal(res.status, 409);
-  assert.equal(res.body.error, 'already_linked_to_other');
-  assert.equal(notices.length, 0, '登録できていないのに通知しない');
+  for (const error of ['already_linked_to_other', 'staff_taken', 'not_found']) {
+    const { app } = makeApp({ link: async () => ({ ok: false, error }) });
+    const res = await post(app, '/liff/staff/link', { idToken: 'good', staffId: 1 });
+    assert.equal(res.status, 409, error);
+    assert.equal(res.body.error, error);
+  }
 });
 
-test('退職者と同じ名前で作られたときは、取り違えの可能性を通知に添える', async () => {
-  const { app, notices } = makeApp({
-    linkByName: async () => ({ ok: true, staff: { id: 9, name: '高橋' }, created: true, sameNameRetired: true }),
-  });
-
-  const res = await post(app, '/liff/staff/link', { idToken: 'good', name: '高橋' });
-
-  assert.equal(res.status, 200, '登録そのものは止めない');
-  assert.match(notices[0], /同じお名前の退職者/);
-  assert.match(notices[0], /在職中/, '復帰だった場合の直し方も書く');
-});
-
-test('「別の人です」の返事は createNew として渡す', async () => {
-  const { app, nameCalls } = makeApp();
-
-  await post(app, '/liff/staff/link', { idToken: 'good', name: '高橋', createNew: true });
-
-  assert.deepEqual(nameCalls[0], { lineUserId: 'U-me', name: '高橋', createNew: true });
-});
-
-test('同じ名前が登録済みなら、そのスタッフを添えて 409 で返す', async () => {
+test('同じ名前が登録済みなら、その名前を添えて 409 で返す', async () => {
   const { app } = makeApp({
-    linkByName: async () => ({ ok: false, error: 'name_taken', staff: { id: 3, name: '高橋' } }),
+    linkByName: async () => ({ ok: false, error: 'name_taken', staff: { name: '高橋' } }),
   });
 
   const res = await post(app, '/liff/staff/link', { idToken: 'good', name: '高橋' });
 
   assert.equal(res.status, 409);
-  assert.deepEqual(res.body.staff, { id: 3, name: '高橋' });
+  assert.equal(res.body.error, 'name_taken');
+  assert.deepEqual(res.body.staff, { name: '高橋' });
 });

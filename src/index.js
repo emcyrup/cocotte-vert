@@ -217,7 +217,7 @@ app.post('/liff/reserve/options', async (req, res) => {
 // スタッフ登録（スタッフ用グループのボタンから開く）。
 // 本人確認とグループ参加の確認はルーター側にまとめてある
 app.use('/liff/staff', createStaffLinkRouter({
-  verifyIdToken, settings, config, lineClient, shiftService, slack,
+  verifyIdToken, settings, config, lineClient, shiftService,
 }));
 
 app.post('/liff/reserve', async (req, res) => {

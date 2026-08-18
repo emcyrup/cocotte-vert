@@ -33,6 +33,10 @@ const DENIED_MESSAGES = {
 
 const LINK_ERRORS = {
   invalid_name: 'お名前を入力してください（30文字まで）。',
+  // 同じ名前で上書きすると、先に登録した人の連携が消える。区別の付く名前を入れてもらう
+  name_taken: null,   // 名前が入るので submit 側で組み立てる
+  staff_taken: 'その方はすでに別のLINEアカウントで登録されています。\n'
+    + '同じお名前の別の方は、区別の付くお名前を入力してください。',
   already_linked_to_other: 'このLINEアカウントは、すでに別のスタッフとして登録されています。\n'
     + '店長にご相談ください。',
   not_found: 'その方が見つかりませんでした。画面を開き直してお試しください。',
@@ -49,7 +53,6 @@ function deny(error) {
 function done(staff, created) {
   hide('pick');
   hide('choose');
-  hide('taken');
   document.getElementById('done-name').textContent =
     `${staff.name}さんとして${created ? '新しく' : ''}登録しました`;
   show('done');
@@ -75,20 +78,6 @@ function renderCandidates(candidates) {
   show('choose');
 }
 
-/**
- * 同じ名前の人が既に別の LINE で登録済みだったとき。
- * 本人の入れ直しか、同姓の別人かは本人にしか分からないので、そこだけ尋ねる。
- */
-function askTaken(staff, name) {
-  document.getElementById('taken-note').innerHTML =
-    `「${staff.name}」さんは、すでに別のLINEアカウントで登録されています。<br />`
-    + '<b>あなたはその「' + staff.name + '」さんご本人ですか？</b>';
-  document.getElementById('taken-same').onclick = () => submit({ staffId: staff.id }, 'status3');
-  document.getElementById('taken-other').onclick = () => submit({ name, createNew: true }, 'status3');
-  hide('pick');
-  show('taken');
-}
-
 async function submit(payload, statusId = 'status') {
   const button = document.getElementById('submit');
   button.disabled = true;
@@ -107,15 +96,17 @@ async function submit(payload, statusId = 'status') {
       button.disabled = false;
       return;
     }
-    if (body.error === 'name_taken' && body.staff) {
-      showStatus('', '', statusId);
-      askTaken(body.staff, payload.name);
-      button.disabled = false;
-      return;
-    }
+
     if (!res.ok || !body.ok) {
-      showStatus(LINK_ERRORS[body.error] || '登録できませんでした。もう一度お試しください。', 'error', statusId);
+      const message = body.error === 'name_taken'
+        ? `「${body.staff?.name ?? payload.name}」さんはすでに登録されています。\n`
+          + '同じお名前の別の方は、区別の付くお名前を入力してください（例：高橋 花子）。\n'
+          + 'ご本人が登録し直す場合は、店長にご相談ください。'
+        : LINK_ERRORS[body.error];
+      showStatus(message || '登録できませんでした。もう一度お試しください。', 'error', statusId);
       button.disabled = false;
+      // 入れ直してもらうので、入力欄へ戻す
+      if (body.error === 'name_taken') document.getElementById('name').focus();
       return;
     }
     done(body.staff, body.created);

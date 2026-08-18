@@ -10,7 +10,7 @@ import express from 'express';
 import { SETTING_KEYS } from '../settings.js';
 
 export function createStaffLinkRouter({
-  verifyIdToken, settings, config, lineClient, shiftService, slack,
+  verifyIdToken, settings, config, lineClient, shiftService,
 }) {
   const router = express.Router();
 
@@ -80,12 +80,7 @@ export function createStaffLinkRouter({
         }
         linked = await shiftService.linkStaffById({ lineUserId, staffId });
       } else {
-        // createNew は「同じ名前の人が既にいるが、自分は別人だ」と答えられたときだけ立つ
-        linked = await shiftService.linkStaffByTypedName({
-          lineUserId,
-          name: req.body?.name,
-          createNew: req.body?.createNew === true,
-        });
+        linked = await shiftService.linkStaffByTypedName({ lineUserId, name: req.body?.name });
       }
 
       console.log(`[staff-link] source=liff ok=${linked.ok}${linked.ok ? ` created=${Boolean(linked.created)}` : ` reason=${linked.error}`}`);
@@ -94,17 +89,6 @@ export function createStaffLinkRouter({
         return res.status(linked.error === 'invalid_name' ? 400 : 409).json(linked);
       }
 
-      // 誰がスタッフになったかは後から追えるようにしておく（乗っ取りに気付けるように）。
-      // 退職者と同じ名前で新しく作られたときは、本人の復帰を取り違えている可能性があるため添える
-      await slack.notify(
-        `:bust_in_silhouette: ${linked.staff.name}さん（staff=${linked.staff.id}）が` +
-          `スタッフ登録しました${linked.created ? '（名簿に無かったため新しく作成）' : ''}。\n` +
-          (linked.sameNameRetired
-            ? '※同じお名前の退職者がいます。ご本人の復帰であれば、退職の方を「在職中」に戻し、' +
-              '新しく作られた方を削除してください。\n'
-            : '') +
-          '心当たりがない場合はご確認ください。'
-      );
       res.json({ ok: true, staff: linked.staff, created: Boolean(linked.created) });
     } catch (err) {
       next(err);

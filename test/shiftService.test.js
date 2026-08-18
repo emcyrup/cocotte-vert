@@ -436,7 +436,7 @@ test('名簿に無い名前は、新しいスタッフとして作って紐付�
 
   const result = await service.linkStaffByTypedName({ lineUserId: 'U1', name: '新人' });
 
-  assert.deepEqual(result, { ok: true, staff: { id: 9, name: '新人' }, created: true, sameNameRetired: false });
+  assert.deepEqual(result, { ok: true, staff: { id: 9, name: '新人' }, created: true });
   const insert = f.pool.queries.find((q) => /INSERT INTO staff/.test(q.sql));
   assert.deepEqual(insert.params, ['新人', 'U1']);
 });
@@ -499,54 +499,43 @@ test('紐付けられなかった理由を分けて返す', async () => {
   // 相手が居ない（退職・削除）
   const gone = makeFakes([
     [/UPDATE staff SET line_user_id/, { rows: [] }],
-    [/SELECT 1 FROM staff WHERE id/, { rows: [] }],
+    [/SELECT line_user_id FROM staff WHERE id/, { rows: [] }],
   ]);
   assert.deepEqual(await createShiftService(gone).linkStaffById({ lineUserId: 'U1', staffId: 9 }), {
     ok: false, error: 'not_found',
   });
 
-  // 相手は居るが、この LINE アカウントが既に別のスタッフのもの
-  const taken = makeFakes([
+  // 相手が既に別の人の LINE のものになっている（奪わせない）
+  const held = makeFakes([
     [/UPDATE staff SET line_user_id/, { rows: [] }],
-    [/SELECT 1 FROM staff WHERE id/, { rows: [{ '?column?': 1 }] }],
+    [/SELECT line_user_id FROM staff WHERE id/, { rows: [{ line_user_id: 'U-other' }] }],
   ]);
-  assert.deepEqual(await createShiftService(taken).linkStaffById({ lineUserId: 'U1', staffId: 2 }), {
+  assert.deepEqual(await createShiftService(held).linkStaffById({ lineUserId: 'U1', staffId: 2 }), {
+    ok: false, error: 'staff_taken',
+  });
+
+  // 相手は空いているが、この LINE アカウントが既に別のスタッフのもの
+  const mine = makeFakes([
+    [/UPDATE staff SET line_user_id/, { rows: [] }],
+    [/SELECT line_user_id FROM staff WHERE id/, { rows: [{ line_user_id: null }] }],
+  ]);
+  assert.deepEqual(await createShiftService(mine).linkStaffById({ lineUserId: 'U1', staffId: 2 }), {
     ok: false, error: 'already_linked_to_other',
   });
 });
 
-test('退職者と同じ名前でも登録できる（姓が同じだけの別人がいるため）', async () => {
-  const f = makeFakes([
-    [/SELECT id, name, \(line_user_id IS NOT NULL\)/, { rows: [] }],
-    [/SELECT id, name FROM staff WHERE line_user_id/, { rows: [] }],
-    [/SELECT 1 FROM staff\s+WHERE active = false/, { rows: [{ '?column?': 1 }] }],
-    [/INSERT INTO staff/, { rows: [{ id: 9, name: '高橋' }] }],
-  ]);
-  const service = createShiftService(f);
-
-  const result = await service.linkStaffByTypedName({ lineUserId: 'U1', name: '高橋' });
-
-  assert.equal(result.ok, true);
-  assert.equal(result.created, true);
-  // 本人の復帰を新規作成として取り違えている場合があるので、店長へ知らせる材料を返す
-  assert.equal(result.sameNameRetired, true);
+test('候補から選ぶときも、他人が登録済みのスタッフは奪えない', async () => {
+  const f = makeFakes([[/UPDATE staff SET line_user_id/, { rows: [] }],
+    [/SELECT line_user_id FROM staff WHERE id/, { rows: [{ line_user_id: 'U-other' }] }]]);
+  await createShiftService(f).linkStaffById({ lineUserId: 'U1', staffId: 2 });
+  const update = f.pool.queries[0];
+  assert.match(update.sql, /line_user_id IS NULL OR line_user_id = \$1/);
 });
 
-test('退職者に同じ名前がいなければ、その印は立てない', async () => {
-  const f = makeFakes([
-    [/SELECT id, name, \(line_user_id IS NOT NULL\)/, { rows: [] }],
-    [/SELECT id, name FROM staff WHERE line_user_id/, { rows: [] }],
-    [/INSERT INTO staff/, { rows: [{ id: 9, name: '新人' }] }],
-  ]);
-  const service = createShiftService(f);
 
-  const result = await service.linkStaffByTypedName({ lineUserId: 'U1', name: '新人' });
 
-  assert.equal(result.sameNameRetired, false);
-});
-
-test('同じ名前の人が既に別のLINEで登録済みなら、黙って上書きしない', async () => {
-  // 上書きすると、先に登録した人の連携が消えてしまう。同姓の別人かもしれないので確かめる
+test('同じ名前の人が既に別のLINEで登録済みなら、別の名前を入れてもらう', async () => {
+  // 上書きすると、先に登録した人の連携が消えてしまう
   const f = makeFakes([
     [/SELECT id, name FROM staff WHERE line_user_id/, { rows: [] }],
     [/SELECT id, name, \(line_user_id IS NOT NULL\)/, { rows: [{ id: 3, name: '高橋', linked: true }] }],
@@ -555,23 +544,23 @@ test('同じ名前の人が既に別のLINEで登録済みなら、黙って上�
 
   const result = await service.linkStaffByTypedName({ lineUserId: 'U-new', name: '高橋' });
 
-  assert.deepEqual(result, { ok: false, error: 'name_taken', staff: { id: 3, name: '高橋' } });
-  assert.equal(f.pool.queries.filter((q) => /UPDATE staff SET line_user_id/.test(q.sql)).length, 0);
+  assert.deepEqual(result, { ok: false, error: 'name_taken', staff: { name: '高橋' } });
+  assert.equal(f.pool.queries.filter((q) => /UPDATE staff SET line_user_id|INSERT INTO staff/.test(q.sql)).length, 0,
+    '同じ名前のスタッフを増やさない');
 });
 
-test('「同じ名前の別の人です」と答えられたら、新しく作る', async () => {
+test('区別の付く名前を入れ直せば、新しく登録できる', async () => {
   const f = makeFakes([
     [/SELECT id, name FROM staff WHERE line_user_id/, { rows: [] }],
-    [/INSERT INTO staff/, { rows: [{ id: 9, name: '高橋' }] }],
+    [/SELECT id, name, \(line_user_id IS NOT NULL\)/, { rows: [] }],
+    [/INSERT INTO staff/, { rows: [{ id: 9, name: '高橋 花子' }] }],
   ]);
   const service = createShiftService(f);
 
-  const result = await service.linkStaffByTypedName({ lineUserId: 'U-new', name: '高橋', createNew: true });
+  const result = await service.linkStaffByTypedName({ lineUserId: 'U-new', name: '高橋 花子' });
 
   assert.equal(result.ok, true);
   assert.equal(result.created, true);
-  // 名前で探す手順は飛ばす（同名がいるのは分かったうえでの返事のため）
-  assert.equal(f.pool.queries.filter((q) => /\(line_user_id IS NOT NULL\)/.test(q.sql)).length, 0);
 });
 
 test('自分が登録済みの名前を入れ直すのは、そのまま通す', async () => {
@@ -585,4 +574,21 @@ test('自分が登録済みの名前を入れ直すのは、そのまま通す',
   const result = await service.linkStaffByTypedName({ lineUserId: 'U-me', name: '高橋' });
 
   assert.deepEqual(result, { ok: true, staff: { id: 3, name: '高橋' } });
+});
+
+test('退職者と同じ名前は、そのまま新しく登録できる', async () => {
+  // 前任者と姓が同じだけの別人、ということがあるため止めない。
+  // 在職者に同じ名前がいる場合だけ、入れ直してもらう
+  const f = makeFakes([
+    [/SELECT id, name FROM staff WHERE line_user_id/, { rows: [] }],
+    [/SELECT id, name, \(line_user_id IS NOT NULL\)/, { rows: [] }],   // 在職者にはいない
+    [/INSERT INTO staff/, { rows: [{ id: 9, name: '高橋' }] }],
+  ]);
+  const service = createShiftService(f);
+
+  const result = await service.linkStaffByTypedName({ lineUserId: 'U1', name: '高橋' });
+
+  assert.deepEqual(result, { ok: true, staff: { id: 9, name: '高橋' }, created: true });
+  assert.equal(f.pool.queries.filter((q) => /active = false/.test(q.sql)).length, 0,
+    '退職者は見に行かない（見ても止めないため）');
 });

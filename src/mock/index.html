@@ -803,8 +803,7 @@ tr.await td{background:var(--warn-soft)}
     </div>
   </div>
 
-  <div class="grid resv2">
-    <div class="card">
+  <div class="card" style="margin-top:16px">
       <div class="hd"><h2>新規予約</h2><span class="pill mut">スタッフ入力</span></div>
       <div class="bd">
         <p class="hint">お電話・ご来店時のご予約用。承認不要で確定します。</p>
@@ -827,15 +826,6 @@ tr.await td{background:var(--warn-soft)}
           <button class="btn" id="nr-submit" type="button">予約を登録</button>
         </div>
       </div>
-    </div>
-
-    <div class="card">
-      <div class="hd"><h2>配信メッセージの確認</h2></div>
-      <div class="bd">
-        <p class="hint">実物の文面は「テスト送信」の画面で全種類ためせます（飼い主様には届きません）。</p>
-        <button class="btn sub" id="ts-goto" type="button">テスト送信を開く</button>
-      </div>
-    </div>
   </div>
 
   <div class="grid resv2">
@@ -1587,7 +1577,6 @@ function renderCarteList(q = ''){
 cqEl.addEventListener('input', () => renderCarteList(cqEl.value));
 // 一覧に戻る。開いていたカルテは残さない（次に開く子と混ざるため）
 function showCarteList(){
-  carteCtx = null;
   custbody.innerHTML = '';
   carteListEl.style.display = '';
   renderCarteList(cqEl.value);
@@ -1606,101 +1595,33 @@ const REMINDERS = [
   { id:'R7', n:'保育コース 残回数案内',  c:'1週間ご来店なし',           need:d => !!d.plan },
   { id:'R8', n:'繰越分の消化のご案内',   c:'翌月へ繰り越したとき',      need:d => !!(d.plan && d.plan.carry) },
 ];
-// 画面の R番号 → 日次ジョブ名（サーバの /reminders と同じ対応）
-const REMIND_JOB_OF = { R1:'preReminder', R2:'afterVisit', R3:'dormant', R4:'birthday' };
 const custRem = {};                       // わんちゃんごとの個別設定（未設定＝店舗設定に従う）
 custRem['きなこ'] = { R4:false };            // 例: 誕生日メッセージを辞退
 custRem['ラテ']   = { R6:false };            // 例: 回数券の来店促しを辞退
 // お客様ごとのリマインド設定（実運用モード）。サーバに保存され、日次ジョブが見る。
 // 対象はジョブの単位に合わせて「飼い主様」ごと。同じ飼い主様のわんちゃんが複数いても
 // 送信は1通なので、わんちゃんごとには分けられない
-const custRemLive = {};   // 顧客id → { ジョブ名: true/false }
+// 実運用モードの設定は顧客一覧の「編集」に移したので、これはデモの見せ方だけを担う
 function remCard(d, o){
-  const mine = custRemLive[o.id] || {};
   const rows = REMINDERS.filter(r => r.need(d)).map(r => {
     const ov = custRem[d.n] && custRem[d.n][r.id] !== undefined;
     const on = ov ? custRem[d.n][r.id] : true;
-    const job = REMIND_JOB_OF[r.id];
-    // 店舗設定で止まっているものは、お客様ごとに ON にしても送られない。
-    // 触れるトグルのままだと「ONにしたのに来ない」と誤解されるため状態表示にする
-    const jobOff = adminLive && job && remindEnabled[job] === false;
-    let control;
-    if (!adminLive) {
-      control = '<button class="sw crem" data-member="' + d.n + '" data-id="' + r.id + '" role="switch" aria-checked="' + on + '" aria-label="' + r.n + '"><i></i></button>';
-    } else if (o.optOut) {
-      control = '<span class="pill crit">配信停止中</span>';
-    } else if (!job) {
-      control = '<span class="pill mut">未実装</span>';
-    } else if (jobOff) {
-      control = '<span class="pill crit">店舗設定でOFF</span>';
-    } else {
-      control = '<button class="sw cremlive" data-job="' + job + '" data-cust="' + o.id + '"'
-        + ' role="switch" aria-checked="' + (mine[job] !== false) + '" aria-label="' + r.n + '"><i></i></button>';
-    }
     return '<div class="row"><span class="rid">' + r.id + '</span>'
-      + '<div><div class="nm">' + r.n + (!adminLive && ov ? ' <span class="pill hny">個別設定</span>' : '') + '</div>'
+      + '<div><div class="nm">' + r.n + (ov ? ' <span class="pill hny">個別設定</span>' : '') + '</div>'
       + '<div class="cond">' + r.c + '</div></div>'
       + '<span class="src ' + (o.line ? 'line' : 'tel') + '">' + (o.line ? 'LINE' : '未連携') + '</span>'
-      + control + '</div>';
+      + '<button class="sw crem" data-member="' + d.n + '" data-id="' + r.id + '" role="switch" aria-checked="' + on + '" aria-label="' + r.n + '"><i></i></button></div>';
   }).join('');
   const off = REMINDERS.filter(r => !r.need(d)).map(r => r.n).join('・');
-  const note = adminLive
-    ? (o.optOut
-        ? '<b>配信停止中</b>のため送られません。再開は「飼い主様情報を編集」から。'
-        : 'ここで切り替えると<b>この飼い主様だけ</b>その種類を止められます。'
-          + '店舗全体で止めるときは<b>リマインド設定</b>の画面で切り替えます。')
-    : '個別にOFFにすると、この子だけ送信を止められます。'
-      + (off ? '<br>現在の対象外: ' + off : '');
   return '<div class="card" id="remcard"><div class="hd">'
-    + '<h2>' + (adminLive ? '飼い主様へのリマインド設定' : 'この子へのリマインド設定') + '</h2>'
-    + '<span class="pill mut">' + (adminLive ? '飼い主様ごとの設定' : '店舗設定を引き継ぎ') + '</span></div>'
+    + '<h2>この子へのリマインド設定</h2><span class="pill mut">店舗設定を引き継ぎ</span></div>'
     + '<div class="rem">' + rows + '</div>'
     + '<div class="bd" style="border-top:1px solid var(--line)"><p style="font-size:12px;color:var(--muted);margin:0">'
-    + note
+    + '個別にOFFにすると、この子だけ送信を止められます。'
+    + (off ? '<br>現在の対象外: ' + off : '')
     + '<br>送信先: ' + o.name + ' 様' + (o.line ? '（LINE連携済み）' : '（LINE未連携のため送信されません）')
     + '</p></div></div>';
 }
-
-// カルテを開いている飼い主様。設定を読み込んだ後にカードだけ差し替えるために持つ
-let carteCtx = null;
-function repaintRemCard(){
-  const el = document.getElementById('remcard');
-  if (el && carteCtx) el.outerHTML = remCard(carteCtx.d, carteCtx.o);
-}
-async function loadCustomerReminders(o){
-  if (!adminLive || o.id == null) return;
-  try {
-    const { enabled } = await adminApi('/customers/' + o.id + '/reminders');
-    custRemLive[o.id] = enabled;
-    repaintRemCard();
-  } catch (err) {
-    showToast('リマインド設定を読み込めませんでした: ' + err.message);
-  }
-}
-document.addEventListener('click', async e => {
-  const sw = e.target.closest('.sw.cremlive');
-  if (!sw) return;
-  const on = sw.getAttribute('aria-checked') !== 'true';
-  const job = sw.dataset.job, id = sw.dataset.cust;
-  const label = sw.closest('.row').querySelector('.nm').textContent.trim();
-  // 前々日確認は営業ではなく予約の確認連絡。止めると当日まで連絡が届かなくなる
-  if (!on && job === 'preReminder'
-    && !confirm('この飼い主様へ前々日確認を送らなくなります。ご予約の確認連絡が届かなくなりますが、よろしいですか？')) return;
-  const before = { ...(custRemLive[id] || {}) };
-  custRemLive[id] = { ...before, [job]: on };
-  sw.setAttribute('aria-checked', on);   // 先に反映して待たせない。失敗したら戻す
-  try {
-    const { enabled } = await adminApi('/customers/' + id + '/reminders', {
-      method: 'PUT', body: JSON.stringify({ enabled: { [job]: on } }),
-    });
-    custRemLive[id] = enabled;
-    showToast('「' + label + '」を' + (on ? 'ON' : 'OFF') + 'にしました');
-  } catch (err) {
-    custRemLive[id] = before;
-    sw.setAttribute('aria-checked', !on);
-    showToast('保存に失敗しました: ' + err.message);
-  }
-});
 document.addEventListener('click', e => {
   const sw = e.target.closest('.sw.crem');
   if (!sw) return;
@@ -1836,7 +1757,14 @@ async function openCarte(d, o){
     + '</div></div>')
     + school + tickets + lapsed + '</div>'
     + '<div style="display:grid;gap:16px;align-content:start">'
-    + remCard(d, o)
+    // リマインドは飼い主様ごとの設定なので、わんちゃんのカルテではなく顧客一覧で触る
+    + (adminLive
+      ? '<div class="card"><div class="bd"><p class="hint" style="margin:0">'
+        + '自動配信（前々日確認・来店後フォローなど）の入り／切りは、'
+        + '<b>顧客一覧</b>の「編集」から飼い主様ごとに設定できます。'
+        + (o.optOut ? '<br><b>この方は現在「配信停止」中です。</b>' : '')
+        + '</p></div></div>'
+      : remCard(d, o))
     + '<div class="card"><div class="hd"><h2>来店履歴・カルテ</h2><span class="pill mut">全 ' + d.total + ' 件</span></div>'
     + '<div class="bd" style="padding-top:4px">'
     + (d.visits.length
@@ -1849,8 +1777,6 @@ async function openCarte(d, o){
       : '<p style="font-size:12.5px;color:var(--muted);margin:10px 0">来店履歴はまだありません。</p>')
     + '</div></div></div></div>';
 
-  carteCtx = { d, o };
-  loadCustomerReminders(o);   // 読めたらリマインドのカードだけ差し替える
   custbody.querySelectorAll('[data-credit]').forEach(b => {
     b.addEventListener('click', () => creditAction(b.dataset.credit, d, o));
   });
@@ -2057,6 +1983,8 @@ function makeEv(e){
     + '<span class="rz">&#8596;</span><span class="hz l"></span><span class="hz r"></span>';
   if (e.nc) d.title = '初めてのわんちゃんのため +30分の枠を自動確保（' + fmt(e.s) + '〜' + fmt(e.s + e.d + 0.5) + '）';
   d.dataset.s = e.s; d.dataset.d = e.d; d.dataset.cls = e.cls; d.dataset.html = e.html; d.dataset.nc = e.nc ? '1' : '0';
+  // 実運用モードでは、この帯がどの予約かを持たせる（タップして修正できるようにするため）
+  if (e.rid != null) d.dataset.rid = String(e.rid);
   d.addEventListener('contextmenu', ev => ev.preventDefault());
   bodies[e.row].appendChild(d);
 }
@@ -2153,6 +2081,7 @@ function renderDayView(){
     const idx = rowIndex.get(String(r.staff_id ?? null)) ?? rowsDef.length - 1;
     makeEv({
       row: idx,
+      rid: r.id,
       s: hourOf(r.reserved_at),
       d: resvMinutes(r) / 60,
       cls: r.status === 'requested' ? 'trial' : '',
@@ -3111,7 +3040,15 @@ function showUndoToast(msg, onUndo){
   clearTimeout(toastT); toastT = setTimeout(() => toast.classList.remove('on'), 6000);
 }
 
-// ---- タップで予約詳細ポップアップ（キャンセル/削除） ----
+// 予約を直したあとは、カレンダーと予約一覧の両方を読み直す（片方だけ古いままにしない）
+async function refreshCalAndList(){
+  try {
+    await calReload();
+    await rvReload();
+  } catch (err) { showToast('読み込みに失敗しました: ' + err.message); }
+}
+
+// ---- タップで予約詳細ポップアップ ----
 let pop = null;
 function closePop(){ if (pop) { pop.back.remove(); pop.el.remove(); pop = null; } }
 function openPop(ev, x, y){
@@ -3128,11 +3065,30 @@ function openPop(ev, x, y){
   el.querySelector('h3').textContent = title;
   const acts = document.createElement('div'); acts.className = 'acts';
   const mk = (cls, label, fn) => { const b = document.createElement('button'); b.className = 'pbtn ' + cls; b.textContent = label; b.addEventListener('click', fn); return b; };
-  acts.append(
-    mk('', 'ペットカルテを開く', () => { closePop(); document.querySelector('#nav button[data-s="cust"]').click(); }),
-    mk('cancel', 'キャンセルとして記録', () => removeEv(ev, 'キャンセルとして記録しました（履歴に残ります）')),
-    mk('del', '完全に削除（入力ミス用）', () => removeEv(ev, '削除しました'))
-  );
+  // 実運用モードでは、この帯に紐づく予約そのものを直せる。
+  // デモモードは見た目だけの操作しかできないため、これまでどおりにしておく
+  const resv = ev.dataset.rid ? calResv.find(x => String(x.id) === ev.dataset.rid) : null;
+  if (resv) {
+    acts.append(
+      mk('', '予約を編集', () => { closePop(); editReservation(resv, refreshCalAndList); }),
+      mk('', 'ペットカルテを開く', () => { closePop(); document.querySelector('#nav button[data-s="cust"]').click(); }),
+      mk('cancel', 'キャンセルにする', async () => {
+        if (!confirm('「' + title + '」をキャンセルにしますか？（履歴には残ります）')) return;
+        closePop();
+        try {
+          await adminApi('/reservations/' + resv.id, { method: 'PATCH', body: JSON.stringify({ status: 'cancelled' }) });
+          await refreshCalAndList();
+          showToast('キャンセルにしました（履歴に残ります）');
+        } catch (err) { showToast('エラー: ' + err.message); }
+      })
+    );
+  } else {
+    acts.append(
+      mk('', 'ペットカルテを開く', () => { closePop(); document.querySelector('#nav button[data-s="cust"]').click(); }),
+      mk('cancel', 'キャンセルとして記録', () => removeEv(ev, 'キャンセルとして記録しました（履歴に残ります）')),
+      mk('del', '完全に削除（入力ミス用）', () => removeEv(ev, '削除しました'))
+    );
+  }
   el.appendChild(acts);
   document.body.append(back, el);
   const r = el.getBoundingClientRect();
@@ -3782,7 +3738,56 @@ function rvSetStatus(r, status, msg){
 function rvMap(r){
   return { id: r.id, at: snsFmtJst(r.reserved_at), name: r.customer_name, menu: r.menu || '—',
     staff: r.staff_name || '', status: r.status, note: r.note || '', ok: r.confirmed_by_customer,
-    past: new Date(r.reserved_at).getTime() < Date.now() };
+    past: new Date(r.reserved_at).getTime() < Date.now(),
+    // 修正のときにそのまま入力欄へ入れる値
+    raw: { id: r.id, customer_name: r.customer_name, reserved_at: r.reserved_at, menu: r.menu,
+      staff_id: r.staff_id, duration_minutes: r.duration_minutes } };
+}
+
+// ---- 予約の修正（予約一覧・予約カレンダーの両方から開く）----
+// 飼い主様は変えられない。取り違えると別のお客様の予定になるため、
+// 直したいときは取り消して入れ直してもらう
+function rvDatetimeLocal(iso){
+  const d = new Date(iso);
+  const p = n => String(n).padStart(2, '0');
+  // JST で組み立てる（datetime-local は端末のローカル時刻で表示されるため）
+  const jst = new Date(d.getTime() + (9 * 60 + d.getTimezoneOffset()) * 60000);
+  return jst.getFullYear() + '-' + p(jst.getMonth() + 1) + '-' + p(jst.getDate())
+    + 'T' + p(jst.getHours()) + ':' + p(jst.getMinutes());
+}
+
+function editReservation(r, after){
+  if (!adminLive) { showToast('予約の修正は実データに接続しているときに使えます'); return; }
+  const menus = MENUS.filter(m => m.active !== false);
+  // 今のコースが一覧に無い（停止したコース等）場合も選べるように残す
+  if (r.menu && !menus.some(m => m.name === r.menu)) menus.unshift({ id: 'keep', name: r.menu });
+  const staffOptions = [['', '担当未定'],
+    ...calStaff.filter(st => st.active !== false).map(st => [String(st.id), st.name])];
+
+  openEditModal((r.customer_name || 'お客様') + ' 様のご予約を修正', [
+    { key: 'at', label: '日時', type: 'datetime-local', value: rvDatetimeLocal(r.reserved_at) },
+    { key: 'menu', label: 'コース', type: 'select', value: r.menu || '',
+      options: [['', 'コース未定'], ...menus.map(m => [m.name, m.name])] },
+    { key: 'staffId', label: '担当', type: 'select', value: String(r.staff_id ?? ''), options: staffOptions },
+    { key: 'duration', label: '所要時間（分。空ならコースの標準）', type: 'number',
+      value: r.duration_minutes == null ? '' : String(r.duration_minutes) },
+    { type: 'note', label: '飼い主様は変えられません。取り違えを防ぐため、'
+      + '別の方のご予約にしたいときは取り消して入れ直してください。' },
+  ], {
+    onSave: v => {
+      if (!v.at) throw new Error('invalid_time');
+      return adminApi('/reservations/' + r.id, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          reservedAt: v.at + ':00+09:00',
+          menu: v.menu || null,
+          staffId: v.staffId || null,
+          durationMinutes: v.duration === '' ? null : Number(v.duration),
+        }),
+      });
+    },
+    after,
+  });
 }
 
 // 担当が入っていないときの表示。
@@ -3841,6 +3846,10 @@ function renderResv(){
       b.addEventListener('click', fn);
       td.appendChild(b);
     };
+    // 済んだ・取り消した予約も直せるようにしておく（入力の間違いに気付くのは後のことが多い）
+    if (adminLive && r.raw) {
+      mk('編集', 'mut', () => editReservation(r.raw, refreshCalAndList));
+    }
     if (r.status === 'requested') {
       mk('承認', 'pri', () => rvAct(r, 'confirmed',
         r.name + 'の予約を確定し、飼い主様へLINEで確定通知を送りました',
@@ -4101,7 +4110,6 @@ async function tsReloadResv({ quiet = false } = {}){
 document.getElementById('ts-search').addEventListener('click',
   () => fillCustomers(document.getElementById('ts-q').value, 'ts-cust'));
 document.getElementById('ts-reload').addEventListener('click', () => tsReloadResv());
-document.getElementById('ts-goto').addEventListener('click', () => go('test'));
 tsRenderButtons();
 // 期間の初期値は今日を挟んで前後2週間。テスト送信は過去の予約でも文面を確認できるため、
 // 予約管理（これからの予約）とは違って過去側も既定で含める
@@ -4340,20 +4348,66 @@ async function refreshAfterEdit(custId, petId){
 
 // tr を渡すとその行の直下で編集する（顧客一覧）。渡さなければ従来どおりモーダル（カルテ）。
 // 誕生日はこの画面では扱わない。ペットの誕生日はカルテのわんちゃん編集にある
-function editOwner(o, tr = null){
+const custRemLive = {};   // 顧客id → { ジョブ名: true/false }（編集フォームで読み書きする）
+
+// 飼い主様ごとのリマインドの入り／切り。編集の中で一緒に触れるようにする
+// （カルテはわんちゃんの画面なので、飼い主様単位の設定はこちらへ置く）
+const REMIND_ROWS = [
+  { job: 'preReminder', label: '前々日確認' },
+  { job: 'afterVisit', label: '来店7日後フォロー' },
+  { job: 'dormant', label: '休眠フォロー' },
+  { job: 'birthday', label: '誕生日メッセージ' },
+];
+
+async function editOwner(o, tr = null){
   const open = tr
     ? (title, rows, opts) => openInlineEdit(tr, title, rows, { ...opts, key: 'owner-' + o.id })
     : openEditModal;
-  open(o.name + ' 様の情報を編集', [
+
+  // リマインドの現状を読む。読めなくても編集そのものは開く（名前や電話は直せるように）
+  let remind = null;
+  if (adminLive && o.id != null) {
+    try {
+      remind = (await adminApi('/customers/' + o.id + '/reminders')).enabled;
+      custRemLive[o.id] = remind;
+    } catch (err) { showToast('リマインド設定を読み込めませんでした: ' + err.message); }
+  }
+
+  const rows = [
     { key: 'name', label: 'お名前', value: o.name },
     { key: 'phone', label: '電話番号（LINE登録時の自動ひも付けに使われます）', type: 'tel', value: o.tel === '電話未登録' ? '' : o.tel },
     { key: 'optOut', label: '配信停止（この方への自動配信をすべて止める）', type: 'checkbox', value: o.optOut },
-  ], {
-    onSave: v => adminApi('/customers/' + o.id, {
-      method: 'PATCH',
-      // 誕生日は画面から編集しないため、いまの値をそのまま送り返す（消さない）
-      body: JSON.stringify({ name: v.name, phone: v.phone || null, birthday: o.obd || null, optOut: v.optOut }),
-    }),
+  ];
+  if (remind) {
+    rows.push({ type: 'note', label: '<b>この飼い主様へのリマインド</b><br>'
+      + '外すとその種類だけ届かなくなります。'
+      + (o.optOut ? '<br><b>いまは「配信停止」のため、どれも届きません。</b>' : '')
+      + (o.line ? '' : '<br><b>LINE未連携のため、いまはどれも届きません。</b>') });
+    REMIND_ROWS.forEach(r => {
+      // 店舗全体で止めている種類は、ここで入れても届かない。誤解しないよう添える
+      const shopOff = remindEnabled[r.job] === false;
+      rows.push({ key: 'rem_' + r.job, type: 'checkbox', value: remind[r.job] !== false,
+        label: r.label + (shopOff ? '（店舗設定でOFF中）' : '') });
+    });
+  }
+
+  open(o.name + ' 様の情報を編集', rows, {
+    onSave: async v => {
+      await adminApi('/customers/' + o.id, {
+        method: 'PATCH',
+        // 誕生日は画面から編集しないため、いまの値をそのまま送り返す（消さない）
+        body: JSON.stringify({ name: v.name, phone: v.phone || null, birthday: o.obd || null, optOut: v.optOut }),
+      });
+      if (!remind) return;
+      const enabled = Object.fromEntries(REMIND_ROWS.map(r => [r.job, v['rem_' + r.job] !== false]));
+      // 前々日確認は営業ではなく予約の確認連絡。止めると当日まで連絡が届かなくなる
+      if (remind.preReminder !== false && enabled.preReminder === false
+        && !confirm('前々日確認を送らなくなります。ご予約の確認連絡が届かなくなりますが、よろしいですか？')) {
+        enabled.preReminder = true;
+      }
+      await adminApi('/customers/' + o.id + '/reminders', { method: 'PUT', body: JSON.stringify({ enabled }) });
+      custRemLive[o.id] = enabled;
+    },
     onDelete: async () => {
       // 取り消せない操作なので、何が一緒に消えるかを数で示してから確認する
       const dogs = o.members.length;

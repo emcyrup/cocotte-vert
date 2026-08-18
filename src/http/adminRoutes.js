@@ -664,11 +664,24 @@ export function createAdminRouter({
     }
   });
 
+  // 状態の変更（承認・来店・取消）と、内容の修正（日時・コース・担当）を兼ねる。
+  // status が入っていれば状態の変更、無ければ内容の修正として扱う
   router.patch('/reservations/:id', async (req, res, next) => {
     try {
       const id = Number(req.params.id);
       if (!Number.isInteger(id)) return res.status(400).json({ error: 'invalid_id' });
-      const result = await reservationService.setStatus(id, req.body?.status);
+
+      const { status, reservedAt, menu, staffId, durationMinutes } = req.body ?? {};
+      const result = status
+        ? await reservationService.setStatus(id, status)
+        : await reservationService.updateManual({
+            id,
+            reservedAt,
+            menu,
+            staffId: staffId ? Number(staffId) : null,
+            durationMinutes:
+              durationMinutes == null || durationMinutes === '' ? null : Number(durationMinutes),
+          });
       if (!result.ok) {
         return res.status(result.error === 'not_found' ? 404 : 400).json(result);
       }

@@ -1,16 +1,18 @@
-// スタッフ登録（LIFF）。グループに置いたボタンから開く。
+// スタッフ登録（LIFF）。スタッフ用グループに置いたボタンから開く。
 //
 // userId はクライアントから送らず、ID トークンをサーバーで検証させる（予約フォームと同じ方針）。
 // 誰が開いたかはサーバー側で確定し、さらに「スタッフ用グループにいるか」も
 // サーバー側で確かめる。この画面の URL が漏れても、グループ外の人は登録できない。
+//
+// 名前は本人に入力してもらう。名簿に無ければ新しいスタッフとして登録される。
+// 同姓が複数いるときだけ、どちらかを選んでもらう（こちらでは決めようがないため）。
 
 let idToken = null;
-let staffId = null;
 
 function show(id) { document.getElementById(id).classList.remove('hidden'); }
 function hide(id) { document.getElementById(id).classList.add('hidden'); }
-function showStatus(message, kind) {
-  const el = document.getElementById('status');
+function showStatus(message, kind, id = 'status') {
+  const el = document.getElementById(id);
   el.textContent = message;
   el.className = kind || '';
 }
@@ -28,9 +30,12 @@ const DENIED_MESSAGES = {
 };
 
 const LINK_ERRORS = {
+  invalid_name: 'お名前を入力してください（30文字まで）。',
   already_linked_to_other: 'このLINEアカウントは、すでに別のスタッフとして登録されています。\n'
     + '店長にご相談ください。',
-  not_found: 'その名前が見つかりませんでした。画面を開き直してお試しください。',
+  retired_name: 'そのお名前は「退職」として登録されています。\n'
+    + '復帰される場合は、店長に在職へ戻してもらってから、もう一度お試しください。',
+  not_found: 'その方が見つかりませんでした。画面を開き直してお試しください。',
   invalid_staff: 'お名前をもう一度お選びください。',
 };
 
@@ -41,61 +46,58 @@ function deny(error) {
   show('denied');
 }
 
-function renderList(staff, linkedStaffId) {
+function done(staff, created) {
+  hide('pick');
+  hide('choose');
+  document.getElementById('done-name').textContent =
+    `${staff.name}さんとして${created ? '新しく' : ''}登録しました`;
+  show('done');
+}
+
+/** 同姓が複数いたときに、どちらかを選んでもらう */
+function renderCandidates(candidates) {
   const list = document.getElementById('list');
   list.innerHTML = '';
-  for (const s of staff) {
+  for (const c of candidates) {
     const li = document.createElement('li');
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'pick';
-    btn.textContent = s.name;
-    // 既に誰かのLINEと結びついている名前は、選ぶ前に分かるようにしておく
-    if (s.linked) {
-      const tag = document.createElement('span');
-      tag.className = 'tag';
-      tag.textContent = s.id === linkedStaffId ? '登録済み（あなた）' : '登録済み';
-      btn.appendChild(tag);
-    }
-    btn.addEventListener('click', () => {
-      staffId = s.id;
-      list.querySelectorAll('.pick').forEach((b) => b.classList.remove('on'));
-      btn.classList.add('on');
-      document.getElementById('submit').disabled = false;
-      showStatus('');
-    });
+    btn.textContent = c.linked ? `${c.name}（登録済み）` : c.name;
+    btn.addEventListener('click', () => submit({ staffId: c.id }, 'status2'));
     li.appendChild(btn);
     list.appendChild(li);
   }
+  hide('pick');
+  show('choose');
 }
 
-async function submit() {
+async function submit(payload, statusId = 'status') {
   const button = document.getElementById('submit');
-  const chosen = document.querySelector('.pick.on');
-  // 既に別のLINEと結びついている名前を選んだときは、取り違えを防ぐため一度確認する
-  if (chosen && chosen.querySelector('.tag') && !chosen.querySelector('.tag').textContent.includes('あなた')) {
-    if (!confirm('この名前はすでに別のLINEアカウントで登録されています。\nこのアカウントに切り替えますか？')) return;
-  }
-
   button.disabled = true;
-  showStatus('登録しています…');
+  showStatus('登録しています…', '', statusId);
   try {
     const res = await fetch('./staff/link', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ idToken, staffId }),
+      body: JSON.stringify({ idToken, ...payload }),
     });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok || !body.ok) {
-      showStatus(LINK_ERRORS[body.error] || '登録できませんでした。もう一度お試しください。', 'error');
+
+    if (body.error === 'ambiguous' && body.candidates?.length) {
+      showStatus('', '', statusId);
+      renderCandidates(body.candidates);
       button.disabled = false;
       return;
     }
-    hide('pick');
-    document.getElementById('done-name').textContent = `${body.staff.name}さんとして登録しました`;
-    show('done');
+    if (!res.ok || !body.ok) {
+      showStatus(LINK_ERRORS[body.error] || '登録できませんでした。もう一度お試しください。', 'error', statusId);
+      button.disabled = false;
+      return;
+    }
+    done(body.staff, body.created);
   } catch {
-    showStatus('通信に失敗しました。電波の良いところでお試しください。', 'error');
+    showStatus('通信に失敗しました。電波の良いところでお試しください。', 'error', statusId);
     button.disabled = false;
   }
 }
@@ -124,9 +126,17 @@ async function main() {
   }
 
   hide('loading');
-  renderList(options.staff, options.linkedStaffId);
+  const nameInput = document.getElementById('name');
+  if (options.linkedStaff) {
+    // 登録済みでも開けるようにしておく（改名・入れ直しのため）。今の名前を入れておく
+    nameInput.value = options.linkedStaff.name;
+    document.getElementById('already').textContent =
+      `このLINEアカウントは、すでに「${options.linkedStaff.name}」さんとして登録されています。`;
+  }
   show('pick');
-  document.getElementById('submit').addEventListener('click', submit);
+
+  document.getElementById('submit').addEventListener('click', () => submit({ name: nameInput.value }));
+  nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit({ name: nameInput.value }); });
   document.getElementById('close').addEventListener('click', () => liff.closeWindow());
 }
 

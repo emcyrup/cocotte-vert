@@ -18,6 +18,11 @@
     p.note { font-size: 0.85rem; color: #666; margin-top: 0; line-height: 1.7; }
     #loading { text-align: center; color: #666; font-size: 0.9rem; padding: 24px 0; }
     .hidden { display: none; }
+    label { display: block; font-size: 0.85rem; font-weight: 600; margin: 14px 0 4px; }
+    input[type="text"] {
+      width: 100%; padding: 12px; font-size: 1rem; font-family: inherit;
+      border: 1px solid #ccc; border-radius: 8px; background: #fff; color: #222;
+    }
     ul { list-style: none; margin: 12px 0 0; padding: 0; }
     li { margin-bottom: 8px; }
     .pick {
@@ -25,8 +30,6 @@
       text-align: left; color: #222; background: #fff;
       border: 1px solid #ccc; border-radius: 8px;
     }
-    .pick .tag { float: right; font-size: 0.75rem; font-weight: 400; color: #888; }
-    .pick.on { border-color: var(--accent); background: #f0fff5; }
     button.go {
       width: 100%; margin-top: 20px; padding: 12px; font-size: 1rem; font-weight: 700;
       color: #fff; background: var(--accent); border: none; border-radius: 8px;
@@ -49,15 +52,30 @@
       <p class="note" id="denied-note"></p>
     </div>
 
-    <!-- 名前を選ぶ -->
+    <!-- 名前を入力する -->
     <div id="pick" class="hidden">
       <p class="note">
-        ご自分のお名前を選んでください。<br />
+        ご自分のお名前を入力してください。<br />
         登録すると、Botとの1対1のトークから<b>シフトの申請</b>と<b>予約の登録</b>ができるようになります。
       </p>
-      <ul id="list"></ul>
-      <button class="go" id="submit" type="button" disabled>この名前で登録する</button>
+      <p class="note" id="already"></p>
+      <label for="name">お名前</label>
+      <input type="text" id="name" autocomplete="name" placeholder="例：高橋" maxlength="30" />
+      <p class="note" style="margin-top:8px">
+        お店に登録されているお名前で入力してください。<br />
+        まだ登録がない場合は、入力したお名前で新しく登録します。
+      </p>
+      <button class="go" id="submit" type="button">この名前で登録する</button>
       <p id="status"></p>
+    </div>
+
+    <!-- 同じ名前が複数いたとき -->
+    <div id="choose" class="hidden">
+      <p class="note">
+        同じお名前の方が複数います。<b>ご自分はどちらですか？</b>
+      </p>
+      <ul id="list"></ul>
+      <p id="status2"></p>
     </div>
 
     <!-- 完了 -->

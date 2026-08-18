@@ -400,19 +400,81 @@ test('店長は本人が保留にしたものも承認できる', async () => {
 
 // ---- LIFF のスタッフ登録画面から紐付ける ----
 
-test('登録画面の一覧は在職者だけ。連携済みかどうかも返す', async () => {
+test('名前での検索は在職者だけ。空白の入れ方が違っても当てる', async () => {
   const f = makeFakes([
-    [/SELECT id, name, \(line_user_id IS NOT NULL\)/, {
-      rows: [{ id: 1, name: '佐藤', linked: false }, { id: 2, name: '高橋', linked: true }],
-    }],
+    [/SELECT id, name, \(line_user_id IS NOT NULL\)/, { rows: [{ id: 1, name: '佐藤', linked: false }] }],
   ]);
   const service = createShiftService(f);
 
-  const staff = await service.listStaffForLink();
+  await service.listActiveStaffByName('佐藤');
 
-  assert.equal(staff.length, 2);
   assert.match(f.pool.queries[0].sql, /active = true/, '退職者は出さない');
+  assert.match(f.pool.queries[0].sql, /replace\(replace\(name, ' ', ''\), '　', ''\)/);
   assert.doesNotMatch(f.pool.queries[0].sql, /line_user_id AS/, 'LINE userId そのものは返さない');
+});
+
+test('入力された名前が名簿に1人だけなら、その人に紐付ける', async () => {
+  const f = makeFakes([
+    [/SELECT id, name, \(line_user_id IS NOT NULL\)/, { rows: [{ id: 3, name: '高橋', linked: false }] }],
+    [/UPDATE staff SET line_user_id/, { rows: [{ id: 3, name: '高橋' }] }],
+  ]);
+  const service = createShiftService(f);
+
+  const result = await service.linkStaffByTypedName({ lineUserId: 'U1', name: ' 高橋 ' });
+
+  assert.deepEqual(result, { ok: true, staff: { id: 3, name: '高橋' } });
+  assert.equal(f.pool.queries.filter((q) => /INSERT INTO staff/.test(q.sql)).length, 0, '既にいるなら作らない');
+});
+
+test('名簿に無い名前は、新しいスタッフとして作って紐付ける', async () => {
+  const f = makeFakes([
+    [/SELECT id, name, \(line_user_id IS NOT NULL\)/, { rows: [] }],
+    [/SELECT id, name FROM staff WHERE line_user_id/, { rows: [] }],
+    [/INSERT INTO staff/, { rows: [{ id: 9, name: '新人' }] }],
+  ]);
+  const service = createShiftService(f);
+
+  const result = await service.linkStaffByTypedName({ lineUserId: 'U1', name: '新人' });
+
+  assert.deepEqual(result, { ok: true, staff: { id: 9, name: '新人' }, created: true });
+  const insert = f.pool.queries.find((q) => /INSERT INTO staff/.test(q.sql));
+  assert.deepEqual(insert.params, ['新人', 'U1']);
+});
+
+test('同じ名前が複数いるときは決めず、候補を返す', async () => {
+  const candidates = [{ id: 1, name: '佐藤', linked: true }, { id: 5, name: '佐藤', linked: false }];
+  const f = makeFakes([[/SELECT id, name, \(line_user_id IS NOT NULL\)/, { rows: candidates }]]);
+  const service = createShiftService(f);
+
+  const result = await service.linkStaffByTypedName({ lineUserId: 'U1', name: '佐藤' });
+
+  assert.deepEqual(result, { ok: false, error: 'ambiguous', candidates });
+  assert.equal(f.pool.queries.length, 1, '決められないうちは何も書き換えない');
+});
+
+test('既に別のスタッフとして登録済みの LINE では、新しく作らない', async () => {
+  const f = makeFakes([
+    [/SELECT id, name, \(line_user_id IS NOT NULL\)/, { rows: [] }],
+    [/SELECT id, name FROM staff WHERE line_user_id/, { rows: [{ id: 2, name: '既存' }] }],
+  ]);
+  const service = createShiftService(f);
+
+  const result = await service.linkStaffByTypedName({ lineUserId: 'U1', name: '別名' });
+
+  assert.equal(result.error, 'already_linked_to_other');
+  assert.equal(f.pool.queries.filter((q) => /INSERT INTO staff/.test(q.sql)).length, 0,
+    '使われないスタッフを名簿に残さない');
+});
+
+test('空の名前・長すぎる名前は受け付けない', async () => {
+  const f = makeFakes([]);
+  const service = createShiftService(f);
+
+  for (const name of ['', '   ', '　', null, undefined, 'あ'.repeat(31)]) {
+    assert.deepEqual(await service.linkStaffByTypedName({ lineUserId: 'U1', name }),
+      { ok: false, error: 'invalid_name' }, String(name));
+  }
+  assert.equal(f.pool.queries.length, 0, '問い合わせにも行かない');
 });
 
 test('名前ではなく id で紐付けるので、同姓でも取り違えない', async () => {
@@ -450,4 +512,18 @@ test('紐付けられなかった理由を分けて返す', async () => {
   assert.deepEqual(await createShiftService(taken).linkStaffById({ lineUserId: 'U1', staffId: 2 }), {
     ok: false, error: 'already_linked_to_other',
   });
+});
+
+test('退職として残っている名前では、勝手に作り直さない', async () => {
+  // 同じ名前が名簿に2つ並ぶのを避ける。復帰かどうかは店長が決める
+  const f = makeFakes([
+    [/SELECT id, name, \(line_user_id IS NOT NULL\)/, { rows: [] }],
+    [/SELECT 1 FROM staff\s+WHERE active = false/, { rows: [{ '?column?': 1 }] }],
+  ]);
+  const service = createShiftService(f);
+
+  const result = await service.linkStaffByTypedName({ lineUserId: 'U1', name: '元スタッフ' });
+
+  assert.deepEqual(result, { ok: false, error: 'retired_name' });
+  assert.equal(f.pool.queries.filter((q) => /INSERT INTO staff/.test(q.sql)).length, 0);
 });

@@ -18,6 +18,9 @@ const KIND_LABELS = {
 
 const LINK_CODE_TTL_HOURS = 24;
 
+// スタッフ名の長さの上限。表やシフト表の列が崩れない範囲に収める
+const MAX_STAFF_NAME = 30;
+
 const weekdayFmt = new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', weekday: 'short' });
 
 /** 「8/1(土) 有休」「7/31(金) 時間休 10:00〜12:00」の形に整える */
@@ -95,17 +98,55 @@ export function createShiftService({ pool, lineClient, slack, settings = null, c
     return { ok: true, staff: rows[0] };
   }
 
-  /**
-   * LIFF のスタッフ登録画面に出す一覧。
-   * 本人が自分の名前を選ぶだけにすることで、同姓のスタッフがいても取り違えが起きない。
-   * line_user_id そのものは返さない（画面に出す必要がない）。
-   */
-  async function listStaffForLink() {
+  /** 名前が一致する在職スタッフ。姓名の間の空白は入れ方が揺れるため、除いて比べる */
+  async function listActiveStaffByName(name) {
     const { rows } = await pool.query(
       `SELECT id, name, (line_user_id IS NOT NULL) AS linked
-         FROM staff WHERE active = true ORDER BY id`
+         FROM staff
+        WHERE active = true
+          AND replace(replace(name, ' ', ''), '　', '')
+            = replace(replace($1, ' ', ''), '　', '')
+        ORDER BY id`,
+      [name]
     );
     return rows;
+  }
+
+  /**
+   * スタッフ登録画面で入力された名前で紐付ける。
+   *
+   * 名簿に無ければ新しいスタッフとして作る（店長が先に登録しておかなくても始められる）。
+   * 同姓が複数いるときは決めようがないため、候補を返して本人に選んでもらう。
+   */
+  async function linkStaffByTypedName({ lineUserId, name }) {
+    const clean = String(name ?? '').replace(/[\s　]+/g, ' ').trim();
+    if (!clean || clean.length > MAX_STAFF_NAME) return { ok: false, error: 'invalid_name' };
+
+    const matches = await listActiveStaffByName(clean);
+    if (matches.length > 1) return { ok: false, error: 'ambiguous', candidates: matches };
+    if (matches.length === 1) return linkStaffById({ lineUserId, staffId: matches[0].id });
+
+    // 退職として残っている名前なら、勝手に作らない。
+    // 同じ名前が2つ並ぶと名簿が分かりにくくなるうえ、復帰かどうかは店長が決めることのため
+    const { rows: retired } = await pool.query(
+      `SELECT 1 FROM staff
+        WHERE active = false
+          AND replace(replace(name, ' ', ''), '　', '')
+            = replace(replace($1, ' ', ''), '　', '')`,
+      [clean]
+    );
+    if (retired.length > 0) return { ok: false, error: 'retired_name' };
+
+    // 名簿に無いので新しく作る。作る前に、この LINE が既に別のスタッフのものでないかを見る
+    // （先に作ってから弾くと、誰も使わないスタッフが名簿に残るため）
+    const taken = await findStaffByLineUserId(lineUserId);
+    if (taken) return { ok: false, error: 'already_linked_to_other', staff: taken };
+
+    const { rows } = await pool.query(
+      `INSERT INTO staff (name, line_user_id) VALUES ($1, $2) RETURNING id, name`,
+      [clean, lineUserId]
+    );
+    return { ok: true, staff: rows[0], created: true };
   }
 
   /**
@@ -367,7 +408,8 @@ export function createShiftService({ pool, lineClient, slack, settings = null, c
     issueLinkCode,
     linkStaffByCode,
     linkStaffByName,
-    listStaffForLink,
+    listActiveStaffByName,
+    linkStaffByTypedName,
     linkStaffById,
     listStaffLineStatus,
     upsertShift,

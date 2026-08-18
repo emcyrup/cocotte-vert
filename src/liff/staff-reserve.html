@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>予約登録</title>
+  <style>
+    :root { --accent: #06c755; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif;
+      margin: 0; padding: 16px; background: #f7f7f7; color: #222;
+      /* 日本語が語中で改行されないようにする */
+      word-break: keep-all; overflow-wrap: break-word;
+    }
+    .card { background: #fff; border-radius: 12px; padding: 20px; max-width: 480px; margin: 0 auto; }
+    h1 { font-size: 1.1rem; margin: 0 0 12px; }
+    h2 { font-size: 0.95rem; margin: 22px 0 0; padding-top: 16px; border-top: 1px solid #eee; }
+    p.note { font-size: 0.85rem; color: #666; margin-top: 0; line-height: 1.7; }
+    #loading { text-align: center; color: #666; font-size: 0.9rem; padding: 24px 0; }
+    /* display を持つ他のクラス（.link など）に負けて出っぱなしにならないよう強くする */
+    .hidden { display: none !important; }
+    label { display: block; font-size: 0.85rem; font-weight: 600; margin: 14px 0 4px; }
+    input, select, textarea {
+      width: 100%; padding: 12px; font-family: inherit; border: 1px solid #ccc;
+      border-radius: 8px; background: #fff; color: #222;
+      /* 16px を下回ると iOS が画面を拡大する。タップのたびに拡大されると使えない */
+      font-size: 16px;
+    }
+    textarea { min-height: 72px; }
+    .row { display: flex; gap: 8px; }
+    .row > * { flex: 1; }
+    .row .search-btn { flex: 0 0 88px; }
+    button {
+      font-family: inherit; font-size: 1rem; font-weight: 700;
+      border-radius: 8px; border: 1px solid #ccc; background: #fff; color: #222; padding: 12px;
+    }
+    button.go {
+      width: 100%; margin-top: 20px; padding: 14px;
+      color: #fff; background: var(--accent); border: none;
+    }
+    button.go:disabled { background: #aaa; }
+    button.search-btn { color: #fff; background: #444; border: none; }
+    ul { list-style: none; margin: 12px 0 0; padding: 0; }
+    li { margin-bottom: 8px; }
+    .pick { width: 100%; text-align: left; line-height: 1.5; }
+    .pick .sub { display: block; font-size: 0.8rem; font-weight: 400; color: #666; margin-top: 2px; }
+    .chosen {
+      margin: 12px 0 0; padding: 12px; border-radius: 8px;
+      background: #f0faf3; border: 1px solid #cfe9d8; font-size: 0.95rem;
+    }
+    .chosen .sub { display: block; font-size: 0.8rem; color: #666; margin-top: 2px; }
+    .link {
+      display: inline-block; margin-top: 8px; padding: 0; border: none; background: none;
+      color: #0b6; font-size: 0.85rem; font-weight: 600; text-decoration: underline; width: auto;
+    }
+    .link.close { display: block; margin: 12px auto 0; }
+    .check { display: flex; align-items: center; gap: 8px; margin: 16px 0 0; font-weight: 600; font-size: 0.9rem; }
+    .check input { width: auto; }
+    #status, #search-status { margin-top: 12px; font-size: 0.9rem; text-align: center; line-height: 1.6; }
+    .error { color: #d00; }
+    .ok { color: var(--accent); }
+    .done { text-align: center; padding: 12px 0; }
+    .done .big { font-size: 1.05rem; font-weight: 700; margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>予約登録</h1>
+    <div id="loading">読み込み中…</div>
+
+    <!-- スタッフ用グループにいない人・設定が足りない場合 -->
+    <div id="denied" class="hidden">
+      <p class="note" id="denied-note"></p>
+    </div>
+
+    <div id="form" class="hidden">
+      <!-- ① お客様を決める -->
+      <h2 style="border-top:none; padding-top:0; margin-top:0">お客様</h2>
+      <p class="note">
+        飼い主様のお名前・お電話番号・わんちゃんのお名前、どれでも探せます。
+      </p>
+
+      <div id="search-box">
+        <div class="row">
+          <input type="search" id="q" placeholder="例：田中／ココ／1234" maxlength="30"
+                 autocomplete="off" enterkeyhint="search" />
+          <button type="button" class="search-btn" id="search">探す</button>
+        </div>
+        <ul id="results"></ul>
+        <p id="search-status"></p>
+        <button type="button" class="link" id="as-new">お客様が見つからない（新規で登録する）</button>
+      </div>
+
+      <!-- 探して選んだお客様 -->
+      <div id="chosen" class="chosen hidden"></div>
+      <button type="button" class="link hidden" id="rechoose">お客様を選び直す</button>
+
+      <!-- 新規のお客様 -->
+      <div id="new-box" class="hidden">
+        <label for="new-name">飼い主様のお名前（新規）</label>
+        <input type="text" id="new-name" placeholder="例：田中花子" maxlength="60" autocomplete="off" />
+        <label for="new-phone">お電話番号（任意）</label>
+        <input type="tel" id="new-phone" placeholder="例：090-1234-5678" maxlength="20" autocomplete="off" />
+        <p class="note" style="margin-top:8px">
+          お電話番号がないと、前々日の確認LINEなどが届きません。分かれば入れてください。
+        </p>
+        <button type="button" class="link" id="as-search">お客様を探す画面に戻る</button>
+      </div>
+
+      <!-- ② 日時とコース -->
+      <h2>ご予約の内容</h2>
+      <label for="datetime">日時</label>
+      <input type="datetime-local" id="datetime" />
+
+      <label for="menu">コース</label>
+      <select id="menu"></select>
+
+      <label for="staff">担当</label>
+      <select id="staff"></select>
+
+      <label class="check" for="stay">
+        <input type="checkbox" id="stay" />
+        お泊まり（お預かり）
+      </label>
+      <div id="stay-box" class="hidden">
+        <label for="checkout">退室予定日</label>
+        <input type="date" id="checkout" />
+        <p class="note" style="margin-top:8px">
+          上の「日時」はお預かり（入室）のときを入れてください。
+        </p>
+      </div>
+
+      <label for="duration">所要時間（分・任意）</label>
+      <input type="number" id="duration" min="1" max="1440" step="5" placeholder="空欄ならコースの標準時間" />
+
+      <label for="note">ご要望・メモ（任意）</label>
+      <textarea id="note" maxlength="500"></textarea>
+
+      <button class="go" id="submit" type="button">この内容で登録する</button>
+      <p id="status"></p>
+    </div>
+
+    <!-- 完了 -->
+    <div id="done" class="hidden">
+      <div class="done">
+        <p class="big">予約を登録しました</p>
+        <p class="note" id="done-detail"></p>
+        <p class="note">内容の変更・取消は店舗管理画面から行ってください。</p>
+      </div>
+      <button class="go" id="again" type="button">続けてもう1件登録する</button>
+      <button type="button" class="link close" id="close">閉じる</button>
+    </div>
+  </div>
+
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="./staff-reserve.js"></script>
+</body>
+</html>

@@ -103,6 +103,8 @@ export function loadConfig(env = process.env) {
     liffReserveUrl: liffId ? `https://liff.line.me/${liffId}/reserve.html` : null,
     // スタッフ用グループに置くボタンの遷移先（スタッフ登録の画面）
     liffStaffUrl: liffId ? `https://liff.line.me/${liffId}/staff.html` : null,
+    // 「予約登録」と送られたときに返すボタンの遷移先（スタッフ用の予約登録フォーム）
+    liffStaffReserveUrl: liffId ? `https://liff.line.me/${liffId}/staff-reserve.html` : null,
     slackWebhookUrl: env.SLACK_WEBHOOK_URL || null,
     staffNotifyChannel,
     staffLineGroupId: env.STAFF_LINE_GROUP_ID || null,

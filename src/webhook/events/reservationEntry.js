@@ -3,8 +3,12 @@
 // 「予約登録」で始まる発言だけを対象にする。接頭辞を必須にしているのは、普段の会話や
 // お客様の発言を予約として読み取ってしまわないため。
 //
-// 送られた文章は AI が読み取っているため、その場では登録しない。読み取った内容を
-// 復唱し、［登録］が押されたときだけ本予約にする（シフト変更の確定と同じ考え方）。
+// 入口は2つ。**主な入口はフォーム**で、「予約登録」だけを送るとその案内を返す。
+// 文章での読み取りはお名前が当たらないことがあり、そのたびに送り直しになるため、
+// 探して選べるフォームを既定にしてある。文章が続けて書かれていたときだけ読み取る。
+//
+// 文章から読み取ったものは、その場では登録しない。読み取った内容を復唱し、
+// ［登録］が押されたときだけ本予約にする（シフト変更の確定と同じ考え方）。
 //
 // 使える場所は2つ。呼び出し側がどちらかを確かめてから渡す前提で、ここでは判定しない。
 //   - スタッフ用グループ（staffCommand から）
@@ -12,6 +16,7 @@
 
 import { formatJstDateTime, jstToday } from '../../util/jst.js';
 import { stayLabel } from '../../reservations/stay.js';
+import { buildEntryFormMessage } from '../../line/messages/reservationEntryForm.js';
 
 // 「予約確認」（一覧の問い合わせ）と紛れないよう、登録は別の言い方に寄せる
 const ENTRY_PREFIX = /^(?:予約(?:登録|追加|入力)|新規予約)[\s　:：,、]*/;
@@ -159,17 +164,26 @@ export function registeredText({ draft, customerLabel, createdCustomer }) {
   return lines.join('\n');
 }
 
-export function createReservationEntry({ drafts, entryParser, lineClient, slack, now = () => new Date() }) {
-  async function replyText(event, text) {
+export function createReservationEntry({
+  drafts, entryParser, lineClient, slack, formUrl = null, now = () => new Date(),
+}) {
+  async function reply(event, messages) {
     if (event.replyToken) {
-      await lineClient.reply(event.replyToken, [{ type: 'text', text }]);
+      await lineClient.reply(event.replyToken, messages);
     }
   }
 
-  async function replyMessage(event, message) {
-    if (event.replyToken) {
-      await lineClient.reply(event.replyToken, [message]);
-    }
+  const replyText = (event, text) => reply(event, [{ type: 'text', text }]);
+  const replyMessage = (event, message) => reply(event, [message]);
+
+  /**
+   * 案内文と、フォームへのボタン。
+   * フォームが使えない環境（LIFF 未設定）では文章での書き方だけを案内する。
+   */
+  async function replyWithForm(event, { text, headline }) {
+    const messages = [{ type: 'text', text: formUrl ? text : `${text}\n${HOW_TO_WRITE}` }];
+    if (formUrl) messages.push(buildEntryFormMessage({ liffUrl: formUrl, headline }));
+    await reply(event, messages);
   }
 
   /** 発言の出どころ。下書きはここでしか動かせない */
@@ -193,15 +207,21 @@ export function createReservationEntry({ drafts, entryParser, lineClient, slack,
     const source = sourceOf(event);
     if (!source) return false;
 
+    // 「予約登録」だけならフォームへ案内する。文章の読み取りは当たらないことがあるため、
+    // 何も書かれていないときはこちらを既定の入口にする
     if (!body) {
-      await replyText(event, `予約の登録ですね。\n${HOW_TO_WRITE}`);
+      await replyWithForm(event, { text: '予約の登録ですね。' });
       return true;
     }
 
     const entry = await entryParser.parse({ text: body, today: jstToday(now()).iso });
     if (!entry.isRequest) {
       const head = REASON_TEXT[entry.reason] ?? '予約として読み取れませんでした。';
-      await replyText(event, `${head}\n${HOW_TO_WRITE}`);
+      // 送り直しを繰り返さずに済むよう、読み取れなかったときもフォームを出す
+      await replyWithForm(event, {
+        text: `${head}\nフォームからも入れられます。`,
+        headline: 'フォームから入れる',
+      });
       return true;
     }
 

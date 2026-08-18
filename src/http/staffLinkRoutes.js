@@ -1,47 +1,17 @@
 // スタッフ登録（LIFF）。スタッフ用グループに置いたボタンから開く画面の裏側。
 //
 // 連携は「誰が」を取り違えると別人へ通知が飛び、シフト表と予約を触られる。
-// そのため2つの関門を必ず通す。片方でも確かめられなければ登録させない。
-//   ① LINE の ID トークンをサーバーで検証する（クライアントの言う userId は信用しない）
-//   ② その人がスタッフ用グループにいることを LINE へ問い合わせる
-//
-// ②があるので、この画面の URL が外へ漏れても、グループ外の人は登録できない。
+// そのため本人確認とグループ参加の2つを必ず通す（staffGate.js）。
+// 連携済みかどうかは関門にしない。ここは「まだ連携していない人」が通る入口のため。
 import express from 'express';
-import { SETTING_KEYS } from '../settings.js';
+import { createStaffGate, statusForGate as statusFor } from './staffGate.js';
 
 export function createStaffLinkRouter({
   verifyIdToken, settings, config, lineClient, shiftService,
 }) {
   const router = express.Router();
-
-  async function resolveGroupId() {
-    const stored = await settings.get(SETTING_KEYS.staffLineGroupId).catch(() => null);
-    return stored ?? config?.staffLineGroupId ?? null;
-  }
-
-  /** @returns {Promise<{ok: true, lineUserId: string} | {ok: false, error: string}>} */
-  async function gate(idToken) {
-    if (!verifyIdToken || !shiftService) return { ok: false, error: 'liff_not_configured' };
-
-    let payload;
-    try {
-      payload = await verifyIdToken(idToken);
-    } catch {
-      return { ok: false, error: 'invalid_token' };
-    }
-
-    const groupId = await resolveGroupId();
-    if (!groupId) return { ok: false, error: 'group_not_configured' };
-
-    const membership = await lineClient.getGroupMembership(groupId, payload.sub);
-    if (membership === 'left') return { ok: false, error: 'not_in_group' };
-    // 'unknown'（通信・権限エラー）は参加していると見なさない。安全側に倒す
-    if (membership !== 'joined') return { ok: false, error: 'membership_unknown' };
-
-    return { ok: true, lineUserId: payload.sub };
-  }
-
-  const statusFor = (error) => (error === 'invalid_token' ? 401 : 403);
+  const staffGate = createStaffGate({ verifyIdToken, settings, config, lineClient, shiftService });
+  const gate = (idToken) => staffGate.verifyInGroup(idToken);
 
   /**
    * 画面を開いたときの状態。ここを通った時点で本人＝グループの参加者であることは確かめてある。

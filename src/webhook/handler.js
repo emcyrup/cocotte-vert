@@ -25,13 +25,17 @@ export function createWebhookHandler({
   config = null,
   liffUrl = null,
   liffStaffUrl = null,
+  liffStaffReserveUrl = null,
 }) {
   // 予約の問い合わせはスタッフグループ限定（staffCommand 側で判定）。読み取りだけを渡す
   const reservationQuery = createReservationQuery({ pool });
   // 予約の登録。スタッフ用グループと、連携済みスタッフとの 1:1 のどちらからでも使える
   const reservationEntry =
     reservationDrafts && entryParser
-      ? createReservationEntry({ drafts: reservationDrafts, entryParser, lineClient, slack })
+      ? createReservationEntry({
+          drafts: reservationDrafts, entryParser, lineClient, slack,
+          formUrl: liffStaffReserveUrl,
+        })
       : null;
   const staffCommand = createStaffCommandHandler({
     settings, lineClient, config, shiftService, reservationQuery, reservationEntry, liffStaffUrl,

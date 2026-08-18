@@ -99,7 +99,30 @@ test('下書きは JST の日時として保存する', async () => {
   const { params } = f.pool.queries[0];
   assert.deepEqual(params.slice(0, 3), ['group', 'G1', 3]);
   assert.equal(params[7], '2026-08-20T14:00:00+09:00', 'JST であることを明示して渡す');
-  assert.equal(params[9], '原文', '原文を必ず残す');
+  assert.equal(params[9], null, '日帰りなら退室日は入れない');
+  assert.equal(params[10], '原文', '原文を必ず残す');
+});
+
+test('お泊まりの退室日も下書きに残す', async () => {
+  const f = makeFakes([[/INSERT INTO reservation_drafts/, { rows: [{ id: '7' }] }]]);
+  const drafts = createReservationDrafts(f);
+
+  await drafts.create({
+    source: SOURCE,
+    entry: {
+      date: '2026-08-20', time: '14:00', menu: 'お泊まり', durationMinutes: null,
+      nights: 2, checkoutDate: '2026-08-22', rawText: '原文',
+    },
+    customerId: 3,
+  });
+
+  assert.equal(f.pool.queries[0].params[9], '2026-08-22');
+});
+
+test('DATE はサーバーのタイムゾーンでずれるため、文字列で受け取る', async () => {
+  const f = makeFakes([[/FROM reservation_drafts d/, { rows: [draftRow()] }]]);
+  await createReservationDrafts(f).get({ draftId: 7, source: SOURCE });
+  assert.match(f.pool.queries[0].sql, /to_char\(d\.checkout_date, 'YYYY-MM-DD'\) AS checkout_date/);
 });
 
 test('下書きの取得・更新は必ず送られてきた場所で絞る', async () => {
@@ -154,11 +177,25 @@ test('登録すると予約が作られ、下書きに予約番号が残る', as
     menu: 'カット',
     staffId: 1,
     durationMinutes: 90,
+    note: null,
   });
   assert.ok(
     f.pool.queries.some((q) => /SET reservation_id = \$2/.test(q.sql)),
     'あとから追えるよう予約番号を下書きに残す'
   );
+});
+
+test('お泊まりは、退室日を予約のメモに残す（reservations に列が無いため）', async () => {
+  const f = makeFakes([
+    [/FROM reservation_drafts d/, {
+      rows: [draftRow({ menu: 'お泊まり', duration_minutes: null, checkout_date: '2026-08-22' })],
+    }],
+    [/UPDATE reservation_drafts SET status = 'registered'/, { rows: [{ id: '7' }] }],
+  ]);
+
+  await createReservationDrafts(f).register({ draftId: 7, source: SOURCE });
+
+  assert.equal(f.manual[0].note, 'お泊まり 2泊（8月22日(土) 退室予定）');
 });
 
 test('先に下書きを押さえてから予約を作る（二重押しで2件入らない）', async () => {

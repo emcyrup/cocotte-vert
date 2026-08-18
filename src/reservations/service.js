@@ -132,7 +132,9 @@ export function createReservationService({ pool, slack, lineClient = null }) {
   }
 
   /** 管理画面からの手入力予約 */
-  async function createManual({ customerId, reservedAt, menu, staffId, durationMinutes = null }) {
+  async function createManual({
+    customerId, reservedAt, menu, staffId, durationMinutes = null, note = null,
+  }) {
     if (!Number.isInteger(customerId)) return { ok: false, error: 'invalid_customer' };
     if (!reservedAt || Number.isNaN(Date.parse(reservedAt))) {
       return { ok: false, error: 'invalid_reserved_at' };
@@ -149,9 +151,9 @@ export function createReservationService({ pool, slack, lineClient = null }) {
     if (customers.length === 0) return { ok: false, error: 'customer_not_found' };
 
     const { rows } = await pool.query(
-      `INSERT INTO reservations (customer_id, staff_id, menu, reserved_at, duration_minutes)
-       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-      [customerId, staffId || null, menu || null, reservedAt, durationMinutes]
+      `INSERT INTO reservations (customer_id, staff_id, menu, reserved_at, duration_minutes, note)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+      [customerId, staffId || null, menu || null, reservedAt, durationMinutes, note || null]
     );
 
     let staffName = null;

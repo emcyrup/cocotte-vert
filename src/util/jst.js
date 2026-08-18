@@ -18,10 +18,29 @@ const dateTimeParts = new Intl.DateTimeFormat('ja-JP', {
   hour12: false,
 });
 
+const dateParts = new Intl.DateTimeFormat('ja-JP', {
+  timeZone: 'Asia/Tokyo',
+  month: 'numeric',
+  day: 'numeric',
+  weekday: 'short',
+});
+
 /** 「7月28日(火) 20:00」形式（JST）。顧客向け・スタッフ向けの日時表記はこれに統一する */
 export function formatJstDateTime(date) {
   const parts = Object.fromEntries(dateTimeParts.formatToParts(date).map((p) => [p.type, p.value]));
   return `${parts.month}月${parts.day}日(${parts.weekday}) ${parts.hour}:${parts.minute}`;
+}
+
+/**
+ * 「7月28日(火)」形式（JST）。時刻が決まっていないもの（お泊まりの退室日など）に使う。
+ * @param {string} iso YYYY-MM-DD
+ */
+export function formatJstDate(iso) {
+  // 正午を基準にする。0 時だと UTC 換算で前日になり、日付が1日ずれる
+  const parts = Object.fromEntries(
+    dateParts.formatToParts(new Date(`${iso}T12:00:00+09:00`)).map((p) => [p.type, p.value])
+  );
+  return `${parts.month}月${parts.day}日(${parts.weekday})`;
 }
 
 export function jstToday(now = new Date()) {

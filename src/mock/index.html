@@ -1216,7 +1216,12 @@ let adminLive = false;
 async function adminApi(path, options = {}) {
   const res = await fetch(ADMIN_API + path, { headers: { 'Content-Type': 'application/json' }, ...options });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error || ('HTTP ' + res.status));
+  if (!res.ok) {
+    // 断られた理由だけでなく中身（件数など）も返す。案内文を具体的に書けるようにするため
+    const err = new Error(body.error || ('HTTP ' + res.status));
+    err.detail = body;
+    throw err;
+  }
   return body;
 }
 // 配信メッセージのテスト送信。宛先はサーバ側で常にテスト用アカウントに固定される
@@ -2988,23 +2993,33 @@ document.getElementById('sh-apply').addEventListener('click', () => {
 });
 
 function editStaff(s){
-  openEditModal(s.name + ' さんの情報を編集', [
+  // 予約の担当として残っている人は削除できない（過去の記録が壊れるため）。
+  // 押しても断られるだけのボタンは出さず、代わりに理由と対処を書く
+  const used = Number(s.reservation_count ?? 0);
+  const rows = [
     { key: 'name', label: 'スタッフ名', value: s.name },
-    { key: 'active', label: '在職中（外すと予約の担当候補から消えます）', type: 'checkbox', value: s.active },
+    { key: 'active', label: '在職中（外すと予約の担当候補とシフト表から消えます）', type: 'checkbox', value: s.active },
     { key: 'lineUserId', label: 'LINE ID（U から始まる33文字。空にすると連携を解除）', value: s.line_user_id || '' },
-  ], {
+  ];
+  if (used > 0) {
+    rows.push({ type: 'note', label:
+      'この方は<b>予約' + used + '件の担当</b>として登録があるため、<b>削除できません</b>'
+      + '（過去の記録が変わってしまうためです）。<br>'
+      + 'お辞めになった場合は、上の<b>「在職中」のチェックを外して保存</b>してください。'
+      + '担当の候補とシフト表から外れ、記録はそのまま残ります。' });
+  }
+
+  openEditModal(s.name + ' さんの情報を編集', rows, {
     onSave: v => adminApi('/staff/' + s.id, {
       method: 'PATCH',
       body: JSON.stringify({ name: v.name, active: v.active, lineUserId: v.lineUserId || null }),
     }),
-    onDelete: async () => {
+    onDelete: used > 0 ? null : async () => {
       if (!confirm(
         s.name + ' さんを削除します。元に戻せません。\n\n'
         + '一緒に削除されるもの:\n'
         + '・シフトの入力内容\n'
         + '・LINEからのシフト変更申請の履歴\n\n'
-        + '予約の担当として登録がある場合は削除できません。'
-        + 'その場合は「在職中」のチェックを外して退職にしてください。\n\n'
         + '削除してよろしいですか？'
       )) return false;
       const { deleted } = await adminApi('/staff/' + s.id, { method: 'DELETE' });
@@ -4122,13 +4137,24 @@ const EDIT_ERRORS = {
   invalid_birthday: '誕生日の形式が不正です',
   invalid_line_user_id: 'LINE ID の形式が違います（U から始まる33文字）',
   line_user_id_exists: 'この LINE ID は別のスタッフに設定済みです',
-  staff_in_use: '予約の担当として登録があるため削除できません。「在職中」を外して退職にしてください',
+  // 退職にしても予約の記録は残るため、削除できるようにはならない。
+  // 「外せば消せる」と読める書き方をしない
+  staff_in_use: d => (d?.reservations ? '予約' + d.reservations + '件に担当として登録がある' : '予約の担当として登録がある')
+    + 'ため、削除できません。'
+    + '削除の代わりに「在職中」のチェックを外して保存してください（退職として扱われます）',
   invalid_time: '日付と時刻を入力してください',
   invalid_time_order: '終了は開始より後の時刻にしてください',
   invalid_duration: '所要時間が不正です（1分〜24時間）',
   invalid_reserved_at: '日時の形式が不正です',
   customer_not_found: '飼い主様が見つかりません',
 };
+
+// 断られた理由を画面の言葉に直す。件数などを添えたいものは関数で書ける
+function editErrorText(err){
+  const entry = EDIT_ERRORS[err.message];
+  if (typeof entry === 'function') return entry(err.detail);
+  return entry || ('エラー: ' + err.message);
+}
 
 // 入力欄と保存・削除ボタンを組み立てる。モーダルとインライン編集で中身を共有する
 // （見せ方だけを変えたいので、検証やエラー文言を2箇所に分けない）
@@ -4139,6 +4165,15 @@ function buildEditForm(rows, { onSave, onDelete, after, close }){
   rows.forEach(r => {
     const lab = document.createElement('label');
     let inp;
+    if (r.type === 'note') {
+      // 入力ではなく説明だけの行。なぜ削除できないか等をその場で伝える
+      const note = document.createElement('p');
+      note.className = 'hint';
+      note.style.margin = '0';
+      note.innerHTML = r.label;
+      bd.appendChild(note);
+      return;
+    }
     if (r.type === 'checkbox') {
       lab.style.cssText = 'display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer';
       inp = document.createElement('input'); inp.type = 'checkbox'; inp.checked = !!r.value;
@@ -4183,7 +4218,7 @@ function buildEditForm(rows, { onSave, onDelete, after, close }){
         if (outcome === false) { del.disabled = false; return; }
         close(); showToast(typeof outcome === 'string' ? outcome : '削除しました');
         if (after) await after();
-      } catch (err) { showToast(EDIT_ERRORS[err.message] || 'エラー: ' + err.message); del.disabled = false; }
+      } catch (err) { showToast(editErrorText(err)); del.disabled = false; }
     });
     acts.appendChild(del);
   }
@@ -4200,7 +4235,7 @@ function buildEditForm(rows, { onSave, onDelete, after, close }){
       await onSave(collect());
       close(); showToast('保存しました');
       if (after) await after();
-    } catch (err) { showToast(EDIT_ERRORS[err.message] || 'エラー: ' + err.message); save.disabled = false; }
+    } catch (err) { showToast(editErrorText(err)); save.disabled = false; }
   });
   acts.appendChild(save);
   bd.appendChild(acts);

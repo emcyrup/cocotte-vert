@@ -75,8 +75,12 @@ export function createAdminRouter({
   router.get('/staff', async (req, res, next) => {
     try {
       const { rows } = await pool.query(
-        `SELECT id, name, active, line_user_id, (line_user_id IS NOT NULL) AS line_linked
-         FROM staff WHERE ($1 = '1' OR active = true) ORDER BY id`,
+        // 予約の担当として残っている人は削除できない。画面で削除ボタンを出す前に
+        // 判断できるよう、件数もここで返す（後から 409 で断るより分かりやすい）
+        `SELECT s.id, s.name, s.active, s.line_user_id,
+                (s.line_user_id IS NOT NULL) AS line_linked,
+                (SELECT count(*) FROM reservations r WHERE r.staff_id = s.id)::int AS reservation_count
+         FROM staff s WHERE ($1 = '1' OR s.active = true) ORDER BY s.id`,
         [req.query.all === '1' ? '1' : '0']
       );
       res.json({ staff: rows });

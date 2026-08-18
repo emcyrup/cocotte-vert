@@ -464,6 +464,14 @@ textarea{width:100%; border:1px solid var(--line); border-radius:8px; background
 .frow select{flex:1 1 190px}
 .frow input:focus-visible,.frow select:focus-visible{outline:2px solid var(--accent); outline-offset:-1px}
 .hint{font-size:12px; color:var(--muted); margin:0 0 12px}
+
+/* iOS は文字が16px未満の入力欄にフォーカスすると画面を勝手に拡大する（拡大したままになる）。
+   タッチ端末では入力欄だけ16pxにして、タップのたびに拡大されないようにする。
+   viewport で拡大そのものを禁じる手もあるが、指で拡大できなくなるので採らない。
+   入力欄の一部は JS が style に直接 font-size を書くため、ここは !important で上書きする */
+@media (pointer: coarse) {
+  input, select, textarea { font-size: 16px !important; }
+}
 /* .ghost はドラッグ中のゴースト（position:fixed）用なので、ボタンには使えない */
 .btn.sub{background:var(--surface2); color:var(--ink)}
 .rvname{white-space:nowrap}
@@ -2993,20 +3001,26 @@ document.getElementById('sh-apply').addEventListener('click', () => {
 });
 
 function editStaff(s){
-  // 予約の担当として残っている人は削除できない（過去の記録が壊れるため）。
+  // 在職中の人が予約の担当に入っている間は削除させない（押し間違いで消えると痛い）。
+  // 退職者は削除でき、そのとき予約の担当は「不明」になる。
   // 押しても断られるだけのボタンは出さず、代わりに理由と対処を書く
   const used = Number(s.reservation_count ?? 0);
+  const blocked = used > 0 && s.active;
   const rows = [
     { key: 'name', label: 'スタッフ名', value: s.name },
     { key: 'active', label: '在職中（外すと予約の担当候補とシフト表から消えます）', type: 'checkbox', value: s.active },
     { key: 'lineUserId', label: 'LINE ID（U から始まる33文字。空にすると連携を解除）', value: s.line_user_id || '' },
   ];
-  if (used > 0) {
+  if (blocked) {
     rows.push({ type: 'note', label:
-      'この方は<b>予約' + used + '件の担当</b>として登録があるため、<b>削除できません</b>'
-      + '（過去の記録が変わってしまうためです）。<br>'
+      'この方は<b>予約' + used + '件の担当</b>として登録があり、<b>在職中のため削除できません</b>。<br>'
       + 'お辞めになった場合は、上の<b>「在職中」のチェックを外して保存</b>してください。'
-      + '担当の候補とシフト表から外れ、記録はそのまま残ります。' });
+      + '担当の候補とシフト表から外れます。そのあとなら削除もできます。' });
+  } else if (used > 0) {
+    rows.push({ type: 'note', label:
+      '退職として登録されています。削除すると、<b>予約' + used + '件の担当が「不明」</b>になります'
+      + '（誰が担当したかの記録は戻せません）。<br>'
+      + '記録を残したい場合は、削除せずこのままにしてください。' });
   }
 
   openEditModal(s.name + ' さんの情報を編集', rows, {
@@ -3014,16 +3028,18 @@ function editStaff(s){
       method: 'PATCH',
       body: JSON.stringify({ name: v.name, active: v.active, lineUserId: v.lineUserId || null }),
     }),
-    onDelete: used > 0 ? null : async () => {
+    onDelete: blocked ? null : async () => {
       if (!confirm(
         s.name + ' さんを削除します。元に戻せません。\n\n'
         + '一緒に削除されるもの:\n'
         + '・シフトの入力内容\n'
-        + '・LINEからのシフト変更申請の履歴\n\n'
-        + '削除してよろしいですか？'
+        + '・LINEからのシフト変更申請の履歴\n'
+        + (used > 0 ? '\n予約' + used + '件の担当が「不明」になります。\n誰が担当したかの記録は戻せません。\n' : '')
+        + '\n削除してよろしいですか？'
       )) return false;
       const { deleted } = await adminApi('/staff/' + s.id, { method: 'DELETE' });
-      return s.name + ' さんを削除しました（シフト' + deleted.shifts + '件・申請' + deleted.requests + '件）';
+      return s.name + ' さんを削除しました（シフト' + deleted.shifts + '件・申請' + deleted.requests + '件'
+        + (deleted.reservations ? '・予約' + deleted.reservations + '件の担当を「不明」に' : '') + '）';
     },
     after: async () => {
       await renderStaffInfo();
@@ -3765,7 +3781,16 @@ function rvSetStatus(r, status, msg){
 // 実運用モードの予約読み込み。日時表示は SNS と同じ JST 整形を使う
 function rvMap(r){
   return { id: r.id, at: snsFmtJst(r.reserved_at), name: r.customer_name, menu: r.menu || '—',
-    staff: r.staff_name || '', status: r.status, note: r.note || '', ok: r.confirmed_by_customer };
+    staff: r.staff_name || '', status: r.status, note: r.note || '', ok: r.confirmed_by_customer,
+    past: new Date(r.reserved_at).getTime() < Date.now() };
+}
+
+// 担当が入っていないときの表示。
+// これからの予約は「まだ決めていない」、済んだ予約は「誰だったか分からない」。
+// 担当だったスタッフを削除すると後者になる（記録が消えるため区別は付けられない）
+function rvStaffLabel(r){
+  if (r.staff) return r.staff;
+  return r.past ? '不明' : '指名なし';
 }
 async function rvReload(){
   const params = new URLSearchParams();
@@ -3802,7 +3827,7 @@ function renderResv(){
     tr.innerHTML = '<td class="num rvat" data-label="日時">' + r.at + '</td>'
       + '<td class="rvname" data-label="わんちゃん">' + r.name + '</td>'
       + '<td data-label="コース">' + r.menu + '</td>'
-      + '<td class="rvname" data-label="担当">' + (r.staff || '指名なし') + '</td>'
+      + '<td class="rvname" data-label="担当">' + rvStaffLabel(r) + '</td>'
       + '<td data-label="状態"><span class="pill ' + cls + '">' + label + '</span>'
       + (r.status === 'confirmed' && r.ok ? ' <span class="pill good">本人確認済</span>' : '') + '</td>'
       + '<td class="rvnote" data-label="ご要望">' + (r.note || '—') + '</td>';
@@ -4137,11 +4162,9 @@ const EDIT_ERRORS = {
   invalid_birthday: '誕生日の形式が不正です',
   invalid_line_user_id: 'LINE ID の形式が違います（U から始まる33文字）',
   line_user_id_exists: 'この LINE ID は別のスタッフに設定済みです',
-  // 退職にしても予約の記録は残るため、削除できるようにはならない。
-  // 「外せば消せる」と読める書き方をしない
-  staff_in_use: d => (d?.reservations ? '予約' + d.reservations + '件に担当として登録がある' : '予約の担当として登録がある')
-    + 'ため、削除できません。'
-    + '削除の代わりに「在職中」のチェックを外して保存してください（退職として扱われます）',
+  staff_active_in_use: d => (d?.reservations ? '予約' + d.reservations + '件に担当として登録がある' : '予約の担当として登録がある')
+    + '在職中の方は削除できません。'
+    + '先に「在職中」のチェックを外して保存してください（退職にすると削除できます）',
   invalid_time: '日付と時刻を入力してください',
   invalid_time_order: '終了は開始より後の時刻にしてください',
   invalid_duration: '所要時間が不正です（1分〜24時間）',
@@ -4239,7 +4262,15 @@ function buildEditForm(rows, { onSave, onDelete, after, close }){
   });
   acts.appendChild(save);
   bd.appendChild(acts);
-  return { el: bd, focus: () => Object.values(inputs)[0]?.focus() };
+  return {
+    el: bd,
+    // タッチ端末では自動でフォーカスしない。開いた瞬間にキーボードが出て
+    // 入力欄と保存ボタンが隠れてしまうため（どこを編集しているかも見えなくなる）
+    focus: () => {
+      if (window.matchMedia?.('(pointer: coarse)').matches) return;
+      Object.values(inputs)[0]?.focus();
+    },
+  };
 }
 
 function openEditModal(title, rows, { onSave, onDelete, after }){
@@ -4399,7 +4430,9 @@ async function loadFamiliesLive(){
   const fams = await Promise.all(customers.map(async c => {
     const { pets } = await adminApi('/customers/' + c.id + '/pets');
     const rs = (byCustomer[c.id] || []).sort((a, b) => new Date(b.reserved_at) - new Date(a.reserved_at));
-    const visits = rs.map(r => [snsFmtJst(r.reserved_at), (r.menu || 'ご予約') + (RV_SUFFIX[r.status] || ''), 'sys', r.staff_name || '', r.note || '']);
+    // 済んだご来店で担当が空なら「不明」。担当だったスタッフを削除するとこうなる
+    const visits = rs.map(r => [snsFmtJst(r.reserved_at), (r.menu || 'ご予約') + (RV_SUFFIX[r.status] || ''), 'sys',
+      r.staff_name || (new Date(r.reserved_at).getTime() < Date.now() ? '不明' : ''), r.note || '']);
     const visited = rs.filter(r => r.status === 'visited').length;
     const lastVisit = rs.find(r => r.status === 'visited');   // rs は新しい順
     return {

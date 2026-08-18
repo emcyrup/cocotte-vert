@@ -159,12 +159,22 @@ export function createAdminRouter({
     }
   });
 
-  // スタッフの削除。予約に担当として残っている場合は履歴が壊れるため削除できない。
-  // その場合は「退職」（active = false）で担当候補から外す運用にする
+  // スタッフの削除。
+  //
+  // 在職中の人が予約の担当として入っている間は削除させない（押し間違いで消えると痛いため、
+  // 先に「退職」にしてもらう）。退職者は削除でき、そのとき予約の担当は「不明」になる
+  // ＝ staff_id を外す。誰が担当したかの記録は戻らないので、確認は画面側で必ず取る。
   router.delete('/staff/:id', async (req, res, next) => {
     try {
       const id = Number(req.params.id);
       if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'invalid_id' });
+
+      const { rows: staffRows } = await pool.query(
+        `SELECT active FROM staff WHERE id = $1`,
+        [id]
+      );
+      if (staffRows.length === 0) return res.status(404).json({ error: 'not_found' });
+
       const { rows: counts } = await pool.query(
         `SELECT (SELECT count(*) FROM reservations WHERE staff_id = $1) AS reservations,
                 (SELECT count(*) FROM shifts WHERE staff_id = $1) AS shifts,
@@ -172,14 +182,39 @@ export function createAdminRouter({
         [id]
       );
       const used = Number(counts[0].reservations);
-      if (used > 0) return res.status(409).json({ error: 'staff_in_use', reservations: used });
+      if (used > 0 && staffRows[0].active) {
+        return res.status(409).json({ error: 'staff_active_in_use', reservations: used });
+      }
 
-      const { rowCount } = await pool.query(`DELETE FROM staff WHERE id = $1`, [id]);
-      if (rowCount === 0) return res.status(404).json({ error: 'not_found' });
+      // 担当を外してから消す。途中で失敗して「担当だけ消えた」状態にしないため、まとめて行う
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query(`UPDATE reservations SET staff_id = NULL WHERE staff_id = $1`, [id]);
+        // 下書きは一時的なものなので、同じく担当だけ外す
+        await client.query(`UPDATE reservation_drafts SET staff_id = NULL WHERE staff_id = $1`, [id]);
+        const { rowCount } = await client.query(`DELETE FROM staff WHERE id = $1`, [id]);
+        if (rowCount === 0) {
+          await client.query('ROLLBACK');
+          return res.status(404).json({ error: 'not_found' });
+        }
+        await client.query('COMMIT');
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
+
       res.json({
         ok: true,
         // シフトと申請は外部キーの CASCADE で一緒に消える
-        deleted: { shifts: Number(counts[0].shifts), requests: Number(counts[0].requests) },
+        deleted: {
+          shifts: Number(counts[0].shifts),
+          requests: Number(counts[0].requests),
+          // 担当が「不明」になった予約の件数
+          reservations: used,
+        },
       });
     } catch (err) {
       next(err);

@@ -6,15 +6,36 @@ import { randomBytes } from 'node:crypto';
 import { writeFile, unlink, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import express from 'express';
+import { PLATFORM_KEYS, PLATFORMS, isPlatform, maxCaptionOf } from '../sns/platforms.js';
 
 const MAX_PHOTOS = 20; // 10枚×2投稿ぶんまで
-const MAX_CAPTION = 2200; // Instagram の上限
-const MAX_THREADS_TEXT = 500; // Threads の上限（Instagram より短い）
-const PLATFORMS = ['instagram', 'threads'];
 const PHOTO_NAME = /^[0-9a-f]{24}\.jpg$/;
 
-export function createSnsRouter({ pool, publisher, dataDir, captionWriter = null, storeName = '当店' }) {
+export function createSnsRouter({
+  pool, publisher, dataDir, captionWriter = null, storeName = '当店', clients = {},
+}) {
   const router = express.Router();
+
+  // ---- 投稿先の一覧と使える状態 ----
+  // 画面はこれを見て、投稿先ごとのカードと文字数の上限を組み立てる。
+  // 未設定の投稿先も「未設定」と分かる形で返す（黙って消すと設定漏れに気付けない）
+  router.get('/platforms', (_req, res) => {
+    res.json({
+      platforms: PLATFORM_KEYS.map((key) => {
+        const client = clients[key] ?? null;
+        return {
+          key,
+          label: PLATFORMS[key].label,
+          maxCaption: PLATFORMS[key].maxCaption,
+          maxPhotos: PLATFORMS[key].maxPhotos,
+          photoRequired: PLATFORMS[key].photoRequired,
+          available: Boolean(client),
+          // dry_run のまま本番投稿したつもりになる事故を防ぐため、モードも画面に出す
+          mode: client?.postMode ?? null,
+        };
+      }),
+    });
+  });
 
   // ---- 写真アップロード（正規化済み JPEG を1枚ずつ）----
   router.post(
@@ -57,7 +78,7 @@ export function createSnsRouter({ pool, publisher, dataDir, captionWriter = null
     try {
       if (!captionWriter) return res.status(503).json({ error: 'no_api_key' });
       const { files, platform = 'instagram', hint = '' } = req.body ?? {};
-      if (!PLATFORMS.includes(platform)) return res.status(400).json({ error: 'invalid_platform' });
+      if (!isPlatform(platform)) return res.status(400).json({ error: 'invalid_platform' });
       if (!Array.isArray(files) || files.length === 0) return res.status(400).json({ error: 'no_photos' });
       if (files.length > MAX_PHOTOS) return res.status(400).json({ error: 'too_many_photos' });
       if (!files.every((f) => PHOTO_NAME.test(f))) return res.status(400).json({ error: 'invalid_file' });
@@ -87,13 +108,12 @@ export function createSnsRouter({ pool, publisher, dataDir, captionWriter = null
   router.post('/posts', async (req, res, next) => {
     try {
       const { caption = '', files, scheduledAt = null, platform = 'instagram' } = req.body ?? {};
-      if (!PLATFORMS.includes(platform)) return res.status(400).json({ error: 'invalid_platform' });
+      if (!isPlatform(platform)) return res.status(400).json({ error: 'invalid_platform' });
       if (!Array.isArray(files) || files.length === 0) {
         return res.status(400).json({ error: 'no_photos' });
       }
       if (files.length > MAX_PHOTOS) return res.status(400).json({ error: 'too_many_photos' });
-      const maxCaption = platform === 'threads' ? MAX_THREADS_TEXT : MAX_CAPTION;
-      if (typeof caption !== 'string' || caption.length > maxCaption) {
+      if (typeof caption !== 'string' || caption.length > maxCaptionOf(platform)) {
         return res.status(400).json({ error: 'invalid_caption' });
       }
       // アップロード API が発行した名前だけを受け付ける（パス操作の防止）

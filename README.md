@@ -80,9 +80,13 @@ npm test
 予約投稿）。`IG_POST_MODE=dry_run` が既定で、`live` にするまで実投稿されない。
 Meta 側のセットアップは [docs/instagram.md](docs/instagram.md) を参照。
 
-同じ画面で**スレッズ**にも投稿できる。Instagram 用に並べた写真の左上にチェックを入れると、
-その分だけが別の投稿としてスレッズへ出る（`THREADS_POST_MODE=dry_run` が既定）。
-設定は [docs/threads.md](docs/threads.md) を参照。
+投稿先は **Instagram / スレッズ / X / WordPress** から選べ、**本文もタイミングも投稿先ごとに
+別々**に決められる。写真は「すべて」か「左上にチェックを入れた分だけ」を投稿先ごとに選ぶ。
+認証情報のない投稿先は「未設定」と出て選べない。
+
+対応表と、X・WordPress の認証情報の取り方は [docs/sns-platforms.md](docs/sns-platforms.md)。
+Instagram / スレッズ個別の設定は [docs/instagram.md](docs/instagram.md) /
+[docs/threads.md](docs/threads.md) を参照。
 
 ### キャプションの自動生成
 

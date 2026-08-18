@@ -159,7 +159,8 @@ export function createInstagramClient({
   }
 
   const enabled = Boolean(config.igAccessToken || settings);
-  return { publishPost, refreshTokenIfNeeded, whoAmI, enabled };
+  // 画面に「dry_run のままか」を出すため、モードも公開する
+  return { publishPost, refreshTokenIfNeeded, whoAmI, enabled, postMode: config.igPostMode };
 }
 
 /**

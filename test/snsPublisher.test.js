@@ -35,7 +35,10 @@ function makeFakes({ post = { id: 1, caption: 'c' }, photos = ['a'.repeat(24) + 
   };
   const slack = { notify: async (text) => notifications.push(text) };
   const config = { publicBaseUrl: 'https://example.com' };
-  return { pool, instagram, threads, slack, config, queries, published, notifications };
+  return {
+    pool, slack, config, queries, published, notifications,
+    clients: { instagram, threads },
+  };
 }
 
 test('公開 URL を組み立てて投稿し、published へ更新する', async () => {
@@ -71,7 +74,7 @@ test('11枚以上は2回に分けて投稿され、media_ids が両方記録さ�
 
 test('dry_run の結果は published ではなく dry_run として記録する', async () => {
   const f = makeFakes();
-  f.instagram.publishPost = async () => ({ status: 'dry_run' });
+  f.clients.instagram.publishPost = async () => ({ status: 'dry_run' });
   const publisher = createSnsPublisher(f);
 
   const result = await publisher.publishOne(1);
@@ -82,7 +85,7 @@ test('dry_run の結果は published ではなく dry_run として記録する'
 
 test('投稿失敗は failed に更新し、スタッフへ通知する', async () => {
   const f = makeFakes();
-  f.instagram.publishPost = async () => {
+  f.clients.instagram.publishPost = async () => {
     throw new Error('Instagram API 400: Invalid image');
   };
   const publisher = createSnsPublisher(f);
@@ -141,7 +144,7 @@ test('platform 未設定の既存行は Instagram として扱う', async () => 
 
 test('スレッズ未設定なら失敗として記録し、Instagram 投稿は巻き込まない', async () => {
   const f = makeFakes({ post: { id: 4, caption: 'c', platform: 'threads' } });
-  const publisher = createSnsPublisher({ ...f, threads: null });
+  const publisher = createSnsPublisher({ ...f, clients: { instagram: f.clients.instagram } });
 
   const result = await publisher.publishOne(4);
   assert.equal(result.ok, false);
@@ -155,7 +158,10 @@ test('スレッズ投稿の失敗通知にはスレッズと出る', async () =>
   const f = makeFakes({ post: { id: 5, caption: 'c', platform: 'threads' } });
   const publisher = createSnsPublisher({
     ...f,
-    threads: { publishPost: async () => { throw new Error('API 落ち'); } },
+    clients: {
+      ...f.clients,
+      threads: { publishPost: async () => { throw new Error('API 落ち'); } },
+    },
   });
 
   await publisher.publishOne(5);

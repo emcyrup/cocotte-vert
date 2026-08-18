@@ -55,6 +55,22 @@ export function loadConfig(env = process.env) {
       `THREADS_POST_MODE が不正です: "${threadsPostMode}"（${IG_POST_MODES.join(' | ')} のいずれか）`
     );
   }
+  // X / WordPress も LINE・Instagram と同じく、明示しない限り実投稿しない
+  const xPostMode = env.X_POST_MODE || 'dry_run';
+  if (!IG_POST_MODES.includes(xPostMode)) {
+    throw new Error(`X_POST_MODE が不正です: "${xPostMode}"（${IG_POST_MODES.join(' | ')} のいずれか）`);
+  }
+  const wpPostMode = env.WP_POST_MODE || 'dry_run';
+  if (!IG_POST_MODES.includes(wpPostMode)) {
+    throw new Error(`WP_POST_MODE が不正です: "${wpPostMode}"（${IG_POST_MODES.join(' | ')} のいずれか）`);
+  }
+  // WordPress は記事なので、いきなり公開せず下書きに置く選択肢を持たせる
+  const WP_STATUSES = ['draft', 'publish'];
+  const wpStatus = env.WP_STATUS || 'draft';
+  if (!WP_STATUSES.includes(wpStatus)) {
+    throw new Error(`WP_STATUS が不正です: "${wpStatus}"（${WP_STATUSES.join(' | ')} のいずれか）`);
+  }
+
   // 配信の起点となる日数。店舗によって「何日前に確認するか」が変わるため設定にする。
   // ジョブの SQL にはパラメータとして渡す（値を文字列で埋め込まない）
   const days = (key, fallback) => {
@@ -119,6 +135,25 @@ export function loadConfig(env = process.env) {
     threadsAccessToken: env.THREADS_ACCESS_TOKEN || null,
     threadsPostMode,
     threadsGraphBase: env.THREADS_GRAPH_BASE || 'https://graph.threads.net',
+    // X 投稿（未設定なら投稿先の一覧に「未設定」として出る）。
+    // X の書き込み API は有料プランが要る。4つ揃って初めて有効
+    x: {
+      apiKey: env.X_API_KEY || null,
+      apiSecret: env.X_API_SECRET || null,
+      accessToken: env.X_ACCESS_TOKEN || null,
+      accessSecret: env.X_ACCESS_SECRET || null,
+      postMode: xPostMode,
+    },
+    // WordPress 投稿。パスワードは「アプリケーションパスワード」を使う
+    // （通常のログインパスワードは使わない）
+    wordpress: {
+      baseUrl: env.WP_BASE_URL || null,
+      user: env.WP_USER || null,
+      appPassword: env.WP_APP_PASSWORD || null,
+      // 下書きで止めるか、そのまま公開するか
+      status: wpStatus,
+      postMode: wpPostMode,
+    },
     // Instagram は投稿画像を公開 URL から取得するため、外から見える自分の URL が要る
     publicBaseUrl: env.PUBLIC_BASE_URL || (env.DOMAIN ? `https://${env.DOMAIN}` : null),
     port: Number(env.PORT || 3000),

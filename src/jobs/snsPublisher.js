@@ -1,12 +1,13 @@
-// 予約時刻を過ぎた SNS 投稿（Instagram / Threads）を公開する。数分おきの cron から呼ばれる。
+// 予約時刻を過ぎた SNS 投稿を公開する。数分おきの cron から呼ばれる。
 //
 // 二重投稿を防ぐため、対象の行をまず publishing に更新してから投稿する
 // （UPDATE ... WHERE status = 'scheduled' が同時実行時のロック代わりになる）。
-import { splitIntoPosts } from '../instagram/client.js';
+//
+// 投稿先ごとの違い（枚数の上限・分割するか）は src/sns/platforms.js に寄せてある。
+// 投稿先を増やすときは、この関数に if を足すのではなく clients に1つ足す。
+import { labelOf, splitForPlatform } from '../sns/platforms.js';
 
-const PLATFORM_LABELS = { instagram: 'Instagram', threads: 'スレッズ' };
-
-export function createSnsPublisher({ pool, instagram, threads = null, slack, config }) {
+export function createSnsPublisher({ pool, clients = {}, slack, config }) {
   function photoUrl(file) {
     if (!config.publicBaseUrl) throw new Error('PUBLIC_BASE_URL（または DOMAIN）が未設定です');
     return `${config.publicBaseUrl}/sns-media/${file}`;
@@ -36,21 +37,17 @@ export function createSnsPublisher({ pool, instagram, threads = null, slack, con
     }
 
     const platform = post.platform || 'instagram';
-    const client = platform === 'threads' ? threads : instagram;
+    const client = clients[platform] ?? null;
     if (!client) {
       await pool.query(`UPDATE sns_posts SET status = 'failed', error = $2 WHERE id = $1`, [
         postId,
-        `${PLATFORM_LABELS[platform] ?? platform} への投稿が設定されていません`,
+        `${labelOf(platform)} への投稿が設定されていません`,
       ]);
       return { ok: false, error: 'platform_unavailable' };
     }
 
     try {
-      // Threads は1投稿20枚まで入るため分割しない（Instagram だけ10枚で割る）
-      const parts =
-        platform === 'threads'
-          ? [{ files: photos.map((p) => p.file), caption: post.caption }]
-          : splitIntoPosts(photos.map((p) => p.file), post.caption);
+      const parts = splitForPlatform(platform, photos.map((p) => p.file), post.caption);
       const mediaIds = [];
       let dryRun = false;
       for (const part of parts) {
@@ -74,8 +71,9 @@ export function createSnsPublisher({ pool, instagram, threads = null, slack, con
         err.message,
       ]);
       // 予約投稿の失敗は放置すると気付けないため、スタッフへ即時通知する
-      const label = PLATFORM_LABELS[platform] ?? platform;
-      await slack.notify(`:warning: *${label} 投稿に失敗しました*（post=${postId}）\n${err.message}`);
+      await slack.notify(
+        `:warning: *${labelOf(platform)} 投稿に失敗しました*（post=${postId}）\n${err.message}`
+      );
       return { ok: false, error: err.message };
     }
   }

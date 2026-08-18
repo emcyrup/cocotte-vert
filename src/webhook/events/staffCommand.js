@@ -7,7 +7,8 @@
 // 発言だけ**を受け付ける。店内の数字を第三者に読ませないため。
 import { SETTING_KEYS } from '../../settings.js';
 import { toPlainText } from '../../notify/staffNotifier.js';
-import { parseLinkCommand, parseBareCode } from './linkCommand.js';
+import { parseLinkCommand, parseBareCode, isLinkPrompt } from './linkCommand.js';
+import { buildStaffLinkMessage, staffLinkFallbackText } from '../../line/messages/staffLink.js';
 import { parseReservationQuery } from './reservationQuery.js';
 import { parseEntryCommand } from './reservationEntry.js';
 
@@ -29,7 +30,7 @@ const linkedMessage = (name) =>
 
 export function createStaffCommandHandler({
   settings, lineClient, config, shiftService = null, reservationQuery = null,
-  reservationEntry = null,
+  reservationEntry = null, liffStaffUrl = null,
 }) {
   async function resolveGroupId() {
     const stored = await settings.get(SETTING_KEYS.staffLineGroupId).catch(() => null);
@@ -69,14 +70,17 @@ export function createStaffCommandHandler({
   return async function handleStaffCommand(event, text) {
     if (event.source?.type !== 'group') return false;
 
-    const link = shiftService ? parseLinkCommand(text) : null;
-    const bare = shiftService && !link ? parseBareCode(text) : null;
+    // 引数なしの「スタッフ登録」。名前・コードを覚えていなくても登録ボタンを呼び出せる。
+    // 名前つきの解釈より先に見る（「スタッフ登録：」の記号を名前と読ませないため）
+    const prompt = shiftService ? isLinkPrompt(text) : false;
+    const link = shiftService && !prompt ? parseLinkCommand(text) : null;
+    const bare = shiftService && !prompt && !link ? parseBareCode(text) : null;
     const command = COMMANDS[normalize(text)];
     // 「予約登録 …」は問い合わせより先に見る（登録の文を一覧の問い合わせと読ませないため）
     const resvEntry = reservationEntry && !link && !bare ? parseEntryCommand(text) : null;
     const resvQuery =
       reservationQuery && !link && !bare && resvEntry === null ? parseReservationQuery(text) : null;
-    if (!command && !link && !bare && !resvQuery && resvEntry === null) return false;
+    if (!command && !link && !bare && !prompt && !resvQuery && resvEntry === null) return false;
 
     const staffGroupId = await resolveGroupId();
     const isStaffGroup = Boolean(staffGroupId) && event.source.groupId === staffGroupId;
@@ -92,6 +96,31 @@ export function createStaffCommandHandler({
       console.log(`[staff-link] source=group by=bare-code ok=${result.ok}`);
       if (!result.ok) return false;
       await replyText(event, linkedMessage(result.staff.name));
+      return true;
+    }
+
+    // 登録ボタンを出す。押しただけでは連携されず、開いた画面で
+    // 「本人か（ID トークン）」「スタッフ用グループにいるか」を確かめてから紐付ける
+    if (prompt) {
+      if (!isStaffGroup) {
+        console.log(`[staff-link] prompt: 対象外のグループ configured=${Boolean(staffGroupId)}`);
+        await replyText(
+          event,
+          staffGroupId
+            ? 'このグループはスタッフ通知先として設定されていないため、ここでは登録できません。\n' +
+              'スタッフ用のグループでお試しください。'
+            : 'スタッフ通知先のLINEグループがまだ設定されていません。\n' +
+              'Bot をスタッフ用のグループに招待してから、もう一度お試しください。'
+        );
+        return true;
+      }
+      if (!liffStaffUrl) {
+        await replyText(event, staffLinkFallbackText);
+        return true;
+      }
+      if (event.replyToken) {
+        await lineClient.reply(event.replyToken, [buildStaffLinkMessage({ liffUrl: liffStaffUrl })]);
+      }
       return true;
     }
 

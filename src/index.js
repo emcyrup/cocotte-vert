@@ -31,6 +31,7 @@ import { basicAuth, bearerAuth } from './http/auth.js';
 import { createAdminRouter } from './http/adminRoutes.js';
 import { createImportRouter } from './http/importRoutes.js';
 import { createAdminImportRouter, MAX_CSV_BYTES } from './http/adminImportRoutes.js';
+import { createStaffLinkRouter } from './http/staffLinkRoutes.js';
 import { createSnsRouter } from './http/snsRoutes.js';
 import { createInstagramClient } from './instagram/client.js';
 import { createThreadsClient } from './threads/client.js';
@@ -89,6 +90,7 @@ app.post(
     entryParser,
     config,
     liffUrl: config.liffUrl,
+    liffStaffUrl: config.liffStaffUrl,
   })
 );
 
@@ -211,6 +213,12 @@ app.post('/liff/reserve/options', async (req, res) => {
     return res.status(500).json({ error: 'internal' });
   }
 });
+
+// スタッフ登録（スタッフ用グループのボタンから開く）。
+// 本人確認とグループ参加の確認はルーター側にまとめてある
+app.use('/liff/staff', createStaffLinkRouter({
+  verifyIdToken, settings, config, lineClient, shiftService, slack,
+}));
 
 app.post('/liff/reserve', async (req, res) => {
   if (!verifyIdToken) return res.status(503).json({ ok: false, error: 'liff_not_configured' });

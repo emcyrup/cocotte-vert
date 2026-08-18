@@ -96,6 +96,42 @@ export function createShiftService({ pool, lineClient, slack, settings = null, c
   }
 
   /**
+   * LIFF のスタッフ登録画面に出す一覧。
+   * 本人が自分の名前を選ぶだけにすることで、同姓のスタッフがいても取り違えが起きない。
+   * line_user_id そのものは返さない（画面に出す必要がない）。
+   */
+  async function listStaffForLink() {
+    const { rows } = await pool.query(
+      `SELECT id, name, (line_user_id IS NOT NULL) AS linked
+         FROM staff WHERE active = true ORDER BY id`
+    );
+    return rows;
+  }
+
+  /**
+   * 一覧から選ばれたスタッフに紐付ける。名前ではなく id で指定するため曖昧さがない。
+   * 連携済みの LINE アカウントは別のスタッフへ付け替えない（linkStaffByCode と同じ守り）。
+   */
+  async function linkStaffById({ lineUserId, staffId }) {
+    const { rows } = await pool.query(
+      `UPDATE staff SET line_user_id = $1, link_code = NULL, link_code_expires_at = NULL
+       WHERE id = $2 AND active = true
+         AND NOT EXISTS (SELECT 1 FROM staff o WHERE o.line_user_id = $1 AND o.id <> $2)
+       RETURNING id, name`,
+      [lineUserId, staffId]
+    );
+    if (rows.length > 0) return { ok: true, staff: rows[0] };
+
+    // 更新できなかった理由を分けて返す。画面の案内文が変わるため
+    const { rows: exists } = await pool.query(
+      `SELECT 1 FROM staff WHERE id = $1 AND active = true`,
+      [staffId]
+    );
+    if (exists.length === 0) return { ok: false, error: 'not_found' };
+    return { ok: false, error: 'already_linked_to_other' };
+  }
+
+  /**
    * 連携済みスタッフがスタッフグループに参加しているかを一覧で返す。
    * グループ未設定のときは判定そのものができないため、その旨だけを返す。
    */
@@ -331,6 +367,8 @@ export function createShiftService({ pool, lineClient, slack, settings = null, c
     issueLinkCode,
     linkStaffByCode,
     linkStaffByName,
+    listStaffForLink,
+    linkStaffById,
     listStaffLineStatus,
     upsertShift,
     listShifts,

@@ -24,6 +24,18 @@ export function parseLinkCommand(text) {
 }
 
 /**
+ * 引数なしの「スタッフ登録」。登録のボタンを出すきっかけとして使う。
+ *
+ * 名前やコードを覚えていなくても、この一言でボタンが出るようにしておく。
+ * ボタンはグループのノートに固定して使うが、流れてしまっても呼び直せる。
+ */
+const PROMPT_RE = /^(?:スタッフ(?:登録|連携)|シフト登録|shift\s*link)[\s　:：]*$/i;
+
+export function isLinkPrompt(text) {
+  return PROMPT_RE.test(String(text ?? '').trim());
+}
+
+/**
  * 接頭辞なしで6桁の数字だけが送られた場合のコード。
  *
  * 画面に出ている数字をそのまま送る人が多く、接頭辞を必須にすると連携できないまま

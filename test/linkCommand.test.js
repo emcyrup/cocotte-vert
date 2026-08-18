@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseLinkCommand, parseBareCode } from '../src/webhook/events/linkCommand.js';
+import { parseLinkCommand, parseBareCode, isLinkPrompt } from '../src/webhook/events/linkCommand.js';
 
 test('基本の書き方をコードとして読み取る', () => {
   assert.deepEqual(parseLinkCommand('スタッフ登録 123456'), { arg: '123456', isCode: true });
@@ -63,5 +63,28 @@ test('6桁の数字だけをコードとして取り出す（全角・空白ま�
 test('6桁でないものはコードとして扱わない', () => {
   for (const text of ['12345', '1234567', '090-1234-5678', 'こんにちは', 'abc123', '', null]) {
     assert.equal(parseBareCode(text), null, String(text));
+  }
+});
+
+// ---- 引数なしの「スタッフ登録」（登録ボタンを出すきっかけ）----
+
+test('引数なしの言い方をひととおり拾う', () => {
+  for (const text of [
+    'スタッフ登録', 'スタッフ連携', 'シフト登録', 'shift link', 'Shift Link',
+    ' スタッフ登録 ', 'スタッフ登録　', 'スタッフ登録：', 'スタッフ登録:',
+  ]) {
+    assert.equal(isLinkPrompt(text), true, text);
+  }
+});
+
+test('名前やコードが付いていれば、きっかけとしては扱わない', () => {
+  for (const text of ['スタッフ登録 高橋', 'スタッフ登録 123456', 'スタッフ登録：高橋']) {
+    assert.equal(isLinkPrompt(text), false, text);
+  }
+});
+
+test('ふつうの会話は拾わない', () => {
+  for (const text of ['登録', 'スタッフ', 'おつかれさまです', '', null, undefined]) {
+    assert.equal(isLinkPrompt(text), false, String(text));
   }
 });

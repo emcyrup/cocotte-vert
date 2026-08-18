@@ -167,3 +167,62 @@ test('ありえない所要時間は保存しない', async () => {
   assert.equal((await svc.createManual({ ...base, durationMinutes: 1441 })).error, 'invalid_duration');
   assert.equal((await svc.createManual({ ...base, durationMinutes: 12.5 })).error, 'invalid_duration');
 });
+
+// ---- 画面からの予約の修正 ----
+
+function makeUpdateFakes(rows = [{ id: 7, reserved_at: '2026-09-02T10:30' }]) {
+  const queries = [];
+  const pool = {
+    query: async (sql, params) => { queries.push({ sql, params }); return { rows }; },
+    connect: async () => ({ query: async () => ({ rows }), release: () => {} }),
+  };
+  return { pool, slack: { notify: async () => {} }, queries };
+}
+
+test('updateManual: 日時・コース・担当・所要時間を書き換える', async () => {
+  const f = makeUpdateFakes();
+  const service = createReservationService(f);
+
+  const result = await service.updateManual({
+    id: 7, reservedAt: '2026-09-02T10:30:00+09:00', menu: 'シャンプー', staffId: 2, durationMinutes: 90,
+  });
+
+  assert.equal(result.ok, true);
+  const q = f.queries[0];
+  assert.match(q.sql, /UPDATE reservations/);
+  assert.deepEqual(q.params, [7, '2026-09-02T10:30:00+09:00', 'シャンプー', 2, 90]);
+  // 飼い主様と状態は触らない。取り違えると別のお客様の予定になるため
+  assert.doesNotMatch(q.sql, /customer_id\s*=/);
+  assert.doesNotMatch(q.sql, /status\s*=/);
+});
+
+test('updateManual: 空のコース・担当・所要時間は未設定として入れる', async () => {
+  const f = makeUpdateFakes();
+  await createReservationService(f).updateManual({
+    id: 7, reservedAt: '2026-09-02T10:30:00+09:00', menu: '', staffId: null, durationMinutes: null,
+  });
+  assert.deepEqual(f.queries[0].params.slice(2), [null, null, null]);
+});
+
+test('updateManual: 通らない値では書き換えない', async () => {
+  const cases = [
+    [{ id: 0, reservedAt: '2026-09-02T10:30:00+09:00' }, 'invalid_id'],
+    [{ id: 7, reservedAt: 'へんな日時' }, 'invalid_reserved_at'],
+    [{ id: 7, reservedAt: null }, 'invalid_reserved_at'],
+    [{ id: 7, reservedAt: '2026-09-02T10:30:00+09:00', durationMinutes: 0 }, 'invalid_duration'],
+    [{ id: 7, reservedAt: '2026-09-02T10:30:00+09:00', durationMinutes: 1441 }, 'invalid_duration'],
+  ];
+  for (const [args, error] of cases) {
+    const f = makeUpdateFakes();
+    assert.deepEqual(await createReservationService(f).updateManual(args), { ok: false, error }, error);
+    assert.equal(f.queries.length, 0, '問い合わせにも行かない');
+  }
+});
+
+test('updateManual: 対象が無ければ not_found', async () => {
+  const f = makeUpdateFakes([]);
+  const result = await createReservationService(f).updateManual({
+    id: 99, reservedAt: '2026-09-02T10:30:00+09:00',
+  });
+  assert.deepEqual(result, { ok: false, error: 'not_found' });
+});

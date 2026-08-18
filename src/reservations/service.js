@@ -169,6 +169,34 @@ export function createReservationService({ pool, slack, lineClient = null }) {
   }
 
   /**
+   * 画面からの予約の修正（日時・コース・担当・所要時間）。
+   * 状態と飼い主様は変えない。取り違えると別のお客様の予定になるため、
+   * 飼い主様を直したいときは取消して入れ直す運用にする。
+   */
+  async function updateManual({ id, reservedAt, menu, staffId, durationMinutes = null }) {
+    if (!Number.isInteger(id) || id <= 0) return { ok: false, error: 'invalid_id' };
+    if (!reservedAt || Number.isNaN(Date.parse(reservedAt))) {
+      return { ok: false, error: 'invalid_reserved_at' };
+    }
+    if (durationMinutes != null
+      && (!Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 1440)) {
+      return { ok: false, error: 'invalid_duration' };
+    }
+
+    const { rows } = await pool.query(
+      `UPDATE reservations
+          SET reserved_at = $2, menu = $3, staff_id = $4, duration_minutes = $5, updated_at = now()
+        WHERE id = $1
+        RETURNING id, to_char(reserved_at AT TIME ZONE 'Asia/Tokyo', 'YYYY-MM-DD"T"HH24:MI') AS reserved_at`,
+      [id, reservedAt, menu || null, staffId || null, durationMinutes]
+    );
+    if (rows.length === 0) return { ok: false, error: 'not_found' };
+    // 顧客は内部 id でのみ参照する（氏名はログに残さない）
+    console.log(`[reservation] 修正 res=${id}`);
+    return { ok: true, reservation: rows[0] };
+  }
+
+  /**
    * LIFF 予約フォームからのリクエスト。承認待ち（requested）で作成する。
    * 顧客は LINE の userId で特定するため、未登録の場合は受け付けない。
    */
@@ -322,5 +350,5 @@ export function createReservationService({ pool, slack, lineClient = null }) {
     return { ok: true, notifiedCustomer: wasRequested };
   }
 
-  return { upsertExternal, createManual, createRequest, setStatus };
+  return { upsertExternal, createManual, updateManual, createRequest, setStatus };
 }

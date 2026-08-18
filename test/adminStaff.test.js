@@ -119,3 +119,66 @@ test('いないスタッフの削除は 404', async () => {
   assert.equal(res.status, 404);
   assert.equal(queries.filter((q) => /UPDATE reservations/.test(q.sql)).length, 0, '先に担当を外さない');
 });
+
+// ---- 予約の更新（状態の変更と内容の修正を兼ねる）----
+
+function makeResvApp() {
+  const calls = [];
+  const app = express();
+  app.use(express.json());
+  app.use('/api/admin', createAdminRouter({
+    pool: { query: async () => ({ rows: [], rowCount: 0 }) },
+    reservationService: {
+      setStatus: async (id, status) => { calls.push({ kind: 'status', id, status }); return { ok: true }; },
+      updateManual: async (args) => { calls.push({ kind: 'update', ...args }); return { ok: true }; },
+    },
+    lineClient: {}, config: {},
+  }));
+  app.use((_err, _req, res, _next) => res.status(500).json({ error: 'internal' }));
+  return { app, calls };
+}
+
+async function patch(app, path, body) {
+  const server = app.listen(0);
+  await new Promise((r) => server.once('listening', r));
+  try {
+    const res = await fetch(`http://127.0.0.1:${server.address().port}${path}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return { status: res.status, body: await res.json().catch(() => ({})) };
+  } finally {
+    server.close();
+  }
+}
+
+test('status が入っていれば、これまでどおり状態の変更', async () => {
+  const { app, calls } = makeResvApp();
+  const res = await patch(app, '/api/admin/reservations/7', { status: 'visited' });
+  assert.equal(res.status, 200);
+  assert.deepEqual(calls[0], { kind: 'status', id: 7, status: 'visited' });
+});
+
+test('status が無ければ、内容の修正として扱う', async () => {
+  const { app, calls } = makeResvApp();
+
+  const res = await patch(app, '/api/admin/reservations/7', {
+    reservedAt: '2026-09-02T10:30:00+09:00', menu: 'シャンプー', staffId: '2', durationMinutes: '90',
+  });
+
+  assert.equal(res.status, 200);
+  assert.deepEqual(calls[0], {
+    kind: 'update', id: 7, reservedAt: '2026-09-02T10:30:00+09:00',
+    menu: 'シャンプー', staffId: 2, durationMinutes: 90,
+  });
+});
+
+test('担当・所要時間が空なら未設定として渡す', async () => {
+  const { app, calls } = makeResvApp();
+  await patch(app, '/api/admin/reservations/7', {
+    reservedAt: '2026-09-02T10:30:00+09:00', staffId: '', durationMinutes: '',
+  });
+  assert.equal(calls[0].staffId, null);
+  assert.equal(calls[0].durationMinutes, null);
+});

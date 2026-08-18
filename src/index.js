@@ -59,7 +59,8 @@ const shiftService = createShiftService({ pool, lineClient, slack, settings, con
 // 取り込み・LIFF より先にここで作る
 const reservationService = createReservationService({ pool, slack, lineClient });
 // スタッフが公式LINE から入れる予約。読み取った内容は下書きに置き、押されたときだけ本予約にする
-const entryParser = createReservationEntryParser({ apiKey: config.anthropicApiKey });
+// 営業時間を渡すのは、「2時」のように午前・午後が書かれていない時刻を決めるため
+const entryParser = createReservationEntryParser({ apiKey: config.anthropicApiKey, store });
 const reservationDrafts = createReservationDrafts({ pool, reservationService });
 // 回数券・保育コースの回数管理（残回数は元帳の合計から導く）
 const planService = createPlanService({ pool });

@@ -774,7 +774,7 @@ tr.await td{background:var(--warn-soft)}
       <p class="hint">承認待ちは期間に関わらず先頭に出ます。</p>
       <table class="rvtable">
         <thead>
-          <tr><th>日時</th><th>わんちゃん</th><th>コース</th><th>担当</th><th>状態</th><th>ご要望</th><th>操作</th></tr>
+          <tr><th>日時</th><th>わんちゃん</th><th>コース</th><th>担当</th><th>状態</th><th>ご要望・メモ</th><th>操作</th></tr>
         </thead>
         <tbody id="rvrows"></tbody>
       </table>
@@ -3835,7 +3835,7 @@ function renderResv(){
       + '<td class="rvname" data-label="担当">' + rvStaffLabel(r) + '</td>'
       + '<td data-label="状態"><span class="pill ' + cls + '">' + label + '</span>'
       + (r.status === 'confirmed' && r.ok ? ' <span class="pill good">本人確認済</span>' : '') + '</td>'
-      + '<td class="rvnote" data-label="ご要望">' + (r.note || '—') + '</td>';
+      + '<td class="rvnote" data-label="ご要望・メモ">' + (r.note || '—') + '</td>';
     const td = document.createElement('td');
     td.className = 'rowacts';
     td.dataset.label = '操作';

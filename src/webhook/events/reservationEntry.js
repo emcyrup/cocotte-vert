@@ -11,14 +11,23 @@
 //   - 連携済みスタッフとの 1:1 トーク（staffShift から）
 
 import { formatJstDateTime, jstToday } from '../../util/jst.js';
+import { stayLabel } from '../../reservations/stay.js';
 
 // 「予約確認」（一覧の問い合わせ）と紛れないよう、登録は別の言い方に寄せる
 const ENTRY_PREFIX = /^(?:予約(?:登録|追加|入力)|新規予約)[\s　:：,、]*/;
 
 const HOW_TO_WRITE =
-  'お客様のお名前・日付・時刻を入れて送ってください。\n' +
+  '飼い主様のお名前・日付・時刻を入れて、1件ずつ送ってください。\n' +
   '例：予約登録 8/20 14時 田中花子 カット 担当佐藤\n' +
-  '　　予約登録 明日10:00 山田 090-1234-5678 シャンプー';
+  '　　予約登録 明日10:00 山田 090-1234-5678 シャンプー\n' +
+  '　　予約登録 8/20 14時 田中花子 お泊まり 2泊\n' +
+  '※お名前はわんちゃんではなく飼い主様のお名前でお願いします。';
+
+// 読み取れなかった理由が分かるときは、書き方の案内より先に何を直せばよいかを伝える
+const REASON_TEXT = {
+  multiple: '1通に予約が複数あるようです。取り違えを防ぐため、1件ずつ送ってください。',
+  pet_only: 'わんちゃんのお名前しか読み取れませんでした。飼い主様のお名前で送ってください。',
+};
 
 /**
  * 「予約登録 …」なら、接頭辞を除いた本文を返す。そうでなければ null。
@@ -47,7 +56,19 @@ export function confirmMessage({ draft, customerLabel }) {
     detailRow('コース', draft.menu || '未定'),
     detailRow('担当', draft.staff_name || '未定'),
   ];
+  const stay = stayLabel({ reservedAt: draft.reserved_at, checkoutDate: draft.checkout_date });
+  if (stay) details.push(detailRow('お泊まり', stay));
   if (draft.duration_minutes) details.push(detailRow('所要', `${draft.duration_minutes}分`));
+
+  // 新規で作ると、わんちゃんの名前を入れてしまったときに別のお客様が増える。ここで気付いてもらう
+  if (!draft.customer_id && draft.new_customer_name) {
+    details.push({
+      type: 'text',
+      text: `「${draft.new_customer_name}様」は新しいお客様として登録されます。`
+        + '飼い主様のお名前かどうかご確認ください。',
+      size: 'xs', color: '#c2410c', wrap: true, margin: 'sm',
+    });
+  }
 
   return {
     type: 'flex',
@@ -127,10 +148,14 @@ export function registeredText({ draft, customerLabel, createdCustomer }) {
     `${customerLabel}　${formatJstDateTime(new Date(draft.reserved_at))}`,
     `${draft.menu || 'コース未定'}／${draft.staff_name || '担当未定'}`,
   ];
+  const stay = stayLabel({ reservedAt: draft.reserved_at, checkoutDate: draft.checkout_date });
+  if (stay) lines.push(`お泊まり ${stay}`);
   if (createdCustomer) {
     // 電話番号が無いとリマインド配信の突合ができないため、後で足してもらう
     lines.push('', '新しいお客様として登録しました。お電話番号などは店舗管理画面から追加してください。');
   }
+  // LINE から直せるのは「入れる」ところまで。直し方が分からず入れ直されると二重になる
+  lines.push('', '内容の変更・取消は店舗管理画面から行ってください。');
   return lines.join('\n');
 }
 
@@ -175,7 +200,8 @@ export function createReservationEntry({ drafts, entryParser, lineClient, slack,
 
     const entry = await entryParser.parse({ text: body, today: jstToday(now()).iso });
     if (!entry.isRequest) {
-      await replyText(event, `予約として読み取れませんでした。\n${HOW_TO_WRITE}`);
+      const head = REASON_TEXT[entry.reason] ?? '予約として読み取れませんでした。';
+      await replyText(event, `${head}\n${HOW_TO_WRITE}`);
       return true;
     }
 

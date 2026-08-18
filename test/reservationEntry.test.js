@@ -144,6 +144,47 @@ test('読み取れない・本文が無いときは書き方を案内する', as
   }
 });
 
+test('読み取れなかった理由が分かるときは、何を直せばよいかを先に伝える', async () => {
+  const cases = [
+    ['multiple', /1件ずつ送ってください/],
+    ['pet_only', /飼い主様のお名前で送ってください/],
+  ];
+  for (const [reason, expected] of cases) {
+    const f = makeFakes({ entry: { isRequest: false, reason } });
+    await createReservationEntry(f).handle(groupEvent, '本文');
+    assert.match(f.replies[0].text, expected, reason);
+    assert.match(f.replies[0].text, /予約登録 8\/20 14時/, `${reason}: 書き方も添える`);
+    assert.equal(f.created.length, 0, reason);
+  }
+});
+
+test('お泊まりは、泊数と退室日を復唱する', async () => {
+  const draft = { ...DRAFT, menu: 'お泊まり', checkout_date: '2026-08-22' };
+  const f = makeFakes({ draft });
+
+  await createReservationEntry(f).handle(groupEvent, '8/20 14時 田中花子 お泊まり 2泊');
+
+  const text = JSON.stringify(f.replies[0]);
+  assert.match(text, /2泊/);
+  assert.match(text, /8月22日\(土\) 退室予定/);
+});
+
+test('新しいお客様として入るときは、飼い主様の名前か確かめてもらう', async () => {
+  const draft = { ...DRAFT, customer_id: null, customer_name: null, new_customer_name: 'ココ' };
+  const f = makeFakes({ matches: [], draft });
+
+  await createReservationEntry(f).handle(groupEvent, '8/20 14時 ココ');
+
+  assert.match(JSON.stringify(f.replies[0]), /新しいお客様として登録されます/);
+  assert.match(JSON.stringify(f.replies[0]), /飼い主様のお名前かどうか/);
+});
+
+test('既存のお客様なら、新規の注意書きは出さない', async () => {
+  const f = makeFakes();
+  await createReservationEntry(f).handle(groupEvent, '8/20 14時 田中花子');
+  assert.doesNotMatch(JSON.stringify(f.replies[0]), /新しいお客様として登録されます/);
+});
+
 test('［登録］で本予約にする', async () => {
   const f = makeFakes();
   const entry = createReservationEntry(f);
@@ -153,6 +194,17 @@ test('［登録］で本予約にする', async () => {
   assert.deepEqual(f.calls[0], { draftId: 7, source: { type: 'group', id: 'G1' } });
   assert.match(f.replies[0].text, /予約を登録しました/);
   assert.match(f.replies[0].text, /田中花子様/);
+  // 直し方が分からず入れ直されると二重になる
+  assert.match(f.replies[0].text, /変更・取消は店舗管理画面から/);
+});
+
+test('お泊まりは、登録の知らせにも泊数と退室日を出す', async () => {
+  const draft = { ...DRAFT, menu: 'お泊まり', checkout_date: '2026-08-22' };
+  const f = makeFakes({ draft, register: { ok: true, draft, createdCustomer: false, reservationId: 42 } });
+
+  await createReservationEntry(f).decide(groupEvent, params('action=resv&v=ok&d=7'));
+
+  assert.match(f.replies[0].text, /お泊まり 2泊（8月22日\(土\) 退室予定）/);
 });
 
 test('新しいお客様を作ったときは、電話番号の追加を促す', async () => {

@@ -7,6 +7,7 @@
 // 他人の下書きを確定できないようにするため、取得・更新のすべてで場所を条件に入れる。
 
 import { normalizePhone } from '../customers/phone.js';
+import { stayLabel } from './stay.js';
 
 // これより古い下書きは登録できない。読み違いに気付かないまま何日も経った
 // ボタンを押されると、意図しない予約が入るため
@@ -18,6 +19,8 @@ const MAX_CANDIDATES = 5;
 const DRAFT_COLUMNS = `
   d.id, d.customer_id, d.new_customer_name, d.new_customer_phone,
   d.staff_id, d.menu, d.reserved_at, d.duration_minutes,
+  -- DATE は pg がサーバーのタイムゾーンで Date に変換して1日ずれることがある。文字列で受け取る
+  to_char(d.checkout_date, 'YYYY-MM-DD') AS checkout_date,
   d.raw_text, d.status::text AS status, d.reservation_id,
   d.created_at > now() - make_interval(hours => ${DRAFT_TTL_HOURS}) AS fresh`;
 
@@ -78,13 +81,14 @@ export function createReservationDrafts({ pool, reservationService }) {
     const { rows } = await pool.query(
       `INSERT INTO reservation_drafts
          (source_type, source_id, customer_id, new_customer_name, new_customer_phone,
-          staff_id, menu, reserved_at, duration_minutes, raw_text)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          staff_id, menu, reserved_at, duration_minutes, checkout_date, raw_text)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING id`,
       [
         source.type, source.id, customerId,
         newCustomer?.name ?? null, newCustomer?.phone ?? null,
-        staffId, entry.menu, reservedAt, entry.durationMinutes, entry.rawText,
+        staffId, entry.menu, reservedAt, entry.durationMinutes,
+        entry.checkoutDate ?? null, entry.rawText,
       ]
     );
     return rows[0].id;
@@ -185,12 +189,18 @@ export function createReservationDrafts({ pool, reservationService }) {
         ]);
       }
 
+      // 退室日は reservations に列を持たない。予約一覧で見えるようメモに残す
+      const stay = stayLabel({
+        reservedAt: draft.reserved_at,
+        checkoutDate: draft.checkout_date,
+      });
       const result = await reservationService.createManual({
         customerId,
         reservedAt: draft.reserved_at,
         menu: draft.menu,
         staffId: draft.staff_id,
         durationMinutes: draft.duration_minutes,
+        note: stay ? `お泊まり ${stay}` : null,
       });
       if (!result.ok) throw new Error(`createManual: ${result.error}`);
 

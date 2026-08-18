@@ -3,16 +3,25 @@ import assert from 'node:assert/strict';
 import express from 'express';
 import { createAdminRouter } from '../src/http/adminRoutes.js';
 
-function makeApp({ staffRows = [], counts = { reservations: '0', shifts: '0', requests: '0' } } = {}) {
+function makeApp({
+  staffRows = [],
+  counts = { reservations: '0', shifts: '0', requests: '0' },
+  target = { active: true },
+  deleted = 1,
+} = {}) {
   const queries = [];
+  const run = async (sql, params) => {
+    queries.push({ sql, params });
+    if (/FROM staff s WHERE/.test(sql)) return { rows: staffRows };
+    if (/SELECT active FROM staff/.test(sql)) return { rows: target ? [target] : [] };
+    if (/SELECT \(SELECT count\(\*\) FROM reservations WHERE staff_id/.test(sql)) return { rows: [counts] };
+    if (/DELETE FROM staff/.test(sql)) return { rowCount: deleted };
+    return { rows: [], rowCount: 0 };
+  };
   const pool = {
-    query: async (sql, params) => {
-      queries.push({ sql, params });
-      if (/FROM staff s WHERE/.test(sql)) return { rows: staffRows };
-      if (/SELECT \(SELECT count\(\*\) FROM reservations WHERE staff_id/.test(sql)) return { rows: [counts] };
-      if (/DELETE FROM staff/.test(sql)) return { rowCount: 1 };
-      return { rows: [], rowCount: 0 };
-    },
+    query: run,
+    // 削除は「担当を外す → 消す」をまとめて行うため、トランザクションを使う
+    connect: async () => ({ query: run, release: () => {} }),
   };
   const app = express();
   app.use(express.json());
@@ -52,30 +61,61 @@ test('退職者を含める指定でも件数は返る', async () => {
   assert.match(queries[0].sql, /reservation_count/);
 });
 
-test('予約の担当として残っている人は削除できない（件数を添えて断る）', async () => {
-  const { app } = makeApp({ counts: { reservations: '2', shifts: '5', requests: '1' } });
+test('在職中の人が予約の担当に入っていれば削除できない（件数を添えて断る）', async () => {
+  const { app, queries } = makeApp({
+    counts: { reservations: '2', shifts: '5', requests: '1' },
+    target: { active: true },
+  });
 
   const res = await request(app, 'DELETE', '/api/admin/staff/1');
 
   assert.equal(res.status, 409);
-  assert.deepEqual(res.body, { error: 'staff_in_use', reservations: 2 });
+  assert.deepEqual(res.body, { error: 'staff_active_in_use', reservations: 2 });
+  assert.equal(queries.filter((q) => /DELETE FROM staff/.test(q.sql)).length, 0);
 });
 
-test('退職にしても削除できるようにはならない（記録を守るため）', async () => {
-  // active の値に関わらず、予約に担当として残っていれば断る。
-  // 画面の案内を「退職にすれば消せる」と書かないための裏付け
-  const { app } = makeApp({ counts: { reservations: '1', shifts: '0', requests: '0' } });
-
-  const res = await request(app, 'DELETE', '/api/admin/staff/1');
-
-  assert.equal(res.status, 409);
-});
-
-test('担当している予約が無ければ削除でき、消えたものを返す', async () => {
-  const { app } = makeApp({ counts: { reservations: '0', shifts: '4', requests: '2' } });
+test('退職者は、予約の担当に入っていても削除できる', async () => {
+  const { app, queries } = makeApp({
+    counts: { reservations: '3', shifts: '4', requests: '2' },
+    target: { active: false },
+  });
 
   const res = await request(app, 'DELETE', '/api/admin/staff/1');
 
   assert.equal(res.status, 200);
-  assert.deepEqual(res.body, { ok: true, deleted: { shifts: 4, requests: 2 } });
+  assert.deepEqual(res.body, { ok: true, deleted: { shifts: 4, requests: 2, reservations: 3 } });
+});
+
+test('削除すると、予約と下書きの担当が外れて「不明」になる', async () => {
+  const { app, queries } = makeApp({
+    counts: { reservations: '3', shifts: '0', requests: '0' },
+    target: { active: false },
+  });
+
+  await request(app, 'DELETE', '/api/admin/staff/1');
+
+  const sqls = queries.map((q) => q.sql);
+  assert.ok(sqls.some((q) => /UPDATE reservations SET staff_id = NULL/.test(q)));
+  assert.ok(sqls.some((q) => /UPDATE reservation_drafts SET staff_id = NULL/.test(q)));
+  // 「担当だけ外れて本人が消えない」状態を作らないよう、まとめて行う
+  assert.ok(sqls.includes('BEGIN') && sqls.includes('COMMIT'));
+  assert.ok(sqls.indexOf('BEGIN') < sqls.findIndex((q) => /DELETE FROM staff/.test(q)));
+});
+
+test('担当している予約が無ければ、在職中でも削除できる', async () => {
+  const { app } = makeApp({ counts: { reservations: '0', shifts: '4', requests: '2' }, target: { active: true } });
+
+  const res = await request(app, 'DELETE', '/api/admin/staff/1');
+
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.body, { ok: true, deleted: { shifts: 4, requests: 2, reservations: 0 } });
+});
+
+test('いないスタッフの削除は 404', async () => {
+  const { app, queries } = makeApp({ target: null });
+
+  const res = await request(app, 'DELETE', '/api/admin/staff/99');
+
+  assert.equal(res.status, 404);
+  assert.equal(queries.filter((q) => /UPDATE reservations/.test(q.sql)).length, 0, '先に担当を外さない');
 });

@@ -773,6 +773,28 @@ tr.await td{background:var(--warn-soft)}
     </div>
   </div>
 
+  <div class="card">
+    <div class="hd"><h2>予約データの取り込み</h2><span class="pill mut">EPARK など</span></div>
+    <div class="bd">
+      <p class="hint" id="im-lead">EPARK などからエクスポートしたCSVを、この画面から取り込めます。
+      同じファイルを二度取り込んでも予約は増えません（予約番号で見分けます）。</p>
+      <div class="frow" style="margin-bottom:8px">
+        <input type="file" id="im-file" accept=".csv,text/csv,text/plain">
+        <select id="im-enc" aria-label="文字コード">
+          <option value="auto">文字コード：自動</option>
+          <option value="shift_jis">Shift_JIS</option>
+          <option value="utf-8">UTF-8</option>
+        </select>
+      </div>
+      <div id="im-map"></div>
+      <div class="frow" id="im-actions" hidden>
+        <button class="btn sub" id="im-save" type="button">この対応づけを保存</button>
+        <button class="btn" id="im-run" type="button">取り込む</button>
+      </div>
+      <div id="im-result"></div>
+    </div>
+  </div>
+
   <div class="grid resv2">
     <div class="card">
       <div class="hd"><h2>新規予約</h2><span class="pill mut">スタッフ入力</span></div>
@@ -4363,11 +4385,176 @@ async function loadFamiliesLive(){
   FAMILIES.length = 0;
   fams.forEach(f => FAMILIES.push(f));
 }
+// ---- 予約CSVの取り込み（EPARK など）----
+// 列の対応づけは実物の CSV が届くまで確定しないため、画面で選んでサーバに保存する。
+// 上流の書式が変わってもデプロイなしで直せるようにするのが狙い。
+const imFile = document.getElementById('im-file');
+const imEnc = document.getElementById('im-enc');
+const imMapEl = document.getElementById('im-map');
+const imActions = document.getElementById('im-actions');
+const imResult = document.getElementById('im-result');
+// csv は選んだファイルの中身。mapping は今画面で選ばれている対応づけ
+const imState = { csv: null, header: [], mapping: null, fields: [], ready: 0 };
+const IM_STATUS = { confirmed: 'ご予約', visited: '来店済', cancelled: 'キャンセル', no_show: '無断キャンセル' };
+
+// CSV の見出しやエラー文はファイル由来なので、そのまま innerHTML に混ぜない
+function esc(v){
+  return String(v ?? '').replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// Shift_JIS のバイト列を素直に読むため、文字コードの変換はここ（ブラウザ）で行う。
+// サーバへは文字列にしてから送る（バイト列のまま JSON に載せると壊れるため）
+function imDecode(buffer, encoding){
+  if (encoding !== 'auto') return new TextDecoder(encoding).decode(buffer);
+  // UTF-8 として読めれば UTF-8。読めなければ Shift_JIS とみなす
+  try { return new TextDecoder('utf-8', { fatal: true }).decode(buffer); }
+  catch { return new TextDecoder('shift_jis').decode(buffer); }
+}
+
+function imRenderMapping(){
+  if (!imState.header.length) { imMapEl.innerHTML = ''; imActions.hidden = true; return; }
+  const options = key => ['<option value="">（使わない）</option>'].concat(
+    imState.header.map(h => '<option value="' + esc(h) + '"'
+      + (imState.mapping.columns[key] === h ? ' selected' : '') + '>' + esc(h) + '</option>')
+  ).join('');
+  imMapEl.innerHTML = '<p class="hint" style="margin:10px 0 6px"><b>列の対応づけ</b>'
+    + '（CSVの見出しから選んでください。<span class="pill warn">必須</span>が欠けている行は取り込みません）</p>'
+    + '<table><tr><th>項目</th><th>CSVの列</th></tr>'
+    + imState.fields.map(f => '<tr><td>' + esc(f.label)
+      + (f.required ? ' <span class="pill warn">必須</span>' : '')
+      + (f.note ? '<span style="display:block;font-size:11.5px;color:var(--muted)">' + esc(f.note) + '</span>' : '')
+      + '</td><td><select data-imcol="' + f.key + '">' + options(f.key) + '</select></td></tr>').join('')
+    + '</table>';
+  imMapEl.querySelectorAll('select[data-imcol]').forEach(sel => {
+    sel.addEventListener('change', () => {
+      const key = sel.dataset.imcol;
+      if (sel.value) imState.mapping.columns[key] = sel.value;
+      else delete imState.mapping.columns[key];
+      imPreview();
+    });
+  });
+  imActions.hidden = false;
+}
+
+// CSV に出てきた状態の文言を、どう解釈したか見せる。
+// 見覚えのない文言は既定（多くは「ご予約」）に落ちるため、キャンセルを確定として
+// 取り込む事故が起きうる。ここで気付いて選び直せるようにする
+function imRenderStatusWords(words){
+  if (!words || !words.length) return '';
+  const options = w => Object.keys(IM_STATUS).map(v =>
+    '<option value="' + v + '"' + (w.status === v ? ' selected' : '') + '>' + IM_STATUS[v] + '</option>').join('');
+  return '<p class="hint" style="margin:10px 0 6px"><b>状態の読み替え</b>'
+    + '（CSVに出てきた文言をどう扱うか。<span class="pill warn">要確認</span>は当てはまりが無く、'
+    + '既定に落ちています）</p>'
+    + '<table><tr><th>CSVの文言</th><th>件数</th><th>扱い</th></tr>'
+    + words.map(w => '<tr><td>' + esc(w.word)
+      + (w.known ? '' : ' <span class="pill warn">要確認</span>') + '</td>'
+      + '<td>' + w.count + '</td>'
+      + '<td><select data-imstatus="' + esc(w.word) + '">' + options(w) + '</select></td></tr>').join('')
+    + '</table>';
+}
+
+function imRenderResult(p){
+  const problems = (p.problems || []).length
+    ? '<p class="hint" style="margin:8px 0 0"><b>取り込めない行</b>（CSVの行番号）<br>'
+      + p.problems.map(x => x.line + '行目: ' + esc(x.reason)).join('<br>') + '</p>'
+    : '';
+  const sample = (p.sample || []).length
+    ? '<table style="margin-top:8px"><tr><th>日時</th><th>お名前</th><th>電話</th><th>コース</th><th>担当</th><th>状態</th></tr>'
+      + p.sample.map(r => '<tr><td>' + esc(String(r.reserved_at).slice(0, 16).replace('T', ' '))
+        + '</td><td>' + esc(r.customer_name) + '</td><td>' + esc(r.phone)
+        + '</td><td>' + esc(r.menu || '—') + '</td><td>' + esc(r.staff_name || '—')
+        + '</td><td>' + esc(IM_STATUS[r.status] || r.status) + '</td></tr>').join('')
+      + '</table><p class="hint" style="margin:6px 0 0">先頭の数件です。この内容で合っていれば「取り込む」を押してください。</p>'
+    : '';
+  imResult.innerHTML = '<p class="hint" style="margin:10px 0 0">読み取り結果：全'
+    + p.total + '件のうち<b>' + p.ready + '件</b>を取り込めます'
+    + (p.problemCount ? '（' + p.problemCount + '件は取り込めません）' : '') + '</p>'
+    + imRenderStatusWords(p.statusWords) + sample + problems;
+  imResult.querySelectorAll('select[data-imstatus]').forEach(sel => {
+    sel.addEventListener('change', () => {
+      imState.mapping.statusMap[sel.dataset.imstatus] = sel.value;
+      imPreview();
+    });
+  });
+}
+
+async function imPreview(){
+  if (!imState.csv) return;
+  try {
+    const p = await adminApi('/import/preview', {
+      method: 'POST', body: JSON.stringify({ csv: imState.csv, mapping: imState.mapping }),
+    });
+    imState.header = p.header; imState.mapping = p.mapping; imState.ready = p.ready;
+    imRenderResult(p);
+  } catch (err) { imResult.innerHTML = '<p class="hint">確認できませんでした: ' + esc(err.message) + '</p>'; }
+}
+
+async function imLoadFile(){
+  const file = imFile.files && imFile.files[0];
+  if (!file) return;
+  imResult.innerHTML = '<p class="hint" style="margin:10px 0 0">読み込んでいます…</p>';
+  try {
+    imState.csv = imDecode(await file.arrayBuffer(), imEnc.value);
+    // 保存済みの対応づけを土台にする。まだ無ければサーバの既定が返る
+    const m = await adminApi('/import/mapping');
+    imState.mapping = m.mapping; imState.fields = m.fields;
+    await imPreview();
+    imRenderMapping();
+  } catch (err) {
+    imResult.innerHTML = '<p class="hint">ファイルを読めませんでした: ' + esc(err.message) + '</p>';
+  }
+}
+
+// 実データに繋がっていないと取り込み先が無い。押せてしまうより、理由を書いて止める
+function imDisable(){
+  imFile.disabled = true;
+  imEnc.disabled = true;
+  document.getElementById('im-lead').innerHTML =
+    'EPARK などからエクスポートしたCSVを、この画面から取り込めます。'
+    + '<b>実データに接続しているときに使えます</b>（このデモでは動きません）。';
+}
+
+function imBind(){
+  imFile.addEventListener('change', imLoadFile);
+  imEnc.addEventListener('change', () => { if (imFile.files && imFile.files[0]) imLoadFile(); });
+  document.getElementById('im-save').addEventListener('click', async () => {
+    try {
+      await adminApi('/import/mapping', { method: 'PUT', body: JSON.stringify({ mapping: imState.mapping }) });
+      showToast('列の対応づけを保存しました。次回からこの内容で読み取ります');
+    } catch (err) { showToast('保存できませんでした: ' + err.message); }
+  });
+  document.getElementById('im-run').addEventListener('click', async () => {
+    if (!imState.csv) return;
+    if (!imState.ready) { showToast('取り込める行がありません。列の対応づけをご確認ください'); return; }
+    if (!confirm(imState.ready + '件を取り込みます。よろしいですか？\n（同じ予約番号があれば上書きされます）')) return;
+    imResult.innerHTML = '<p class="hint" style="margin:10px 0 0">取り込んでいます…</p>';
+    try {
+      const r = await adminApi('/import/reservations', {
+        method: 'POST', body: JSON.stringify({ csv: imState.csv, mapping: imState.mapping }),
+      });
+      const s = r.summary;
+      imResult.innerHTML = '<p class="hint" style="margin:10px 0 0"><b>取り込みました。</b>'
+        + '新規 ' + s.created + '件／更新 ' + s.updated + '件'
+        + (s.failed ? '／失敗 ' + s.failed + '件' : '')
+        + (s.skipped ? '／取り込めず ' + s.skipped + '件' : '') + '</p>'
+        + ((r.failures || []).length
+          ? '<p class="hint">失敗: ' + r.failures.map(f => esc(f.external_id) + '（' + esc(f.error) + '）').join('、') + '</p>'
+          : '');
+      showToast('予約を取り込みました（新規 ' + s.created + '件・更新 ' + s.updated + '件）');
+      await rvReload();
+    } catch (err) { imResult.innerHTML = '<p class="hint">取り込めませんでした: ' + esc(err.message) + '</p>'; }
+  });
+}
+
 (async () => {
   try {
     await adminApi('/staff');   // Basic 認証込みで疎通確認
     adminLive = true;
-  } catch { return; }           // 届かなければデモ動作のまま
+  } catch { imDisable(); return; }   // 届かなければデモ動作のまま
+
+  imBind();
 
   // 日付の初期値をデモ用の固定日から実際の今日に差し替える
   const pad = n => String(n).padStart(2, '0');

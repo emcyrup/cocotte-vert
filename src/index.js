@@ -30,6 +30,7 @@ import { createReservationService } from './reservations/service.js';
 import { basicAuth, bearerAuth } from './http/auth.js';
 import { createAdminRouter } from './http/adminRoutes.js';
 import { createImportRouter } from './http/importRoutes.js';
+import { createAdminImportRouter, MAX_CSV_BYTES } from './http/adminImportRoutes.js';
 import { createSnsRouter } from './http/snsRoutes.js';
 import { createInstagramClient } from './instagram/client.js';
 import { createThreadsClient } from './threads/client.js';
@@ -92,6 +93,9 @@ app.post(
 );
 
 // ---- ここから下は JSON パースを使う（webhook 以外のルート） ----
+// 予約CSVは本文が大きい。既定の 100kb では数百行が入らないため、この経路だけ先に広げて読む
+// （express.json は一度読んだ本文を読み直さないので、順番がそのまま上限になる）
+app.use('/api/admin/import', express.json({ limit: MAX_CSV_BYTES }));
 app.use(express.json());
 
 // 画面（HTML/JS）は毎回サーバーへ更新確認させる。デプロイ後に古い app.js が
@@ -300,6 +304,11 @@ const snsPublisher = createSnsPublisher({ pool, clients: snsClients, slack, conf
 const captionWriter = config.anthropicApiKey
   ? createCaptionWriter({ apiKey: config.anthropicApiKey, model: config.captionModel })
   : null;
+// 予約CSVの取り込み（画面から）。管理画面と同じ Basic 認証の内側に置く
+app.use('/api/admin/import', adminGuard, createAdminImportRouter({
+  reservationService, settings, slack,
+}));
+
 app.use('/api/admin/sns', adminGuard, createSnsRouter({
   pool, publisher: snsPublisher, dataDir: snsDataDir, captionWriter, storeName: store.name,
   clients: snsClients,

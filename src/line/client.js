@@ -104,6 +104,39 @@ export function createLineClient({ config, pool, api }) {
   }
 
   /**
+   * グループの人数（読み取りのみ）。メンバー一覧が取れないアカウントでも使える。
+   */
+  async function getGroupMemberCount(groupId) {
+    const res = await client.getGroupMemberCount(groupId);
+    return res.count;
+  }
+
+  /**
+   * グループにいる全員の LINE userId（読み取りのみ）。
+   *
+   * このAPIはアカウント種別によって使えないことがある。使えるかどうかを呼び出し側が
+   * 扱えるよう、失敗は握り潰さずに status を添えて返す。
+   * 1回あたり最大100件で、続きは next（継続トークン）で取る。
+   *
+   * @returns {Promise<{ok: true, memberIds: string[]} | {ok: false, status: number|null, message: string}>}
+   */
+  async function getGroupMemberIds(groupId) {
+    const memberIds = [];
+    let start;
+    try {
+      do {
+        const res = await client.getGroupMembersIds(groupId, start);
+        memberIds.push(...(res.memberIds ?? []));
+        start = res.next;
+        // 想定外の大きさで回り続けないよう上限を設ける（店舗のグループは数十人規模）
+      } while (start && memberIds.length < 1000);
+      return { ok: true, memberIds };
+    } catch (err) {
+      return { ok: false, status: err?.status ?? null, message: err?.message ?? String(err) };
+    }
+  }
+
+  /**
    * スタッフ向け通知の Push（宛先はスタッフ用グループ等。通数を消費する）。
    * 顧客配信ではないため message_logs には記録しないが、SEND_MODE のガードは同様に効かせる。
    */
@@ -149,5 +182,9 @@ export function createLineClient({ config, pool, api }) {
     return { limited: true, limit: quota.value, used, remaining: quota.value - used };
   }
 
-  return { deliver, reply, getProfile, getGroupMembership, getQuota, pushStaff, pushTest };
+  return {
+    deliver, reply, getProfile, getGroupMembership,
+    getGroupMemberCount, getGroupMemberIds,
+    getQuota, pushStaff, pushTest,
+  };
 }

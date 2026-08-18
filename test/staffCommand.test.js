@@ -234,14 +234,65 @@ test('問い合わせ系のコマンドは対象外グループでは従来ど�
   assert.equal(replies.length, 0);
 });
 
-test('名前の無い連携コマンドはコマンドとして扱わない', async () => {
+// ---- 「スタッフ登録」だけの発言 → 登録ボタンを出す ----
+
+function makeLinkPromptDeps({ staffLineGroupId = STAFF_GROUP, liffStaffUrl = 'https://liff.line.me/1234-abcd/staff.html' } = {}) {
+  const messages = [];
+  return {
+    messages,
+    handler: createStaffCommandHandler({
+      settings: { get: async () => null, set: async () => {} },
+      lineClient: { reply: async (_t, m) => messages.push(m[0]) },
+      config: { staffLineGroupId },
+      shiftService: { linkStaffByName: async () => ({ ok: true }), linkStaffByCode: async () => ({ ok: false }) },
+      liffStaffUrl,
+    }),
+  };
+}
+
+test('スタッフグループの「スタッフ登録」には登録ボタンを返す', async () => {
+  const { handler, messages } = makeLinkPromptDeps();
+
+  assert.equal(await handler(groupEvent('スタッフ登録'), 'スタッフ登録'), true);
+  const [message] = messages;
+  assert.equal(message.type, 'flex');
+  const [button] = message.contents.footer.contents;
+  assert.equal(button.action.type, 'uri');
+  assert.match(button.action.uri, /\/staff\.html$/);
+});
+
+test('言い方が違っても登録ボタンを返す', async () => {
+  for (const text of ['スタッフ連携', 'シフト登録', 'スタッフ登録　', 'スタッフ登録：']) {
+    const { handler, messages } = makeLinkPromptDeps();
+    assert.equal(await handler(groupEvent(text), text), true, text);
+    assert.equal(messages[0].type, 'flex', text);
+  }
+});
+
+test('別のグループでは登録ボタンを出さない', async () => {
+  const { handler, messages } = makeLinkPromptDeps();
+
+  assert.equal(await handler(groupEvent('スタッフ登録', 'C-other'), 'スタッフ登録'), true, '無言では終わらない');
+  assert.equal(messages[0].type, 'text');
+  assert.match(messages[0].text, /設定されていない/);
+});
+
+test('LIFF が未設定なら、これまでの登録方法を案内する', async () => {
+  const { handler, messages } = makeLinkPromptDeps({ liffStaffUrl: null });
+
+  assert.equal(await handler(groupEvent('スタッフ登録'), 'スタッフ登録'), true);
+  assert.equal(messages[0].type, 'text');
+  assert.match(messages[0].text, /スタッフ登録 高橋/, '代わりの手段を必ず示す');
+});
+
+test('名前つきの連携コマンドは、これまでどおり名前で連携する', async () => {
   const { handler, linkCalls } = makeDeps({
     stored: { staff_line_group_id: STAFF_GROUP },
     linkResult: { ok: true, staff: { id: 3, name: '高橋' } },
   });
 
-  assert.equal(await handler(groupEvent('スタッフ登録'), 'スタッフ登録'), false);
-  assert.equal(linkCalls.length, 0);
+  assert.equal(await handler(groupEvent('スタッフ登録 高橋'), 'スタッフ登録 高橋'), true);
+  assert.deepEqual(linkCalls[0].name, '高橋');
 });
 
 test('スタッフグループで6桁の連携コードを送ると、名前ではなくコードとして扱う', async () => {

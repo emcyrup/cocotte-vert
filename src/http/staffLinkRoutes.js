@@ -1,0 +1,88 @@
+// スタッフ登録（LIFF）。スタッフ用グループに置いたボタンから開く画面の裏側。
+//
+// 連携は「誰が」を取り違えると別人へ通知が飛び、シフト表と予約を触られる。
+// そのため2つの関門を必ず通す。片方でも確かめられなければ登録させない。
+//   ① LINE の ID トークンをサーバーで検証する（クライアントの言う userId は信用しない）
+//   ② その人がスタッフ用グループにいることを LINE へ問い合わせる
+//
+// ②があるので、この画面の URL が外へ漏れても、グループ外の人は登録できない。
+import express from 'express';
+import { SETTING_KEYS } from '../settings.js';
+
+export function createStaffLinkRouter({
+  verifyIdToken, settings, config, lineClient, shiftService, slack,
+}) {
+  const router = express.Router();
+
+  async function resolveGroupId() {
+    const stored = await settings.get(SETTING_KEYS.staffLineGroupId).catch(() => null);
+    return stored ?? config?.staffLineGroupId ?? null;
+  }
+
+  /** @returns {Promise<{ok: true, lineUserId: string} | {ok: false, error: string}>} */
+  async function gate(idToken) {
+    if (!verifyIdToken || !shiftService) return { ok: false, error: 'liff_not_configured' };
+
+    let payload;
+    try {
+      payload = await verifyIdToken(idToken);
+    } catch {
+      return { ok: false, error: 'invalid_token' };
+    }
+
+    const groupId = await resolveGroupId();
+    if (!groupId) return { ok: false, error: 'group_not_configured' };
+
+    const membership = await lineClient.getGroupMembership(groupId, payload.sub);
+    if (membership === 'left') return { ok: false, error: 'not_in_group' };
+    // 'unknown'（通信・権限エラー）は参加していると見なさない。安全側に倒す
+    if (membership !== 'joined') return { ok: false, error: 'membership_unknown' };
+
+    return { ok: true, lineUserId: payload.sub };
+  }
+
+  const statusFor = (error) => (error === 'invalid_token' ? 401 : 403);
+
+  /** 画面に出す一覧。ここを通った時点で本人＝グループの参加者であることは確かめてある */
+  router.post('/options', async (req, res, next) => {
+    try {
+      const result = await gate(req.body?.idToken);
+      // 原因を追えるようにするが、LINE userId は残さない
+      console.log(`[staff-link] liff options ok=${result.ok}${result.ok ? '' : ` reason=${result.error}`}`);
+      if (!result.ok) return res.status(statusFor(result.error)).json({ eligible: false, error: result.error });
+
+      const staff = await shiftService.listStaffForLink();
+      const linked = await shiftService.findStaffByLineUserId(result.lineUserId);
+      res.json({ eligible: true, staff, linkedStaffId: linked?.id ?? null });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.post('/link', async (req, res, next) => {
+    try {
+      const result = await gate(req.body?.idToken);
+      if (!result.ok) return res.status(statusFor(result.error)).json({ ok: false, error: result.error });
+
+      const staffId = Number(req.body?.staffId);
+      if (!Number.isInteger(staffId) || staffId <= 0) {
+        return res.status(400).json({ ok: false, error: 'invalid_staff' });
+      }
+
+      const linked = await shiftService.linkStaffById({ lineUserId: result.lineUserId, staffId });
+      console.log(`[staff-link] source=liff staff=${staffId} ok=${linked.ok}`);
+      if (!linked.ok) return res.status(409).json(linked);
+
+      // 誰がスタッフになったかは後から追えるようにしておく（乗っ取りに気付けるように）
+      await slack.notify(
+        `:bust_in_silhouette: ${linked.staff.name}さん（staff=${linked.staff.id}）が` +
+          'スタッフ登録しました。心当たりがない場合はご確認ください。'
+      );
+      res.json({ ok: true, staff: linked.staff });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  return router;
+}

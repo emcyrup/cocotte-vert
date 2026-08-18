@@ -397,3 +397,57 @@ test('店長は本人が保留にしたものも承認できる', async () => {
   const update = f.pool.queries.find((q) => /UPDATE shift_requests/.test(q.sql));
   assert.match(update.sql, /status IN \('pending', 'held'\)/, '決着済みは動かさない');
 });
+
+// ---- LIFF のスタッフ登録画面から紐付ける ----
+
+test('登録画面の一覧は在職者だけ。連携済みかどうかも返す', async () => {
+  const f = makeFakes([
+    [/SELECT id, name, \(line_user_id IS NOT NULL\)/, {
+      rows: [{ id: 1, name: '佐藤', linked: false }, { id: 2, name: '高橋', linked: true }],
+    }],
+  ]);
+  const service = createShiftService(f);
+
+  const staff = await service.listStaffForLink();
+
+  assert.equal(staff.length, 2);
+  assert.match(f.pool.queries[0].sql, /active = true/, '退職者は出さない');
+  assert.doesNotMatch(f.pool.queries[0].sql, /line_user_id AS/, 'LINE userId そのものは返さない');
+});
+
+test('名前ではなく id で紐付けるので、同姓でも取り違えない', async () => {
+  const f = makeFakes([[/UPDATE staff SET line_user_id/, { rows: [{ id: 3, name: '佐藤' }] }]]);
+  const service = createShiftService(f);
+
+  const result = await service.linkStaffById({ lineUserId: 'U1', staffId: 3 });
+
+  assert.deepEqual(result, { ok: true, staff: { id: 3, name: '佐藤' } });
+  assert.deepEqual(f.pool.queries[0].params, ['U1', 3]);
+  assert.match(f.pool.queries[0].sql, /active = true/, '退職者には紐付けない');
+  assert.match(
+    f.pool.queries[0].sql,
+    /NOT EXISTS \(SELECT 1 FROM staff o WHERE o\.line_user_id/,
+    '連携済みの LINE アカウントを別のスタッフへ付け替えない'
+  );
+  assert.match(f.pool.queries[0].sql, /link_code = NULL/, '発行済みのコードは使い捨てに戻す');
+});
+
+test('紐付けられなかった理由を分けて返す', async () => {
+  // 相手が居ない（退職・削除）
+  const gone = makeFakes([
+    [/UPDATE staff SET line_user_id/, { rows: [] }],
+    [/SELECT 1 FROM staff WHERE id/, { rows: [] }],
+  ]);
+  assert.deepEqual(await createShiftService(gone).linkStaffById({ lineUserId: 'U1', staffId: 9 }), {
+    ok: false, error: 'not_found',
+  });
+
+  // 相手は居るが、この LINE アカウントが既に別のスタッフのもの
+  const taken = makeFakes([
+    [/UPDATE staff SET line_user_id/, { rows: [] }],
+    [/SELECT 1 FROM staff WHERE id/, { rows: [{ '?column?': 1 }] }],
+  ]);
+  assert.deepEqual(await createShiftService(taken).linkStaffById({ lineUserId: 'U1', staffId: 2 }), {
+    ok: false, error: 'already_linked_to_other',
+  });
+});

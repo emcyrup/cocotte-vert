@@ -115,7 +115,7 @@ test('不正なプラットフォーム・長すぎる補足は 400', async () =
   const { writer } = fakeWriter();
   await withRouter({ writer }, async (base) => {
     assert.equal(
-      (await (await post(base, { files: [FILE_A], platform: 'x' })).json()).error,
+      (await (await post(base, { files: [FILE_A], platform: 'mixi' })).json()).error,
       'invalid_platform'
     );
     assert.equal(

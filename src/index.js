@@ -283,13 +283,17 @@ app.use('/sns-media', express.static(snsDataDir, { maxAge: '7d', immutable: true
 
 const instagram = createInstagramClient({ config, settings });
 const threads = createThreadsClient({ config, settings });
-const snsPublisher = createSnsPublisher({ pool, instagram, threads, slack, config });
+// 投稿先は clients に集める。未設定のものは null のままにしておき、
+// publisher 側で「設定されていません」と記録される
+const snsClients = { instagram, threads };
+const snsPublisher = createSnsPublisher({ pool, clients: snsClients, slack, config });
 // API キー未設定なら渡さない（キャプション生成だけ 503 になり、投稿機能は動く）
 const captionWriter = config.anthropicApiKey
   ? createCaptionWriter({ apiKey: config.anthropicApiKey, model: config.captionModel })
   : null;
 app.use('/api/admin/sns', adminGuard, createSnsRouter({
   pool, publisher: snsPublisher, dataDir: snsDataDir, captionWriter, storeName: store.name,
+  clients: snsClients,
 }));
 
 // 予約投稿の時刻チェック（5分おき）。深夜帯の投稿も予約どおり実行する（SNS は顧客への Push ではないため）

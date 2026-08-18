@@ -16,6 +16,14 @@ const MAX_IMAGES = 4;
 const LIMITS = {
   instagram: { chars: 2200, guide: '120〜200文字程度', tags: '5〜10個' },
   threads: { chars: 500, guide: '60〜120文字程度', tags: '2〜4個' },
+  // X は280文字にハッシュタグも収める必要があるため、本文はかなり短くする
+  x: { chars: 280, guide: '60〜100文字程度', tags: '1〜2個' },
+  // WordPress は記事。写真の説明だけでなく、その日の様子が伝わる長さにする
+  wordpress: { chars: 20000, guide: '300〜600文字程度', tags: '3〜6個' },
+};
+
+const LABELS = {
+  instagram: 'Instagram', threads: 'スレッズ', x: 'X（旧Twitter）', wordpress: 'ブログ記事',
 };
 
 const OUTPUT_SCHEMA = {
@@ -32,7 +40,7 @@ function systemPrompt({ storeName, platform }) {
   const limit = LIMITS[platform];
   return [
     `あなたは「${storeName}」（犬のトリミングサロン・ペットホテル）のSNS担当です。`,
-    `お店が撮った写真から、${platform === 'threads' ? 'スレッズ' : 'Instagram'}の投稿文の下書きを日本語で書いてください。`,
+    `お店が撮った写真から、${LABELS[platform]}の投稿文の下書きを日本語で書いてください。`,
     '',
     '# 書き方',
     `- 本文は${limit.guide}。飼い主様に語りかける、やわらかい口調で。`,

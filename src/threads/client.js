@@ -163,5 +163,6 @@ export function createThreadsClient({
   }
 
   const enabled = Boolean(config.threadsAccessToken || settings);
-  return { publishPost, refreshTokenIfNeeded, whoAmI, enabled };
+  // 画面に「dry_run のままか」を出すため、モードも公開する
+  return { publishPost, refreshTokenIfNeeded, whoAmI, enabled, postMode: config.threadsPostMode };
 }

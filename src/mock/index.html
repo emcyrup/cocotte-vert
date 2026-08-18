@@ -430,6 +430,22 @@ button.trow2:focus-visible{outline:2px solid var(--accent); outline-offset:-2px}
   background:rgba(0,0,0,.55); color:#fff; font-size:12px; line-height:19px; text-align:center; cursor:pointer; padding:0}
 .ph .rm:hover{background:#dc2626}
 .splitlb{font-size:12px; font-weight:700; margin:14px 0 8px; display:flex; align-items:center; gap:8px}
+/* ---------- 投稿先ごとのカード ---------- */
+.pf{border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:10px; background:var(--surface)}
+.pf.off{background:var(--surface2); opacity:.72}
+.pf.na{opacity:.55}
+.pfhd{display:flex; align-items:center; gap:8px; font-size:13px; font-weight:700}
+.pfhd label{display:flex; align-items:center; gap:7px; cursor:pointer}
+.pf.na .pfhd label{cursor:not-allowed}
+.pfhd .sbtn{margin-left:auto}
+.pfbd{margin-top:9px; display:grid; gap:8px}
+.pf.off .pfbd, .pf.na .pfbd{display:none}
+.pfbd textarea{min-height:70px}
+.pfrow{display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:12px}
+.pfrow .lbl{color:var(--muted); min-width:64px}
+.pfrow label{display:flex; align-items:center; gap:5px; cursor:pointer}
+.pfcnt{margin-left:auto; font-size:11.5px; color:var(--muted); font-variant-numeric:tabular-nums}
+.pfcnt.over{color:var(--crit); font-weight:700}
 .splitlb:first-child{margin-top:0}
 .reel{border:1px dashed var(--line); border-radius:10px; padding:18px 14px; text-align:center; color:var(--muted); font-size:12.5px; background:var(--surface2)}
 .reelbd{display:grid; gap:10px}
@@ -1123,35 +1139,17 @@ tr.await td{background:var(--warn-soft)}
     </div>
     <div style="display:grid;gap:16px;align-content:start">
       <div class="card">
-        <div class="hd"><h2>キャプション</h2>
-          <button class="sbtn" id="cap-ig" type="button" style="margin-left:auto">&#10024; 自動で書く</button>
-        </div>
+        <div class="hd"><h2>投稿先</h2><span class="pill mut" id="pf-count"></span></div>
         <div class="bd">
-          <div class="frow" style="margin-bottom:8px">
+          <p style="font-size:12px;color:var(--muted);margin:0 0 10px">
+            出したい先にチェックを入れてください。<b>本文もタイミングも投稿先ごとに別々</b>に決められます。</p>
+          <div class="frow" style="margin-bottom:10px">
             <input type="text" id="cap-hint" placeholder="ひとこと補足（任意。例：今日は保育コースの遠足）" maxlength="200">
           </div>
-          <textarea rows="6" id="snscap">今日の保育コースのようす🐾 みんなでボール遊び！ ソラくんは初めてのシャンプーもがんばりました。#ここっとベール #犬のようちえん #トリミングサロン</textarea>
-          <p style="font-size:12px;color:var(--muted);margin:8px 0 12px">2投稿に分かれる場合、投稿2には「つづき（2/2）」が自動で追記されます。<br>
-          「自動で書く」は写真を見て下書きを作ります。<b>必ず読んでから投稿してください。</b></p>
-          <button class="btn block" id="sns-now" type="button">今すぐ投稿</button>
-          <div class="frow" style="margin-top:8px">
-            <input type="datetime-local" id="sns-at" value="2026-07-24T19:00" aria-label="予約日時">
-            <button class="btn sub" id="sns-later" type="button">予約投稿</button>
-          </div>
-        </div>
-      </div>
-      <div class="card">
-        <div class="hd"><h2>スレッズ投稿</h2><span class="pill acc" id="th-count">0枚</span>
-          <button class="sbtn" id="cap-th" type="button" style="margin-left:auto">&#10024; 自動で書く</button>
-        </div>
-        <div class="bd">
-          <p style="font-size:12px;color:var(--muted);margin:0 0 8px">写真の左上にチェックを入れた分だけを投稿します（20枚・本文500文字まで）。</p>
-          <textarea rows="4" id="thcap" placeholder="スレッズの本文（Instagram のキャプションとは別に書けます）"></textarea>
-          <button class="btn block" id="th-now" type="button" style="margin-top:8px">スレッズに投稿</button>
-          <div class="frow" style="margin-top:8px">
-            <input type="datetime-local" id="th-at" aria-label="スレッズの予約日時">
-            <button class="btn sub" id="th-later" type="button">予約投稿</button>
-          </div>
+          <div id="pflist"></div>
+          <button class="btn block" id="sns-send" type="button" style="margin-top:12px">選択した投稿先へ送る</button>
+          <p style="font-size:12px;color:var(--muted);margin:8px 0 0">
+            「自動で書く」は写真を見て下書きを作ります。<b>必ず読んでから送ってください。</b></p>
         </div>
       </div>
       <div class="card">
@@ -3345,8 +3343,8 @@ function renderSnsPhotos(){
 }
 function threadsPicked(){ return snsItems.filter(i => i.pick); }
 function renderThreadsCount(){
-  const n = threadsPicked().length;
-  document.getElementById('th-count').textContent = n + '枚';
+  // 枚数は投稿先カードの中に出る。写真が変わったらカードを描き直す
+  if (typeof renderPlatforms === 'function' && PF.length) renderPlatforms();
 }
 document.getElementById('sns-add').addEventListener('change', async (e) => {
   const files = [...e.target.files];
@@ -3391,7 +3389,7 @@ const SNS_HIST = [
 ];
 const SNS_ST = { scheduled:['予約中','warn'], publishing:['投稿処理中','warn'], published:['投稿済み','good'], failed:['失敗','crit'], dry_run:['dry_run','mut'] };
 
-const SNS_PF = { instagram:['Instagram','acc'], threads:['スレッズ','hny'] };
+const SNS_PF = { instagram:['Instagram','acc'], threads:['スレッズ','hny'], x:['X','mut'], wordpress:['WordPress','good'] };
 function snsMapPost(p){
   return { id: p.id, at: snsFmtJst(p.published_at || p.scheduled_at), count: p.photo_count,
     platform: p.platform || 'instagram', status: p.status, caption: p.caption || '', error: p.error };
@@ -3445,134 +3443,180 @@ function renderSnsHist(){
     tb.appendChild(tr);
   });
 }
-// scheduledAtLocal は datetime-local の値（null なら今すぐ投稿）
-async function snsSubmit(scheduledAtLocal){
-  if (snsItems.length === 0) { showToast('先に写真を選んでください'); return; }
-  const parts = snsItems.length > 10 ? 2 : 1;
-  const caption = document.getElementById('snscap').value;
+// ---- 投稿先ごとのカード ----
+// 投稿先・本文・写真の範囲・タイミングをそれぞれ別に決められるようにする。
+// 何を出せるかはサーバの /platforms が唯一の出どころ（画面に投稿先を直書きしない）
+let PF = [];              // サーバから受け取った投稿先の一覧
+const pfState = {};       // key → { on, caption, scope, when }
 
-  if (!snsLive) {
-    // デモ動作（API に届かない環境）
-    let at = '7/24(金) いま';
-    if (scheduledAtLocal) {
-      const [d, t] = scheduledAtLocal.split('T');
-      const [, mo, da] = d.split('-');
-      const w = '日月火水木金土'[new Date(d + 'T00:00:00+09:00').getDay()];
-      at = `${Number(mo)}/${Number(da)}(${w}) ${t}`;
+const PF_DEMO = [
+  { key:'instagram', label:'Instagram', maxCaption:2200, maxPhotos:10, photoRequired:true,  available:true,  mode:'dry_run' },
+  { key:'threads',   label:'スレッズ',   maxCaption:500,  maxPhotos:20, photoRequired:true,  available:true,  mode:'dry_run' },
+  { key:'x',         label:'X',          maxCaption:280,  maxPhotos:4,  photoRequired:false, available:false, mode:null },
+  { key:'wordpress', label:'WordPress',  maxCaption:20000,maxPhotos:20, photoRequired:false, available:false, mode:null },
+];
+
+function pfModeBadge(p){
+  if (!p.available) return '<span class="pill mut">未設定</span>';
+  if (p.mode === 'live') return '<span class="pill good">実投稿</span>';
+  return '<span class="pill warn">dry_run</span>';
+}
+
+/** その投稿先が使う写真 */
+function pfFiles(key){
+  const st = pfState[key];
+  const items = st.scope === 'picked' ? threadsPicked() : snsItems;
+  return items.slice(0, PF.find((p) => p.key === key)?.maxPhotos ?? 10);
+}
+
+function renderPlatforms(){
+  const box = document.getElementById('pflist');
+  box.innerHTML = '';
+  PF.forEach((p) => {
+    const st = pfState[p.key];
+    const el = document.createElement('div');
+    el.className = 'pf' + (!p.available ? ' na' : st.on ? '' : ' off');
+
+    const picked = threadsPicked().length;
+    el.innerHTML =
+      '<div class="pfhd"><label>'
+      + '<input type="checkbox" class="pf-on"' + (st.on ? ' checked' : '') + (p.available ? '' : ' disabled') + '>'
+      + '<span>' + p.label + '</span></label>' + pfModeBadge(p)
+      + (p.available ? '<button class="sbtn pf-cap" type="button">&#10024; 自動で書く</button>' : '')
+      + '</div>'
+      + '<div class="pfbd">'
+      + '<textarea class="pf-text" rows="4" placeholder="' + p.label + 'の本文"></textarea>'
+      + '<div class="pfrow"><span class="pfcnt"></span></div>'
+      + '<div class="pfrow"><span class="lbl">写真</span>'
+      + '<label><input type="radio" name="scope-' + p.key + '" value="all"' + (st.scope === 'all' ? ' checked' : '') + '>すべて（' + snsItems.length + '枚）</label>'
+      + '<label><input type="radio" name="scope-' + p.key + '" value="picked"' + (st.scope === 'picked' ? ' checked' : '') + '>チェックした分（' + picked + '枚）</label>'
+      + '</div>'
+      + '<div class="pfrow"><span class="lbl">タイミング</span>'
+      + '<label><input type="radio" name="when-' + p.key + '" value="now"' + (st.when ? '' : ' checked') + '>今すぐ</label>'
+      + '<label><input type="radio" name="when-' + p.key + '" value="at"' + (st.when ? ' checked' : '') + '>日時指定</label>'
+      + '<input type="datetime-local" class="pf-at" value="' + (st.when || '') + '" aria-label="' + p.label + 'の予約日時"'
+      + (st.when ? '' : ' style="display:none"') + '></div>'
+      + '</div>';
+
+    const text = el.querySelector('.pf-text');
+    text.value = st.caption;
+    text.maxLength = p.maxCaption;
+    const cnt = el.querySelector('.pfcnt');
+    const paint = () => {
+      const n = text.value.length;
+      cnt.textContent = n + ' / ' + p.maxCaption + '文字';
+      cnt.classList.toggle('over', n > p.maxCaption);
+    };
+    paint();
+    text.addEventListener('input', () => { st.caption = text.value; paint(); });
+
+    el.querySelector('.pf-on')?.addEventListener('change', (e) => {
+      st.on = e.target.checked;
+      renderPlatforms();
+    });
+    el.querySelectorAll('[name="scope-' + p.key + '"]').forEach((r) => {
+      r.addEventListener('change', () => { st.scope = r.value; renderPlatforms(); });
+    });
+    const at = el.querySelector('.pf-at');
+    el.querySelectorAll('[name="when-' + p.key + '"]').forEach((r) => {
+      r.addEventListener('change', () => {
+        st.when = r.value === 'at' ? (at.value || defaultWhen()) : null;
+        renderPlatforms();
+      });
+    });
+    at?.addEventListener('change', () => { st.when = at.value || null; });
+    el.querySelector('.pf-cap')?.addEventListener('click', (e) => generateCaption({
+      platform: p.key, items: pfFiles(p.key), target: text, btn: e.currentTarget,
+      after: () => { st.caption = text.value; paint(); },
+    }));
+
+    box.appendChild(el);
+  });
+  const on = PF.filter((p) => pfState[p.key].on).length;
+  document.getElementById('pf-count').textContent = on ? on + 'か所を選択中' : '未選択';
+}
+
+function defaultWhen(){
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T19:00`;
+}
+
+async function loadPlatforms(){
+  if (!snsLive) { PF = PF_DEMO; }
+  else {
+    try {
+      ({ platforms: PF } = await (await fetch(`${SNS_API}/platforms`)).json());
+    } catch { PF = PF_DEMO; }
+  }
+  PF.forEach((p) => {
+    // Instagram だけ既定でON。ほかは意図して選んでもらう（うっかり全部に出さないため）
+    pfState[p.key] = pfState[p.key] || {
+      on: p.key === 'instagram' && p.available, caption: '', scope: 'all', when: null,
+    };
+  });
+  renderPlatforms();
+}
+
+/** 選択された投稿先へ、それぞれ別の行として送る */
+async function sendSelected(){
+  const targets = PF.filter((p) => p.available && pfState[p.key].on);
+  if (targets.length === 0) { showToast('投稿先にチェックを入れてください'); return; }
+
+  for (const p of targets) {
+    const st = pfState[p.key];
+    if (p.photoRequired && pfFiles(p.key).length === 0) {
+      showToast(`${p.label}には写真が必要です`);
+      return;
     }
-    SNS_HIST.unshift({ at, count: snsItems.length, status: scheduledAtLocal ? 'scheduled' : 'published', caption });
-    renderSnsHist();
-    showToast(scheduledAtLocal
-      ? `予約しました（${parts}件に分割・時刻になると自動投稿）`
-      : `${parts}件に分割して投稿しました（モックのため実投稿はされません）`);
-    snsItems.length = 0;
-    renderSnsPhotos();
+    if (st.caption.length > p.maxCaption) {
+      showToast(`${p.label}の本文が長すぎます（${p.maxCaption}文字まで）`);
+      return;
+    }
+  }
+  if (!snsLive) {
+    showToast(`${targets.map((p) => p.label).join('・')}へ送りました（モックのため実投稿されません）`);
     return;
   }
 
-  if (!scheduledAtLocal && !confirm(`${snsItems.length}枚を今すぐ投稿しますか？（実際に Instagram へ投稿されます）`)) return;
-  try {
-    const res = await fetch(`${SNS_API}/posts`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        caption,
-        files: snsItems.map((i) => i.file).filter(Boolean),
-        scheduledAt: scheduledAtLocal ? `${scheduledAtLocal}:00+09:00` : null,
-      }),
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
-    const messages = {
-      published: '投稿しました',
-      dry_run: 'dry_run のため実投稿せず記録しました（実投稿には IG_POST_MODE=live が必要です）',
-      scheduled: '予約しました。時刻になると自動で投稿されます',
-    };
-    showToast(messages[body.status] || '受け付けました');
-    snsItems.length = 0;
-    renderSnsPhotos();
-    document.getElementById('snscap').value = '';
-  } catch (err) {
-    showToast(`失敗しました: ${err.message}`);
+  const btn = document.getElementById('sns-send');
+  btn.disabled = true;
+  const done = [];
+  const failed = [];
+  for (const p of targets) {
+    const st = pfState[p.key];
+    try {
+      const res = await fetch(`${SNS_API}/posts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          platform: p.key,
+          caption: st.caption,
+          files: pfFiles(p.key).map((i) => i.file),
+          scheduledAt: st.when ? new Date(st.when).toISOString() : null,
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      // 1か所の失敗で他を止めない。どこが通ってどこが落ちたかを最後にまとめて出す
+      if (!res.ok || !body.ok) failed.push(`${p.label}（${body.error || res.status}）`);
+      else done.push(p.label + (st.when ? '（予約）' : ''));
+    } catch (err) {
+      failed.push(`${p.label}（${err.message}）`);
+    }
   }
+  btn.disabled = false;
+  showToast(
+    (done.length ? `${done.join('・')}へ送りました。` : '')
+    + (failed.length ? `失敗: ${failed.join('・')}` : '')
+  );
   snsReloadHist();
 }
-document.getElementById('sns-now').addEventListener('click', () => snsSubmit(null));
-document.getElementById('sns-later').addEventListener('click', () => {
-  const at = document.getElementById('sns-at').value;
-  if (!at) { showToast('予約日時を指定してください'); return; }
-  snsSubmit(at);
-});
+document.getElementById('sns-send').addEventListener('click', sendSelected);
 
-// ---- スレッズ投稿 ----
-// Instagram の候補写真のうち、左上にチェックを入れたものだけを別投稿として出す。
-// Instagram 側の選択は消さない（同じ写真を両方へ出すことがあるため）。
-const TH_MAX_TEXT = 500;
-async function threadsSubmit(scheduledAtLocal){
-  const picked = threadsPicked();
-  if (!picked.length) { showToast('写真の左上にチェックを入れて選んでください'); return; }
-  if (picked.length > 20) { showToast('スレッズは1投稿20枚までです'); return; }
-  const caption = document.getElementById('thcap').value;
-  if (caption.length > TH_MAX_TEXT) {
-    showToast(`スレッズの本文は${TH_MAX_TEXT}文字までです（現在${caption.length}文字）`);
-    return;
-  }
-
-  if (!snsLive) {
-    let at = 'いま';
-    if (scheduledAtLocal) {
-      const [d, t] = scheduledAtLocal.split('T');
-      const [, mo, da] = d.split('-');
-      const w = '日月火水木金土'[new Date(d + 'T00:00:00+09:00').getDay()];
-      at = `${Number(mo)}/${Number(da)}(${w}) ${t}`;
-    }
-    SNS_HIST.unshift({ at, count: picked.length, platform: 'threads',
-      status: scheduledAtLocal ? 'scheduled' : 'published', caption });
-    renderSnsHist();
-    showToast(scheduledAtLocal
-      ? 'スレッズへの予約投稿を登録しました（モックのため実投稿はされません）'
-      : 'スレッズに投稿しました（モックのため実投稿はされません）');
-    clearThreadsPick();
-    return;
-  }
-
-  if (!scheduledAtLocal && !confirm(`${picked.length}枚を今すぐスレッズへ投稿しますか？（実際に投稿されます）`)) return;
-  try {
-    const res = await fetch(`${SNS_API}/posts`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        platform: 'threads',
-        caption,
-        files: picked.map((i) => i.file).filter(Boolean),
-        scheduledAt: scheduledAtLocal ? `${scheduledAtLocal}:00+09:00` : null,
-      }),
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
-    const messages = {
-      published: 'スレッズに投稿しました',
-      dry_run: 'dry_run のため実投稿せず記録しました（実投稿には THREADS_POST_MODE=live が必要です）',
-      scheduled: '予約しました。時刻になると自動でスレッズへ投稿されます',
-    };
-    showToast(messages[body.status] || '受け付けました');
-    clearThreadsPick();
-    document.getElementById('thcap').value = '';
-  } catch (err) {
-    showToast(`失敗しました: ${err.message}`);
-  }
-  snsReloadHist();
-}
 function clearThreadsPick(){
   snsItems.forEach((i) => { i.pick = false; });
   renderSnsPhotos();
 }
-document.getElementById('th-now').addEventListener('click', () => threadsSubmit(null));
-document.getElementById('th-later').addEventListener('click', () => {
-  const at = document.getElementById('th-at').value;
-  if (!at) { showToast('予約日時を指定してください'); return; }
-  threadsSubmit(at);
-});
 
 // ---- キャプションの自動生成 ----
 // 写真を見て下書きを作るだけ。投稿は従来どおりスタッフが別に押す
@@ -3585,11 +3629,8 @@ const CAPTION_ERRORS = {
   bad_response: 'うまく書けませんでした。もう一度お試しください',
   photo_missing: '写真が見つかりません。追加し直してください',
 };
-async function generateCaption({ platform, items, target, btn }){
-  if (!items.length) {
-    showToast(platform === 'threads' ? 'スレッズに出す写真にチェックを入れてください' : '先に写真を追加してください');
-    return;
-  }
+async function generateCaption({ platform, items, target, btn, after = null }){
+  if (!items.length) { showToast('先に写真を追加してください（「チェックした分」なら写真にチェックを）'); return; }
   if (!snsLive) { showToast('モックのため自動生成はされません'); return; }
   const label = btn.innerHTML;
   btn.disabled = true;
@@ -3609,6 +3650,7 @@ async function generateCaption({ platform, items, target, btn }){
     // 書きかけを勝手に消さない。入っているときだけ置き換えの確認を挟む
     if (target.value.trim() && !confirm('いま入っている文章を、書き直したものに置き換えますか？')) return;
     target.value = body.caption;
+    after?.();
     showToast('下書きができました。内容を確かめてから投稿してください');
   } catch (err) {
     showToast(CAPTION_ERRORS[err.message] || `エラー: ${err.message}`);
@@ -3617,15 +3659,6 @@ async function generateCaption({ platform, items, target, btn }){
     btn.innerHTML = label;
   }
 }
-document.getElementById('cap-ig').addEventListener('click', (e) => generateCaption({
-  platform: 'instagram', items: snsItems,
-  target: document.getElementById('snscap'), btn: e.currentTarget,
-}));
-document.getElementById('cap-th').addEventListener('click', (e) => generateCaption({
-  platform: 'threads', items: threadsPicked(),
-  target: document.getElementById('thcap'), btn: e.currentTarget,
-}));
-
 // 初期化: API に届けば実投稿モード、届かなければデモのまま
 (async () => {
   try {
@@ -3636,17 +3669,11 @@ document.getElementById('cap-th').addEventListener('click', (e) => generateCapti
     snsItems.length = 0; // デモ用のダミー写真は実投稿できないため外す
     SNS_HIST.length = 0;
     posts.forEach((p) => SNS_HIST.push(snsMapPost(p)));
-    document.getElementById('snscap').value = '';
-    const sub = document.querySelector('#s-sns .sub');
+    const sub = document.querySelector('#s-sns p.sub');
     if (sub) sub.innerHTML = '<span class="pill good">実投稿モード</span> この画面から実際に投稿されます。'
-      + '11枚以上は自動で2投稿に分割されます。';
+      + 'Instagram は11枚以上を自動で2投稿に分割します。';
   } catch { /* デモ動作のまま */ }
-  // 予約日時の初期値を「今日の19:00」にする（デモ用の固定値を残すと過去日時のまま押される）
-  const now = new Date();
-  const pad = (n) => String(n).padStart(2, '0');
-  const at19 = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T19:00`;
-  if (snsLive) document.getElementById('sns-at').value = at19;
-  document.getElementById('th-at').value = at19;
+  await loadPlatforms();
   renderSnsPhotos();
   renderSnsHist();
 })();

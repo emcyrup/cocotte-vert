@@ -142,3 +142,32 @@ test('JSON として読めない・本文が空なら bad_response', async () =>
     await assert.rejects(() => write({ images: images(1) }), /bad_response/);
   }
 });
+
+test('投稿先ごとに長さの指針と上限が変わる', async () => {
+  const cases = [
+    ['instagram', /120〜200文字/, 2200],
+    ['threads', /60〜120文字/, 500],
+    ['x', /60〜100文字/, 280],
+    ['wordpress', /300〜600文字/, 20000],
+  ];
+  for (const [platform, guide, max] of cases) {
+    const { fetchFn, calls } = makeFetch(200, apiResponse({
+      caption: 'あ'.repeat(max + 50), hashtags: [],
+    }));
+    const { write } = createCaptionWriter({ apiKey: 'key', fetchFn });
+    const { caption } = await write({ images: images(1), platform });
+
+    assert.match(JSON.parse(calls[0].init.body).system, guide, platform);
+    assert.equal(caption.length, max, `${platform} は ${max} 文字に収まる`);
+  }
+});
+
+test('X はハッシュタグを落としてでも280文字に収める', async () => {
+  const { fetchFn } = makeFetch(200, apiResponse({
+    caption: 'あ'.repeat(270), hashtags: ['ここっとベール', '大阪トリミング'],
+  }));
+  const { write } = createCaptionWriter({ apiKey: 'key', fetchFn });
+  const { caption } = await write({ images: images(1), platform: 'x' });
+  assert.ok(caption.length <= 280, `280文字以内: ${caption.length}`);
+  assert.ok(caption.startsWith('あ'.repeat(270)), '本文は削らない');
+});

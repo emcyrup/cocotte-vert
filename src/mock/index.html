@@ -464,6 +464,14 @@ textarea{width:100%; border:1px solid var(--line); border-radius:8px; background
 .frow select{flex:1 1 190px}
 .frow input:focus-visible,.frow select:focus-visible{outline:2px solid var(--accent); outline-offset:-1px}
 .hint{font-size:12px; color:var(--muted); margin:0 0 12px}
+
+/* iOS は文字が16px未満の入力欄にフォーカスすると画面を勝手に拡大する（拡大したままになる）。
+   タッチ端末では入力欄だけ16pxにして、タップのたびに拡大されないようにする。
+   viewport で拡大そのものを禁じる手もあるが、指で拡大できなくなるので採らない。
+   入力欄の一部は JS が style に直接 font-size を書くため、ここは !important で上書きする */
+@media (pointer: coarse) {
+  input, select, textarea { font-size: 16px !important; }
+}
 /* .ghost はドラッグ中のゴースト（position:fixed）用なので、ボタンには使えない */
 .btn.sub{background:var(--surface2); color:var(--ink)}
 .rvname{white-space:nowrap}
@@ -4239,7 +4247,15 @@ function buildEditForm(rows, { onSave, onDelete, after, close }){
   });
   acts.appendChild(save);
   bd.appendChild(acts);
-  return { el: bd, focus: () => Object.values(inputs)[0]?.focus() };
+  return {
+    el: bd,
+    // タッチ端末では自動でフォーカスしない。開いた瞬間にキーボードが出て
+    // 入力欄と保存ボタンが隠れてしまうため（どこを編集しているかも見えなくなる）
+    focus: () => {
+      if (window.matchMedia?.('(pointer: coarse)').matches) return;
+      Object.values(inputs)[0]?.focus();
+    },
+  };
 }
 
 function openEditModal(title, rows, { onSave, onDelete, after }){

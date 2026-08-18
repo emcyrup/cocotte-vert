@@ -7,6 +7,7 @@
 
 import { formatShift } from '../../shifts/service.js';
 import { parseLinkCommand, parseBareCode } from './linkCommand.js';
+import { parseEntryCommand } from './reservationEntry.js';
 
 const jstDateFmt = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Asia/Tokyo',
@@ -15,12 +16,126 @@ const jstDateFmt = new Intl.DateTimeFormat('en-CA', {
   day: '2-digit',
 });
 
+// 本人の返事。ボタンでも文字でも受けられるようにする（LINE では文字で返す人が多い）
+const ANSWERS = [
+  { answer: 'confirm', re: /^(確定|かくてい|OK|ok|オーケー|はい|お願いします|おねがいします|これでお願いします)$/ },
+  { answer: 'hold', re: /^(保留|ほりゅう|一旦保留|いったん保留|保留で|考えます)$/ },
+  { answer: 'cancel', re: /^(やめる|キャンセル|取消|取り消し|なし|やっぱりなし|やめます)$/ },
+];
+
+export function parseShiftAnswer(text) {
+  const t = String(text ?? '').replace(/[\s　]/g, '').replace(/[。、!！?？]/g, '');
+  return ANSWERS.find((a) => a.re.test(t))?.answer ?? null;
+}
+
+/** 内容を確認して、確定・保留・やめる を選ばせる */
+function confirmMessage({ staffName, lines }) {
+  return {
+    type: 'flex',
+    altText: 'シフト変更の内容確認',
+    contents: {
+      type: 'bubble',
+      body: {
+        type: 'box', layout: 'vertical', spacing: 'md',
+        contents: [
+          { type: 'text', text: 'この内容でよろしいですか？', weight: 'bold', size: 'md' },
+          { type: 'text', text: `${staffName}さん`, size: 'sm', color: '#888888' },
+          { type: 'text', text: lines, size: 'sm', wrap: true },
+          {
+            type: 'text',
+            text: '「確定」でシフト表に反映します。迷っているときは「保留」を押すと、店長が確認します。',
+            size: 'xs', color: '#888888', wrap: true, margin: 'md',
+          },
+        ],
+      },
+      footer: {
+        type: 'box', layout: 'vertical', spacing: 'sm',
+        contents: [
+          {
+            type: 'button', style: 'primary',
+            action: { type: 'postback', label: '確定', data: 'action=shift&v=confirm', displayText: '確定' },
+          },
+          {
+            type: 'button', style: 'secondary',
+            action: { type: 'postback', label: '保留', data: 'action=shift&v=hold', displayText: '保留' },
+          },
+          {
+            type: 'button', style: 'link', height: 'sm',
+            action: { type: 'postback', label: 'やめる', data: 'action=shift&v=cancel', displayText: 'やめる' },
+          },
+        ],
+      },
+    },
+  };
+}
+
+/** 返事を受けたあとの本文。呼び出し側（postback / テキスト）で共通に使う */
+export function answerResultText({ answer, lines }) {
+  if (answer === 'confirm') return `シフト表に反映しました。\n${lines}`;
+  if (answer === 'hold') return `保留にしました。\n${lines}\n店長が確認しますので、少々お待ちください。`;
+  return `取りやめました。\n${lines}\n入れ直す場合は、もう一度お送りください。`;
+}
+
+const NO_PENDING_TEXT =
+  '確認待ちのシフト変更はありません。\n' +
+  'シフトのご希望をそのままお送りください。\n例：8/1 有休でお願いします';
+
+/**
+ * 本人の返事（確定・保留・やめる）を反映して、本人と店長の双方へ知らせる。
+ * 文字でもボタンでも同じ処理に入れたいので、テキスト側と postback 側で共有する。
+ */
+export function createShiftAnswerHandler({ shiftService, lineClient, slack }) {
+  // 保留は店長が引き取る必要があるため必ず届ける。確定・取りやめも、
+  // シフト表が本人の操作で変わる運用になった以上、店長が後から追えるように残す
+  async function notifyDecision({ staff, answer, lines }) {
+    const head = {
+      confirm: ':white_check_mark: *シフト変更が確定しました*',
+      hold: ':warning: *シフト変更が保留になりました*',
+      cancel: ':leftwards_arrow_with_hook: *シフト変更が取りやめになりました*',
+    }[answer];
+    const tail = {
+      confirm: 'シフト表へ反映済みです。',
+      hold: '本人が判断に迷っています。管理画面の「シフト変更の申請」からご確認ください。',
+      cancel: '本人が取りやめました。対応は不要です。',
+    }[answer];
+    await slack.notify(`${head}\n${staff.name}さん（staff=${staff.id}）\n${lines}\n${tail}`);
+  }
+
+  /**
+   * @param {object|null} known 既に引いてあるスタッフ（テキスト経路では使い回す）
+   * @returns {Promise<boolean>} 連携済みスタッフの返事として処理したら true
+   */
+  return async function handleShiftAnswer(event, answer, known = null) {
+    const lineUserId = event.source?.userId;
+    if (event.source?.type !== 'user' || !lineUserId) return false;
+    const staff = known ?? (await shiftService.findStaffByLineUserId(lineUserId));
+    if (!staff) return false;
+
+    const result = await shiftService.answerOwnRequests({ staffId: staff.id, answer });
+    const lines = result.ok ? result.requests.map((r) => `・${formatShift(r)}`).join('\n') : '';
+
+    if (event.replyToken) {
+      const text = result.ok ? answerResultText({ answer, lines }) : NO_PENDING_TEXT;
+      await lineClient.reply(event.replyToken, [{ type: 'text', text }]);
+    }
+    // 状況を追えるようにするが、LINE userId は残さない
+    console.log(`[staff-shift] answer=${answer} staff=${staff.id} ok=${result.ok}`);
+    if (result.ok) await notifyDecision({ staff, answer, lines });
+    return true;
+  };
+}
+
 const linkedMessage = (name) =>
   `${name}さん、連携しました。\n` +
-  'このトークにシフトのご希望をそのまま送っていただければ、申請として店長に届きます。\n' +
+  'このトークにシフトのご希望をそのまま送ってください。\n' +
+  '内容を確認のうえお返ししますので、よろしければ「確定」を押すとシフト表に入ります。\n' +
   '例：8/1 有休でお願いします';
 
-export function createStaffShiftHandler({ shiftService, shiftParser, lineClient, slack, now = () => new Date() }) {
+export function createStaffShiftHandler({
+  shiftService, shiftParser, lineClient, slack, reservationEntry = null, now = () => new Date(),
+}) {
+  const handleShiftAnswer = createShiftAnswerHandler({ shiftService, lineClient, slack });
+
   async function replyText(event, text) {
     if (event.replyToken) {
       await lineClient.reply(event.replyToken, [{ type: 'text', text }]);
@@ -86,6 +201,14 @@ export function createStaffShiftHandler({ shiftService, shiftParser, lineClient,
     const staff = await shiftService.findStaffByLineUserId(event.source.userId);
     if (!staff) return false;
 
+    // 予約の登録。シフトの解釈へ回す前に見る（お客様の予約をシフト申請と読ませないため）
+    const entryBody = reservationEntry ? parseEntryCommand(text) : null;
+    if (entryBody !== null) return reservationEntry.handle(event, entryBody);
+
+    // 内容確認への返事。申請の解釈より先に見る（「確定」を新しい申請と読ませないため）
+    const answer = parseShiftAnswer(text);
+    if (answer) return handleShiftAnswer(event, answer, staff);
+
     const parsed = await shiftParser.parse({ text, today: jstDateFmt.format(now()) });
     if (!parsed.isRequest) {
       await replyText(
@@ -102,21 +225,14 @@ export function createStaffShiftHandler({ shiftService, shiftParser, lineClient,
       entries: parsed.entries,
       rawText: text,
     });
-    const lines = created.map((r) => `・${formatShift(r)}`).join('\n');
+    const lines = created.map((r) => `・${formatShift(r)}`).join('\n')
+      + (replaced > 0 ? '\n（同じ日の申請は今回の内容で上書きしました）' : '');
 
-    await replyText(
-      event,
-      'シフト変更を受け付けました。\n' +
-        `${staff.name}さん\n${lines}\n` +
-        (replaced > 0 ? '（同じ日の申請は今回の内容で上書きしました）\n' : '') +
-        '店長の承認後にシフト表へ反映されます。'
-    );
-
-    // 承認待ちが溜まっていることに気付けるよう、店長側にも知らせる
-    await slack.notify(
-      `:calendar: *シフト変更の申請*\n${staff.name}さん（staff=${staff.id}）\n${lines}\n` +
-        `申請本文:\n> ${text}`
-    );
+    // ここではまだ確定させない。AI の読み違いをそのままシフト表に入れないため、
+    // 必ず本人に内容を見せて確かめてもらう
+    if (event.replyToken) {
+      await lineClient.reply(event.replyToken, [confirmMessage({ staffName: staff.name, lines })]);
+    }
     return true;
   };
 }

@@ -9,6 +9,7 @@ import { SETTING_KEYS } from '../../settings.js';
 import { toPlainText } from '../../notify/staffNotifier.js';
 import { parseLinkCommand, parseBareCode } from './linkCommand.js';
 import { parseReservationQuery } from './reservationQuery.js';
+import { parseEntryCommand } from './reservationEntry.js';
 
 // 表記ゆれを吸収する。スペースと記号だけ落として比較する
 const COMMANDS = {
@@ -28,6 +29,7 @@ const linkedMessage = (name) =>
 
 export function createStaffCommandHandler({
   settings, lineClient, config, shiftService = null, reservationQuery = null,
+  reservationEntry = null,
 }) {
   async function resolveGroupId() {
     const stored = await settings.get(SETTING_KEYS.staffLineGroupId).catch(() => null);
@@ -70,8 +72,11 @@ export function createStaffCommandHandler({
     const link = shiftService ? parseLinkCommand(text) : null;
     const bare = shiftService && !link ? parseBareCode(text) : null;
     const command = COMMANDS[normalize(text)];
-    const resvQuery = reservationQuery && !link && !bare ? parseReservationQuery(text) : null;
-    if (!command && !link && !bare && !resvQuery) return false;
+    // 「予約登録 …」は問い合わせより先に見る（登録の文を一覧の問い合わせと読ませないため）
+    const resvEntry = reservationEntry && !link && !bare ? parseEntryCommand(text) : null;
+    const resvQuery =
+      reservationQuery && !link && !bare && resvEntry === null ? parseReservationQuery(text) : null;
+    if (!command && !link && !bare && !resvQuery && resvEntry === null) return false;
 
     const staffGroupId = await resolveGroupId();
     const isStaffGroup = Boolean(staffGroupId) && event.source.groupId === staffGroupId;
@@ -118,6 +123,9 @@ export function createStaffCommandHandler({
 
     // 問い合わせ系のコマンドは、店内の数字を第三者に見せないため対象グループ以外では黙る
     if (!isStaffGroup) return false;
+
+    // 予約の登録。読み取った内容を復唱するだけで、ここではまだ予約を作らない
+    if (resvEntry !== null) return reservationEntry.handle(event, resvEntry);
 
     // 予約の問い合わせ。読み取り専用なので、返すのは一覧だけ（ここからは変更できない）
     if (resvQuery) {

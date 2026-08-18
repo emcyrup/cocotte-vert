@@ -8,87 +8,15 @@
 //
 // --dry-run は API に送らず、変換結果の JSON を表示するだけ（マッピング調整用）
 import { readFile } from 'node:fs/promises';
+import { parseCsv, toJstIso, convertRow } from '../src/import/csv.js';
+
+// 画面からの取り込みと結果が食い違わないよう、変換そのものは src/import/csv.js に集約した。
+// 既存の呼び出し（テスト・手順書）を壊さないよう、ここからも同じものを出す
+export { parseCsv, toJstIso, convertRow };
 
 function getArg(name, fallback = null) {
   const hit = process.argv.find((a) => a.startsWith(`--${name}=`));
   return hit ? hit.slice(name.length + 3) : fallback;
-}
-
-// 引用符・カンマ・改行（CRLF/LF）対応の素朴な CSV パーサ
-export function parseCsv(text) {
-  const rows = [];
-  let row = [];
-  let field = '';
-  let inQuotes = false;
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if (inQuotes) {
-      if (ch === '"') {
-        if (text[i + 1] === '"') {
-          field += '"';
-          i++;
-        } else {
-          inQuotes = false;
-        }
-      } else {
-        field += ch;
-      }
-    } else if (ch === '"') {
-      inQuotes = true;
-    } else if (ch === ',') {
-      row.push(field);
-      field = '';
-    } else if (ch === '\n' || ch === '\r') {
-      if (ch === '\r' && text[i + 1] === '\n') i++;
-      row.push(field);
-      field = '';
-      if (row.some((c) => c !== '')) rows.push(row);
-      row = [];
-    } else {
-      field += ch;
-    }
-  }
-  row.push(field);
-  if (row.some((c) => c !== '')) rows.push(row);
-  return rows;
-}
-
-/** 「2026/08/01」「2026-08-01」+「14:00」を ISO(+09:00) にする */
-export function toJstIso(dateStr, timeStr) {
-  const d = (dateStr ?? '').trim().replaceAll('/', '-');
-  const m = d.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-  if (!m) return null;
-  const t = (timeStr ?? '').trim().match(/^(\d{1,2}):(\d{2})/) ?? ['', '0', '00'];
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${m[1]}-${pad(m[2])}-${pad(m[3])}T${pad(t[1])}:${t[2]}:00+09:00`;
-}
-
-/** 1行を取り込み API の形式に変換する */
-export function convertRow(row, header, mapping) {
-  const col = (name) => {
-    const key = mapping.columns[name];
-    if (!key) return null;
-    const idx = header.indexOf(key);
-    return idx >= 0 ? (row[idx] ?? '').trim() : null;
-  };
-
-  const reservedAt = mapping.columns.reserved_datetime
-    ? toJstIso(...(col('reserved_datetime') ?? '').split(/\s+/))
-    : toJstIso(col('reserved_date'), col('reserved_time'));
-
-  const rawStatus = col('status');
-  const status = (rawStatus && mapping.statusMap?.[rawStatus]) || mapping.defaultStatus || 'confirmed';
-
-  return {
-    external_id: `${mapping.externalIdPrefix ?? ''}${col('external_id')}`,
-    customer_name: col('customer_name'),
-    phone: col('phone'),
-    birthday: col('birthday') || undefined,
-    menu: col('menu') || undefined,
-    staff_name: col('staff_name') || undefined,
-    reserved_at: reservedAt,
-    status,
-  };
 }
 
 async function main() {

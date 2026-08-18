@@ -339,3 +339,67 @@ test('取得に失敗しても落ちず、その旨を返す', async () => {
   assert.equal(await handler(groupEvent('今日の予約'), '今日の予約'), true);
   assert.match(replies[0], /取得できませんでした/);
 });
+
+// ---- 予約の登録（スタッフ用グループから）----
+
+function makeEntryDeps({ staffLineGroupId = STAFF_GROUP } = {}) {
+  const replies = [];
+  const handled = [];
+  return {
+    replies,
+    handled,
+    handler: createStaffCommandHandler({
+      settings: { get: async () => null, set: async () => {} },
+      lineClient: { reply: async (_t, m) => replies.push(m[0].text) },
+      config: { staffLineGroupId },
+      reservationQuery: { summarize: async () => '一覧' },
+      reservationEntry: {
+        handle: async (_event, body) => { handled.push(body); return true; },
+        decide: async () => {},
+      },
+    }),
+  };
+}
+
+test('スタッフグループの「予約登録 …」は登録の処理へ渡す', async () => {
+  const { handler, handled } = makeEntryDeps();
+  const text = '予約登録 8/20 14時 田中花子 カット';
+  assert.equal(await handler(groupEvent(text), text), true);
+  assert.deepEqual(handled, ['8/20 14時 田中花子 カット']);
+});
+
+test('「予約登録」は一覧の問い合わせより先に判定する', async () => {
+  const replies = [];
+  const asked = [];
+  const handled = [];
+  const handler = createStaffCommandHandler({
+    settings: { get: async () => null, set: async () => {} },
+    lineClient: { reply: async (_t, m) => replies.push(m[0].text) },
+    config: { staffLineGroupId: STAFF_GROUP },
+    reservationQuery: { summarize: async (d) => { asked.push(d); return '一覧'; } },
+    reservationEntry: {
+      handle: async (_e, body) => { handled.push(body); return true; },
+      decide: async () => {},
+    },
+  });
+
+  await handler(groupEvent('予約登録 明日14時 田中'), '予約登録 明日14時 田中');
+
+  assert.deepEqual(handled, ['明日14時 田中']);
+  assert.deepEqual(asked, [], '一覧の問い合わせには回さない');
+});
+
+test('別のグループからは予約を登録できない', async () => {
+  const { handler, handled, replies } = makeEntryDeps();
+  const text = '予約登録 8/20 14時 田中花子';
+  assert.equal(await handler(groupEvent(text, 'C-other'), text), false);
+  assert.deepEqual(handled, []);
+  assert.deepEqual(replies, []);
+});
+
+test('スタッフグループが未設定なら予約を登録できない', async () => {
+  const { handler, handled } = makeEntryDeps({ staffLineGroupId: null });
+  const text = '予約登録 8/20 14時 田中花子';
+  assert.equal(await handler(groupEvent(text), text), false);
+  assert.deepEqual(handled, []);
+});

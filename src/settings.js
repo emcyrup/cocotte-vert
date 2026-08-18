@@ -13,6 +13,8 @@ export const SETTING_KEYS = {
   threadsTokenRefreshedAt: 'threads_token_refreshed_at',
   // 日次リマインド4種の ON/OFF（JSON）。行が無ければ全 ON
   remindersEnabled: 'reminders_enabled',
+  // 予約CSVの列の対応づけ（JSON）。上流の書式が変わっても画面から直せるよう DB に置く
+  importMapping: 'import_mapping',
 };
 
 export function createSettings({ pool }) {

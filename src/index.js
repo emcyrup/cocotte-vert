@@ -22,12 +22,15 @@ import { createBirthdayJob } from './jobs/birthday.js';
 import { createFollowupClassifier } from './ai/classifyFollowup.js';
 import { createCaptionWriter } from './ai/writeCaption.js';
 import { createShiftRequestParser } from './ai/parseShiftRequest.js';
+import { createReservationEntryParser } from './ai/parseReservationEntry.js';
+import { createReservationDrafts } from './reservations/draftService.js';
 import { createShiftService } from './shifts/service.js';
 import { createPlanService } from './plans/service.js';
 import { createReservationService } from './reservations/service.js';
 import { basicAuth, bearerAuth } from './http/auth.js';
 import { createAdminRouter } from './http/adminRoutes.js';
 import { createImportRouter } from './http/importRoutes.js';
+import { createAdminImportRouter, MAX_CSV_BYTES } from './http/adminImportRoutes.js';
 import { createSnsRouter } from './http/snsRoutes.js';
 import { createInstagramClient } from './instagram/client.js';
 import { createThreadsClient } from './threads/client.js';
@@ -51,6 +54,12 @@ const classifier = createFollowupClassifier({ apiKey: config.anthropicApiKey });
 // シフト変更申請（スタッフが公式LINE へ自由記述で送る）
 const shiftParser = createShiftRequestParser({ apiKey: config.anthropicApiKey });
 const shiftService = createShiftService({ pool, lineClient, slack, settings, config });
+// 予約の書き込みは必ずこのアダプタを通す。webhook より前に用意する必要があるため、
+// 取り込み・LIFF より先にここで作る
+const reservationService = createReservationService({ pool, slack, lineClient });
+// スタッフが公式LINE から入れる予約。読み取った内容は下書きに置き、押されたときだけ本予約にする
+const entryParser = createReservationEntryParser({ apiKey: config.anthropicApiKey });
+const reservationDrafts = createReservationDrafts({ pool, reservationService });
 // 回数券・保育コースの回数管理（残回数は元帳の合計から導く）
 const planService = createPlanService({ pool });
 
@@ -76,12 +85,17 @@ app.post(
     settings,
     shiftService,
     shiftParser,
+    reservationDrafts,
+    entryParser,
     config,
     liffUrl: config.liffUrl,
   })
 );
 
 // ---- ここから下は JSON パースを使う（webhook 以外のルート） ----
+// 予約CSVは本文が大きい。既定の 100kb では数百行が入らないため、この経路だけ先に広げて読む
+// （express.json は一度読んだ本文を読み直さないので、順番がそのまま上限になる）
+app.use('/api/admin/import', express.json({ limit: MAX_CSV_BYTES }));
 app.use(express.json());
 
 // 画面（HTML/JS）は毎回サーバーへ更新確認させる。デプロイ後に古い app.js が
@@ -168,7 +182,6 @@ app.post('/liff/register', async (req, res) => {
 });
 
 // ---- 予約データの取り込み（Phase 6）----
-const reservationService = createReservationService({ pool, slack, lineClient });
 
 // LIFF 予約フォーム。顧客の特定は ID トークン検証で得た sub のみを信用する
 app.post('/liff/reserve/options', async (req, res) => {
@@ -291,6 +304,11 @@ const snsPublisher = createSnsPublisher({ pool, clients: snsClients, slack, conf
 const captionWriter = config.anthropicApiKey
   ? createCaptionWriter({ apiKey: config.anthropicApiKey, model: config.captionModel })
   : null;
+// 予約CSVの取り込み（画面から）。管理画面と同じ Basic 認証の内側に置く
+app.use('/api/admin/import', adminGuard, createAdminImportRouter({
+  reservationService, settings, slack,
+}));
+
 app.use('/api/admin/sns', adminGuard, createSnsRouter({
   pool, publisher: snsPublisher, dataDir: snsDataDir, captionWriter, storeName: store.name,
   clients: snsClients,

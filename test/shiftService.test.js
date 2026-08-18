@@ -42,7 +42,7 @@ test('日付ラベルは JST の曜日で組み立てる', () => {
   assert.equal(formatShift({ target_date: '2026-12-25', kind: 'am' }), '12/25(金) AM半休');
 });
 
-test('申請を保存し、同じ日の承認待ちは置き換える', async () => {
+test('申請を保存し、同じ日の未決着は置き換える', async () => {
   const f = makeFakes([
     [/DELETE FROM shift_requests/, { rows: [], rowCount: 1 }],
     [/INSERT INTO shift_requests/, (p) => ({ rows: [{ id: 7, target_date: p[1], kind: p[2] }] })],
@@ -56,9 +56,9 @@ test('申請を保存し、同じ日の承認待ちは置き換える', async ()
   });
 
   assert.equal(result.created.length, 1);
-  assert.equal(result.replaced, 1, '同じ日の承認待ちを消してから入れる');
+  assert.equal(result.replaced, 1, '同じ日の未決着を消してから入れる');
   const del = f.pool.queries.find((q) => /DELETE FROM shift_requests/.test(q.sql));
-  assert.match(del.sql, /status = 'pending'/, '承認済みの履歴は消さない');
+  assert.match(del.sql, /status IN \('pending', 'held'\)/, '確定・却下済みの履歴は消さない');
   const insert = f.pool.queries.find((q) => /INSERT INTO shift_requests/.test(q.sql));
   assert.equal(insert.params[6], '8/1 有休お願いします', '原文を必ず残す');
 });
@@ -313,4 +313,87 @@ test('却下ではシフト表を変更しない', async () => {
   await service.decide({ id: 8, status: 'rejected' });
 
   assert.equal(f.pool.queries.filter((q) => /INSERT INTO shifts/.test(q.sql)).length, 0);
+});
+
+test('本人の「確定」で、その人の返事待ちだけをシフト表へ入れる', async () => {
+  const f = makeFakes([
+    [/SELECT[\s\S]*WHERE r\.staff_id = \$1 AND r\.status = 'pending'/, {
+      rows: [{ id: 7, staff_id: 3, staff_name: '高橋', target_date: '2026-08-01', kind: 'yukyu',
+               start_time: null, end_time: null, status: 'pending' }],
+    }],
+    [/UPDATE shift_requests/, { rows: [{ id: 7 }] }],
+    [/INSERT INTO shifts/, { rows: [{ id: 1 }] }],
+  ]);
+  const service = createShiftService(f);
+
+  const result = await service.answerOwnRequests({ staffId: 3, answer: 'confirm' });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.status, 'approved');
+  const update = f.pool.queries.find((q) => /UPDATE shift_requests/.test(q.sql));
+  // 他人の申請を動かせないよう、id だけでなく staff_id も条件に入れる
+  assert.match(update.sql, /staff_id = \$2/);
+  assert.deepEqual(update.params, [[7], 3, 'approved']);
+  const upsert = f.pool.queries.find((q) => /INSERT INTO shifts/.test(q.sql));
+  assert.deepEqual(upsert.params.slice(0, 3), [3, '2026-08-01', 'yukyu']);
+});
+
+test('本人の「保留」は held にするだけで、シフト表は変えない', async () => {
+  const f = makeFakes([
+    [/SELECT[\s\S]*WHERE r\.staff_id = \$1 AND r\.status = 'pending'/, {
+      rows: [{ id: 7, staff_id: 3, staff_name: '高橋', target_date: '2026-08-01', kind: 'yukyu',
+               start_time: null, end_time: null, status: 'pending' }],
+    }],
+    [/UPDATE shift_requests/, { rows: [{ id: 7 }] }],
+  ]);
+  const service = createShiftService(f);
+
+  const result = await service.answerOwnRequests({ staffId: 3, answer: 'hold' });
+
+  assert.equal(result.status, 'held');
+  assert.equal(f.pool.queries.filter((q) => /INSERT INTO shifts/.test(q.sql)).length, 0);
+});
+
+test('返事待ちが無ければ no_pending を返す', async () => {
+  const f = makeFakes([]);
+  const service = createShiftService(f);
+
+  const result = await service.answerOwnRequests({ staffId: 3, answer: 'confirm' });
+
+  assert.deepEqual(result, { ok: false, error: 'no_pending' });
+  assert.equal(f.pool.queries.filter((q) => /UPDATE shift_requests/.test(q.sql)).length, 0);
+});
+
+test('別経路で先に決まっていたら、取れなかった分は反映しない', async () => {
+  const f = makeFakes([
+    [/SELECT[\s\S]*WHERE r\.staff_id = \$1 AND r\.status = 'pending'/, {
+      rows: [{ id: 7, staff_id: 3, target_date: '2026-08-01', kind: 'yukyu', start_time: null, end_time: null }],
+    }],
+    // 店長が管理画面で先に決めた等で、UPDATE が1件も取れなかった場合
+    [/UPDATE shift_requests/, { rows: [] }],
+  ]);
+  const service = createShiftService(f);
+
+  const result = await service.answerOwnRequests({ staffId: 3, answer: 'confirm' });
+
+  assert.deepEqual(result, { ok: false, error: 'no_pending' });
+  assert.equal(f.pool.queries.filter((q) => /INSERT INTO shifts/.test(q.sql)).length, 0);
+});
+
+test('店長は本人が保留にしたものも承認できる', async () => {
+  const f = makeFakes([
+    [/UPDATE shift_requests/, { rows: [{ id: 9 }] }],
+    [/SELECT[\s\S]*FROM shift_requests r JOIN staff/, {
+      rows: [{ id: 9, staff_id: 3, staff_name: '高橋', target_date: '2026-08-01', kind: 'yukyu',
+               start_time: null, end_time: null, status: 'approved', line_user_id: 'U-staff' }],
+    }],
+    [/INSERT INTO shifts/, { rows: [{ id: 1 }] }],
+  ]);
+  const service = createShiftService(f);
+
+  const result = await service.decide({ id: 9, status: 'approved' });
+
+  assert.equal(result.ok, true);
+  const update = f.pool.queries.find((q) => /UPDATE shift_requests/.test(q.sql));
+  assert.match(update.sql, /status IN \('pending', 'held'\)/, '決着済みは動かさない');
 });

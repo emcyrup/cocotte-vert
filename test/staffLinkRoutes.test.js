@@ -142,7 +142,7 @@ test('入力された名前で登録し、店長にも分かるよう通知す�
   const res = await post(app, '/liff/staff/link', { idToken: 'good', name: '佐藤' });
 
   assert.deepEqual(res.body, { ok: true, staff: { id: 1, name: '佐藤' }, created: false });
-  assert.deepEqual(nameCalls[0], { lineUserId: 'U-me', name: '佐藤' });
+  assert.deepEqual(nameCalls[0], { lineUserId: 'U-me', name: '佐藤', createNew: false });
   assert.equal(notices.length, 1, '身に覚えのない登録に気付けるようにする');
   assert.match(notices[0], /佐藤/);
 });
@@ -206,4 +206,35 @@ test('紐付けに失敗した理由をそのまま画面へ返す', async () =>
   assert.equal(res.status, 409);
   assert.equal(res.body.error, 'already_linked_to_other');
   assert.equal(notices.length, 0, '登録できていないのに通知しない');
+});
+
+test('退職者と同じ名前で作られたときは、取り違えの可能性を通知に添える', async () => {
+  const { app, notices } = makeApp({
+    linkByName: async () => ({ ok: true, staff: { id: 9, name: '高橋' }, created: true, sameNameRetired: true }),
+  });
+
+  const res = await post(app, '/liff/staff/link', { idToken: 'good', name: '高橋' });
+
+  assert.equal(res.status, 200, '登録そのものは止めない');
+  assert.match(notices[0], /同じお名前の退職者/);
+  assert.match(notices[0], /在職中/, '復帰だった場合の直し方も書く');
+});
+
+test('「別の人です」の返事は createNew として渡す', async () => {
+  const { app, nameCalls } = makeApp();
+
+  await post(app, '/liff/staff/link', { idToken: 'good', name: '高橋', createNew: true });
+
+  assert.deepEqual(nameCalls[0], { lineUserId: 'U-me', name: '高橋', createNew: true });
+});
+
+test('同じ名前が登録済みなら、そのスタッフを添えて 409 で返す', async () => {
+  const { app } = makeApp({
+    linkByName: async () => ({ ok: false, error: 'name_taken', staff: { id: 3, name: '高橋' } }),
+  });
+
+  const res = await post(app, '/liff/staff/link', { idToken: 'good', name: '高橋' });
+
+  assert.equal(res.status, 409);
+  assert.deepEqual(res.body.staff, { id: 3, name: '高橋' });
 });

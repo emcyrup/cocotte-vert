@@ -436,7 +436,7 @@ test('名簿に無い名前は、新しいスタッフとして作って紐付�
 
   const result = await service.linkStaffByTypedName({ lineUserId: 'U1', name: '新人' });
 
-  assert.deepEqual(result, { ok: true, staff: { id: 9, name: '新人' }, created: true });
+  assert.deepEqual(result, { ok: true, staff: { id: 9, name: '新人' }, created: true, sameNameRetired: false });
   const insert = f.pool.queries.find((q) => /INSERT INTO staff/.test(q.sql));
   assert.deepEqual(insert.params, ['新人', 'U1']);
 });
@@ -449,7 +449,8 @@ test('同じ名前が複数いるときは決めず、候補を返す', async ()
   const result = await service.linkStaffByTypedName({ lineUserId: 'U1', name: '佐藤' });
 
   assert.deepEqual(result, { ok: false, error: 'ambiguous', candidates });
-  assert.equal(f.pool.queries.length, 1, '決められないうちは何も書き換えない');
+  assert.equal(f.pool.queries.filter((q) => /UPDATE|INSERT/.test(q.sql)).length, 0,
+    '決められないうちは何も書き換えない');
 });
 
 test('既に別のスタッフとして登録済みの LINE では、新しく作らない', async () => {
@@ -514,16 +515,74 @@ test('紐付けられなかった理由を分けて返す', async () => {
   });
 });
 
-test('退職として残っている名前では、勝手に作り直さない', async () => {
-  // 同じ名前が名簿に2つ並ぶのを避ける。復帰かどうかは店長が決める
+test('退職者と同じ名前でも登録できる（姓が同じだけの別人がいるため）', async () => {
   const f = makeFakes([
     [/SELECT id, name, \(line_user_id IS NOT NULL\)/, { rows: [] }],
+    [/SELECT id, name FROM staff WHERE line_user_id/, { rows: [] }],
     [/SELECT 1 FROM staff\s+WHERE active = false/, { rows: [{ '?column?': 1 }] }],
+    [/INSERT INTO staff/, { rows: [{ id: 9, name: '高橋' }] }],
   ]);
   const service = createShiftService(f);
 
-  const result = await service.linkStaffByTypedName({ lineUserId: 'U1', name: '元スタッフ' });
+  const result = await service.linkStaffByTypedName({ lineUserId: 'U1', name: '高橋' });
 
-  assert.deepEqual(result, { ok: false, error: 'retired_name' });
-  assert.equal(f.pool.queries.filter((q) => /INSERT INTO staff/.test(q.sql)).length, 0);
+  assert.equal(result.ok, true);
+  assert.equal(result.created, true);
+  // 本人の復帰を新規作成として取り違えている場合があるので、店長へ知らせる材料を返す
+  assert.equal(result.sameNameRetired, true);
+});
+
+test('退職者に同じ名前がいなければ、その印は立てない', async () => {
+  const f = makeFakes([
+    [/SELECT id, name, \(line_user_id IS NOT NULL\)/, { rows: [] }],
+    [/SELECT id, name FROM staff WHERE line_user_id/, { rows: [] }],
+    [/INSERT INTO staff/, { rows: [{ id: 9, name: '新人' }] }],
+  ]);
+  const service = createShiftService(f);
+
+  const result = await service.linkStaffByTypedName({ lineUserId: 'U1', name: '新人' });
+
+  assert.equal(result.sameNameRetired, false);
+});
+
+test('同じ名前の人が既に別のLINEで登録済みなら、黙って上書きしない', async () => {
+  // 上書きすると、先に登録した人の連携が消えてしまう。同姓の別人かもしれないので確かめる
+  const f = makeFakes([
+    [/SELECT id, name FROM staff WHERE line_user_id/, { rows: [] }],
+    [/SELECT id, name, \(line_user_id IS NOT NULL\)/, { rows: [{ id: 3, name: '高橋', linked: true }] }],
+  ]);
+  const service = createShiftService(f);
+
+  const result = await service.linkStaffByTypedName({ lineUserId: 'U-new', name: '高橋' });
+
+  assert.deepEqual(result, { ok: false, error: 'name_taken', staff: { id: 3, name: '高橋' } });
+  assert.equal(f.pool.queries.filter((q) => /UPDATE staff SET line_user_id/.test(q.sql)).length, 0);
+});
+
+test('「同じ名前の別の人です」と答えられたら、新しく作る', async () => {
+  const f = makeFakes([
+    [/SELECT id, name FROM staff WHERE line_user_id/, { rows: [] }],
+    [/INSERT INTO staff/, { rows: [{ id: 9, name: '高橋' }] }],
+  ]);
+  const service = createShiftService(f);
+
+  const result = await service.linkStaffByTypedName({ lineUserId: 'U-new', name: '高橋', createNew: true });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.created, true);
+  // 名前で探す手順は飛ばす（同名がいるのは分かったうえでの返事のため）
+  assert.equal(f.pool.queries.filter((q) => /\(line_user_id IS NOT NULL\)/.test(q.sql)).length, 0);
+});
+
+test('自分が登録済みの名前を入れ直すのは、そのまま通す', async () => {
+  const f = makeFakes([
+    [/SELECT id, name FROM staff WHERE line_user_id/, { rows: [{ id: 3, name: '高橋' }] }],
+    [/SELECT id, name, \(line_user_id IS NOT NULL\)/, { rows: [{ id: 3, name: '高橋', linked: true }] }],
+    [/UPDATE staff SET line_user_id/, { rows: [{ id: 3, name: '高橋' }] }],
+  ]);
+  const service = createShiftService(f);
+
+  const result = await service.linkStaffByTypedName({ lineUserId: 'U-me', name: '高橋' });
+
+  assert.deepEqual(result, { ok: true, staff: { id: 3, name: '高橋' } });
 });

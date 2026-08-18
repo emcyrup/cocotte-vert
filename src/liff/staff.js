@@ -8,6 +8,8 @@
 // 同姓が複数いるときだけ、どちらかを選んでもらう（こちらでは決めようがないため）。
 
 let idToken = null;
+// このLINEが今どのスタッフとして登録されているか。候補の中から自分を見分けるのに使う
+let myStaff = null;
 
 function show(id) { document.getElementById(id).classList.remove('hidden'); }
 function hide(id) { document.getElementById(id).classList.add('hidden'); }
@@ -33,8 +35,6 @@ const LINK_ERRORS = {
   invalid_name: 'お名前を入力してください（30文字まで）。',
   already_linked_to_other: 'このLINEアカウントは、すでに別のスタッフとして登録されています。\n'
     + '店長にご相談ください。',
-  retired_name: 'そのお名前は「退職」として登録されています。\n'
-    + '復帰される場合は、店長に在職へ戻してもらってから、もう一度お試しください。',
   not_found: 'その方が見つかりませんでした。画面を開き直してお試しください。',
   invalid_staff: 'お名前をもう一度お選びください。',
 };
@@ -49,6 +49,7 @@ function deny(error) {
 function done(staff, created) {
   hide('pick');
   hide('choose');
+  hide('taken');
   document.getElementById('done-name').textContent =
     `${staff.name}さんとして${created ? '新しく' : ''}登録しました`;
   show('done');
@@ -63,13 +64,29 @@ function renderCandidates(candidates) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'pick';
-    btn.textContent = c.linked ? `${c.name}（登録済み）` : c.name;
+    // 同姓が並ぶので、自分のぶんが分かるようにしておく
+    const mine = myStaff && String(myStaff.id) === String(c.id);
+    btn.textContent = mine ? `${c.name}（あなた）` : (c.linked ? `${c.name}（登録済み）` : c.name);
     btn.addEventListener('click', () => submit({ staffId: c.id }, 'status2'));
     li.appendChild(btn);
     list.appendChild(li);
   }
   hide('pick');
   show('choose');
+}
+
+/**
+ * 同じ名前の人が既に別の LINE で登録済みだったとき。
+ * 本人の入れ直しか、同姓の別人かは本人にしか分からないので、そこだけ尋ねる。
+ */
+function askTaken(staff, name) {
+  document.getElementById('taken-note').innerHTML =
+    `「${staff.name}」さんは、すでに別のLINEアカウントで登録されています。<br />`
+    + '<b>あなたはその「' + staff.name + '」さんご本人ですか？</b>';
+  document.getElementById('taken-same').onclick = () => submit({ staffId: staff.id }, 'status3');
+  document.getElementById('taken-other').onclick = () => submit({ name, createNew: true }, 'status3');
+  hide('pick');
+  show('taken');
 }
 
 async function submit(payload, statusId = 'status') {
@@ -87,6 +104,12 @@ async function submit(payload, statusId = 'status') {
     if (body.error === 'ambiguous' && body.candidates?.length) {
       showStatus('', '', statusId);
       renderCandidates(body.candidates);
+      button.disabled = false;
+      return;
+    }
+    if (body.error === 'name_taken' && body.staff) {
+      showStatus('', '', statusId);
+      askTaken(body.staff, payload.name);
       button.disabled = false;
       return;
     }
@@ -127,6 +150,7 @@ async function main() {
 
   hide('loading');
   const nameInput = document.getElementById('name');
+  myStaff = options.linkedStaff ?? null;
   if (options.linkedStaff) {
     // 登録済みでも開けるようにしておく（改名・入れ直しのため）。今の名前を入れておく
     nameInput.value = options.linkedStaff.name;

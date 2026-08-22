@@ -161,6 +161,15 @@ LIFF の配下ページ（`reserve.html` / `staff.html` / `staff-reserve.html`�
 
 ## 6. 動作確認
 
+まず `.env` の設定がひととおり通っているかを見る。
+
+```bash
+node --env-file-if-exists=.env scripts/check-env.js
+```
+
+DB への接続、LINE のトークン、Claude の鍵、LIFF の各ページ、店舗の設定などを1画面で出す。
+**秘密の値は出力しないので、結果をそのまま貼って相談できる。** 直すべき点があれば終了コード 1 で終わる。
+
 ```bash
 # サーバー内から
 curl -s http://127.0.0.1:8017/health

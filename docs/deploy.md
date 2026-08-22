@@ -14,6 +14,19 @@ Webhook と LIFF には**固定の HTTPS URL** が必要。構成は3通り。
 
 ---
 
+## 設定の確認
+
+どの構成でも、`.env` が揃っているかは次で確かめられる（秘密の値は出力しない）。
+
+```bash
+docker compose exec app node scripts/check-env.js   # Docker の構成
+node --env-file-if-exists=.env scripts/check-env.js # Docker 無しの構成
+```
+
+LINE のアカウントだけを詳しく見たいときは `scripts/check-line.js`。
+
+---
+
 ## 構成 A: 既存 EC2（Nginx 稼働中）
 
 アプリと PostgreSQL をコンテナで起動し、既存の Nginx から `127.0.0.1:3000` へプロキシする。

@@ -6,3 +6,4 @@ node_modules/
 data/
 # マニュアルの PDF は scripts/build-manual-pdf.js で作り直せる（1MB 超をコミットしない）
 docs/*.pdf
+run/

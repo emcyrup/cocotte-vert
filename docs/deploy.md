@@ -7,6 +7,10 @@ Webhook と LIFF には**固定の HTTPS URL** が必要。構成は3通り。
 | A. 既存 EC2（Nginx 稼働中）+ Docker Compose | 既存のマルチテナント EC2 に載せる場合 |
 | B. 新規 VM / VPS + Docker Compose（Caddy 同梱） | **現在の検証環境はこれ**（GCP Compute Engine） |
 | C. Render（PaaS） | サーバー管理をしたくない場合（月約 $14、ドメイン不要） |
+| D. 管理会社の共用サーバー（Docker・sudo なし） | **本番はこれ** → [deploy-aws.md](deploy-aws.md) |
+
+構成 D は Docker が使えないため、`docker-compose.yml` と `Caddyfile` を使わず
+`scripts/serve.sh` で Node を直接起動する。手順は別ファイルにまとめてある。
 
 ---
 

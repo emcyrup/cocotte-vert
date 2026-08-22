@@ -10,6 +10,7 @@
 // **秘密の値は出力しない。** 出力をそのまま貼って相談できるようにしてある。
 // 直すべき点があれば終了コード 1 で終わる。
 
+import { readFile } from 'node:fs/promises';
 import { loadConfig } from '../src/config.js';
 import { loadStoreProfile } from '../src/store.js';
 import { pool } from '../src/db/pool.js';
@@ -17,6 +18,7 @@ import { createInstagramClient } from '../src/instagram/client.js';
 import { createThreadsClient } from '../src/threads/client.js';
 import {
   requiredRows, sendModeRows, urlRows, optionalRows, storeRows, hasProblem,
+  duplicateKeys, duplicateRows,
 } from '../src/checkEnv.js';
 
 // 1つが固まっても全体を止めない
@@ -90,8 +92,12 @@ async function main() {
   ]);
   const checks = { db, line, anthropic, instagram, threads };
 
+  // .env そのものも見る。同じキーが2行あると後の行が静かに勝つため
+  const envText = await readFile('.env', 'utf8').catch(() => '');
+  const dupes = duplicateRows(duplicateKeys(envText));
+
   const sections = [
-    ['必須（欠けると起動しません）', requiredRows(config, checks)],
+    ['必須（欠けると起動しません）', [...requiredRows(config, checks), ...dupes]],
     ['送信の設定', sendModeRows(config)],
     ['外から見える URL', urlRows(config)],
     ['任意の連携', optionalRows(config, checks)],

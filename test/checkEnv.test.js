@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   requiredRows, sendModeRows, urlRows, optionalRows, storeRows, hasProblem, presence,
+  duplicateKeys, duplicateRows,
 } from '../src/checkEnv.js';
 
 const SECRET = 'sk-ant-himitsu-0123456789';
@@ -154,4 +155,46 @@ test('配信の起点となる日数を出す（店舗ごとに変わるため�
   assert.match(rows, /来店フォロー: 7日後/);
   assert.match(rows, /休眠フォロー: 90日で対象／1日 50件まで/);
   assert.match(rows, /営業時間: 10:00〜19:00/);
+});
+
+// ---- .env の重複（実際に本番で踏んだ） ----
+
+test('同じキーが2行以上あれば見つける', () => {
+  const env = [
+    'DATABASE_URL=postgres://ai_labo_dbuser:x@127.0.0.1:5432/db',
+    'PORT=8017',
+    '# DB 接続（ローカル開発時のみ設定）',
+    'DATABASE_URL=postgres://user:pass@localhost:5432/cocotte_vert',
+  ].join('\n');
+
+  assert.deepEqual(duplicateKeys(env), ['DATABASE_URL']);
+});
+
+test('重複があれば ✗ にし、後の行が採られることを伝える', () => {
+  const rows = duplicateRows(['DATABASE_URL', 'PORT']);
+  assert.equal(hasProblem(rows), true);
+  assert.match(rows.join('\n'), /DATABASE_URL, PORT が2行以上あります/);
+  assert.match(rows.join('\n'), /後の行が採られます/);
+});
+
+test('重複が無ければ何も足さない', () => {
+  assert.deepEqual(duplicateKeys('A=1\nB=2\n'), []);
+  assert.deepEqual(duplicateRows([]), []);
+});
+
+test('コメント・空行・値の続きはキーとして数えない', () => {
+  const env = [
+    '# DATABASE_URL=postgres://sample',
+    '',
+    'NOTE=一行目',
+    '  つづき（キーではない）',
+    'NOTE=二行目',
+  ].join('\n');
+
+  // コメント行の DATABASE_URL は数えない。NOTE だけが重複
+  assert.deepEqual(duplicateKeys(env), ['NOTE']);
+});
+
+test('前に空白があってもキーとして数える（.env は空白を許すため）', () => {
+  assert.deepEqual(duplicateKeys('  PORT=1\nPORT=2\n'), ['PORT']);
 });

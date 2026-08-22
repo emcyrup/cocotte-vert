@@ -134,3 +134,29 @@ export function storeRows(config, store) {
 export function hasProblem(rows) {
   return rows.some((r) => r.includes(` ${MARK.ng} `));
 }
+
+/**
+ * .env に同じキーが2行以上あると、Node は**後に書いた方**を採る。
+ * .env.example を写して上書きし損ねると、見本の値（user:pass など）が
+ * 後ろに残って静かに勝つ。実際にこれで本番の接続が通らなかった。
+ * @param {string} text .env の中身
+ */
+export function duplicateKeys(text) {
+  const seen = new Map();
+  for (const raw of String(text ?? '').split('\n')) {
+    const m = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=/.exec(raw);
+    if (!m) continue;   // 空行・コメント・値の続きは飛ばす
+    seen.set(m[1], (seen.get(m[1]) ?? 0) + 1);
+  }
+  return [...seen.entries()].filter(([, n]) => n > 1).map(([key]) => key);
+}
+
+/** 重複があれば、後の行が採られることまで伝える */
+export function duplicateRows(keys) {
+  if (keys.length === 0) return [];
+  return [
+    line('ng', '.env の重複', `${keys.join(', ')} が2行以上あります`),
+    '    → 同じキーが複数あると後の行が採られます。'
+      + '.env.example を写したときの見本の行が残っていないか確認してください',
+  ];
+}

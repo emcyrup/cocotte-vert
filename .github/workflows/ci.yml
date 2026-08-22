@@ -59,6 +59,10 @@ jobs:
           ssh -i ~/.ssh/deploy_key "${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}" '
             set -e
             IFS= read -r KEY || true
+            # 初回だけ取ってくる。公開リポジトリなのでサーバー側に認証情報は要らない
+            if [ ! -d cocotte-vert/.git ]; then
+              git clone '"$REPO_URL"' cocotte-vert
+            fi
             cd cocotte-vert
             git fetch origin main
             git checkout main
@@ -88,3 +92,4 @@ jobs:
           # docker（既定・Caddy 同梱の compose）| plain（Docker の無いサーバー）
           DEPLOY_STYLE: ${{ vars.DEPLOY_STYLE || 'docker' }}
           DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '3000' }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git

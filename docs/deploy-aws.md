@@ -30,6 +30,15 @@ Docker が使えないため、`docker-compose.yml` と `Caddyfile` は本番で
    予約CSVの取り込み（最大5MB）と SNS 写真の投稿（最大8MB）が Nginx の既定値（1MB）で弾かれるため
 3. GitHub リポジトリ（`emcyrup/cocotte-vert`）への招待、またはサーバーからの `git clone` 用の鍵登録
 
+## 進め方は2通り
+
+**自動デプロイを使う場合**（推奨）は、先に手順8で GitHub の Secret / Variable を登録してしまう。
+`main` が更新された時点でリポジトリの取得まで自動で走り、`.env` が無い旨で止まる。
+そのあと手順2（`.env` の作成）と手順4（データ移行）だけをサーバー上で行い、
+Actions を再実行すれば起動する。
+
+**手で入れる場合**は、以下を上から順に。
+
 ## 1. サーバーに入って取ってくる
 
 ```bash
@@ -190,17 +199,28 @@ docker compose down
 
 ## 8. 自動デプロイをこちらへ向ける
 
-手動での入れ替えが通ったあとに設定する。GitHub の Settings → Secrets and variables → Actions で:
+GitHub の Settings → Secrets and variables → Actions で:
 
 | 種類 | キー | 値 |
 |---|---|---|
 | Secret | `VM_HOST` | 本番サーバーの IP |
 | Secret | `VM_USER` | 配布された SSH ユーザー名 |
 | Secret | `VM_SSH_KEY` | 配布された `.pem` の中身（`-----BEGIN`〜`-----END` を含む全文） |
+| Variable | `DEPLOY_ENABLED` | `true` |
 | Variable | `DEPLOY_STYLE` | `plain` |
 | Variable | `DEPLOY_PORT` | 割り当てポート |
 
-以降、`main` が更新されると `git pull` → `npm ci --omit=dev` → `serve.sh restart` まで自動で走る。
+以降、`main` が更新されるたびに、サーバー上で次が走る。
+
+```
+（未取得なら git clone）→ git pull → npm ci --omit=dev → ./scripts/serve.sh restart
+```
+
+**リポジトリの取得も自動で行う**ので、手でやることは `.env` の作成（手順2）だけ。
+`.env` が無ければ `serve.sh` が「.env がありません」で止まり、Actions のログにそのまま出る。
+
+`.pem` は GitHub Actions の Secret として登録する。サーバーの `~/.ssh/authorized_keys` に
+すでにその公開鍵が入っているため、追加の鍵登録は不要。
 
 ## つまずきやすいところ
 

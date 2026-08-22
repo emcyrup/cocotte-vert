@@ -8,7 +8,33 @@
 
 ---
 
-## 1. 2店舗目のサーバー構築
+## 1. 1店舗目の本番サーバー（AWS）への移設 ← いまここ
+
+現在の稼働環境（GCP・Docker Compose）を、インフラ会社が用意した AWS の本番サーバーへ移す。
+**Docker も sudo も使えない**ため、`scripts/serve.sh` で Node を直接起動する。
+手順は [deploy-aws.md](deploy-aws.md)。
+
+| | 状態 |
+|---|---|
+| Docker 無しで動かす仕組み（`scripts/serve.sh`） | **完了** |
+| 自動デプロイ（`deploy-prod`） | **完了**。SSH → clone → `npm ci` まで通っている |
+| **PostgreSQL のデータベース名** | **インフラ会社待ち。ここが最後のボトルネック** |
+| `.env` の作成 | 未（DB 名が届き次第） |
+| GCP からのデータ移行 | 未。`message_logs` を必ず含めること |
+| LINE の Webhook / LIFF の向き先変更 | 未。**移行当日まで変えない**（変えた時点で本番が AWS を向く） |
+| `SEND_MODE` を live へ | 未。当面 `dry_run` のまま |
+
+インフラ会社へ依頼すること。
+
+- Nginx の `client_max_body_size` を **8m 以上**に（既定 1MB だと予約CSVの取り込みと写真投稿が 413 で落ちる）
+- 割り当てサブドメインを割り当てポートへプロキシ
+
+**GCP と AWS の両方を `live` にしないこと。** 別々のデータベースを見るため `dedupe_key` が
+効かず、同じお客様へ二重に届く。
+
+---
+
+## 2. 2店舗目のサーバー構築
 
 GCP に VM を1台立て、`docs/new-store.md` の手順で構築中。
 
@@ -46,15 +72,24 @@ docker compose exec app node scripts/seed-plans.js   # 保育コース 月4回 /
 
 ### Step 8 でやること
 
-`.github/workflows/ci.yml` のデプロイ先が `secrets.VM_HOST` の**1台だけ**。
-2台目は自動デプロイの対象外なので、複数台へ配れるようにする必要がある。
+自動デプロイは**宛先ごとにジョブを分ける形**になった（手順は `.github/actions/deploy` に
+1つだけ置き、各ジョブから呼ぶ）。現在の宛先は2つ。
+
+| ジョブ | 宛先 | Secret |
+|---|---|---|
+| `deploy` | 1店舗目の検証環境（GCP・Docker Compose） | `VM_HOST` / `VM_USER` / `VM_SSH_KEY` |
+| `deploy-prod` | 1店舗目の本番（AWS・Docker なし） | `PROD_VM_HOST` / `PROD_VM_USER` / `PROD_VM_SSH_KEY` |
+
+2店舗目を足すときは、**Secret を1組増やしてジョブを1つ足す**だけでよい。
+動かし方（docker / plain）を共通の変数で切り替えないこと。片方に合わせた設定が
+もう片方へも効いてしまい、実際に検証環境を落とした。
 
 **店舗ごとにコードを分岐させないこと。** 差分は `.env` に寄せる方針で作ってある
 （`src/store.js` と配信日数の設定）。どうしても吸収できない差が出たら、まず設定化を検討する。
 
 ---
 
-## 2. 本稼働までの残り作業（北区店の計画に対して）
+## 3. 本稼働までの残り作業（北区店の計画に対して）
 
 計画の Phase と、システム側の状態の対応。
 
@@ -62,7 +97,7 @@ docker compose exec app node scripts/seed-plans.js   # 保育コース 月4回 /
 |---|---|
 | 顧客管理・カルテ・来店履歴 | 実装済み |
 | シフト | 実装済み（LINE からの申請は本人の「確定」でシフト表へ反映） |
-| **公式LINE からの予約登録** | **実装済み**（`docs/reservation-entry.md`）。スタッフ用グループと 1:1 の両方から、内容を確認して登録できる |
+| **公式LINE からの予約登録** | **実装済み**（`docs/reservation-entry.md`）。主な入口は**フォーム**（「予約登録」と送るとボタンが返る）。飼い主様のお名前・お電話番号・**わんちゃんのお名前**のどれでも探せる。文章での登録も残しているが、お名前の読み取りが外れることがあるため補助扱い |
 | **回数券・会員管理** | **実装済み**（`docs/plans.md`）。ただし来店登録との連動は未 |
 | リマインド R1〜R4 | 実装済み（店舗単位・お客様単位の ON/OFF 付き） |
 | SNS 投稿（2分割） | 実装済み（Instagram・スレッズ） |
@@ -87,7 +122,7 @@ docker compose exec app node scripts/seed-plans.js   # 保育コース 月4回 /
 
 ---
 
-## 3. 店舗へ確認したい運用ルール
+## 4. 店舗へ確認したい運用ルール
 
 回数券・保育コースは現行モックの表示に合わせて実装してある。店舗ごとに違いうるので、
 ヒアリング（Phase 1）で確認する。変更はいずれも1箇所で済むようにしてある。
@@ -99,27 +134,31 @@ docker compose exec app node scripts/seed-plans.js   # 保育コース 月4回 /
 
 ---
 
-## 4. 引き継ぐときに必ず伝えること
+## 5. 引き継ぐときに必ず伝えること
 
 このファイルに書かない情報。口頭か別の安全な経路で渡す。
 
+- 本番（AWS）のサブドメイン・IP・SSH ユーザー名・配布された `.pem`
+- 本番の PostgreSQL の接続情報（ユーザー・パスワード・データベース名）
 - 2店舗目のドメイン・外部 IP・SSH のユーザー名
 - 管理画面の `ADMIN_USER` / `ADMIN_PASSWORD`
 - LINE / Instagram / Threads / Anthropic の各トークン
-- `POSTGRES_PASSWORD`
+- `POSTGRES_PASSWORD`（Docker Compose の環境のみ。本番では使わない）
 
 ---
 
-## 5. 作業を引き継いだ人が最初に読むもの
+## 6. 作業を引き継いだ人が最初に読むもの
 
 | | |
 |---|---|
 | 開発の約束ごと | `CLAUDE.md`（**誤爆防止のルールは必ず読む**） |
 | 全体像 | `README.md` |
 | 別店舗への展開手順 | `docs/new-store.md` |
-| サーバー構築 | `docs/deploy.md` |
+| サーバー構築（検証環境・Docker） | `docs/deploy.md` |
+| **本番サーバーへの移設（AWS・Docker なし）** | `docs/deploy-aws.md` |
 | 画面の切り分け（実運用／デモ） | `src/mock/README.md` |
 | 回数券・保育コース | `docs/plans.md` |
 | スタッフ勤怠 | `docs/shift-requests.md` |
+| 公式LINE からの予約登録 | `docs/reservation-entry.md` |
 | 運用中アカウントへの接続 | `docs/switch-account.md` |
 | 店舗スタッフへの説明 | `docs/staff-manual.md`（アルバイト向けの操作マニュアル。そのまま渡せる） |

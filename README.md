@@ -173,6 +173,9 @@ STORE_NAME="FREE WAN" node scripts/build-manual-pdf.js  # 別店舗の名前で�
 VPS / EC2 / GCP Compute Engine + Docker Compose、または Render での公開手順を
 [docs/deploy.md](docs/deploy.md) にまとめている。
 
+Docker も sudo も使えない共用サーバー（管理会社が用意する本番環境など）へ載せる場合は、
+`scripts/serve.sh` で Node を直接起動する。手順は [docs/deploy-aws.md](docs/deploy-aws.md)。
+
 ## Webhook のローカル確認
 
 cloudflared / ngrok でトンネルを張り、LINE Developers の Webhook URL に

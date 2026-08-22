@@ -33,7 +33,8 @@ Docker が使えないため、`docker-compose.yml` と `Caddyfile` は本番で
 ## 進め方は2通り
 
 **自動デプロイを使う場合**（推奨）は、先に手順8で GitHub の Secret / Variable を登録してしまう。
-`main` が更新された時点でリポジトリの取得まで自動で走り、`.env` が無い旨で止まる。
+`main` が更新された時点でリポジトリの取得と `npm ci` まで自動で走り、
+`.env` が揃っていない旨（未設定の変数名つき）で止まる。
 そのあと手順2（`.env` の作成）と手順4（データ移行）だけをサーバー上で行い、
 Actions を再実行すれば起動する。
 
@@ -201,14 +202,16 @@ docker compose down
 
 GitHub の Settings → Secrets and variables → Actions で:
 
+**検証環境（GCP）用の `VM_HOST` / `VM_USER` / `VM_SSH_KEY` は書き換えない。**
+本番は別のキー名で足す。上書きすると検証環境へのデプロイが止まるため。
+
 | 種類 | キー | 値 |
 |---|---|---|
-| Secret | `VM_HOST` | 本番サーバーの IP |
-| Secret | `VM_USER` | 配布された SSH ユーザー名 |
-| Secret | `VM_SSH_KEY` | 配布された `.pem` の中身（`-----BEGIN`〜`-----END` を含む全文） |
-| Variable | `DEPLOY_ENABLED` | `true` |
-| Variable | `DEPLOY_STYLE` | `plain` |
-| Variable | `DEPLOY_PORT` | 割り当てポート |
+| Secret | `PROD_VM_HOST` | 本番サーバーの IP |
+| Secret | `PROD_VM_USER` | 配布された SSH ユーザー名 |
+| Secret | `PROD_VM_SSH_KEY` | 配布された `.pem` の中身（`-----BEGIN`〜`-----END` を含む全文） |
+| Variable | `PROD_DEPLOY_ENABLED` | `true` |
+| Variable | `PROD_DEPLOY_PORT` | 割り当てポート（既定 8017） |
 
 以降、`main` が更新されるたびに、サーバー上で次が走る。
 
@@ -217,10 +220,21 @@ GitHub の Settings → Secrets and variables → Actions で:
 ```
 
 **リポジトリの取得も自動で行う**ので、手でやることは `.env` の作成（手順2）だけ。
-`.env` が無ければ `serve.sh` が「.env がありません」で止まり、Actions のログにそのまま出る。
+`.env` が揃うまでは Actions が次のように落ちる。これが出たら、名前の挙がった変数を
+サーバーの `.env` に足す。
+
+```
+Error: 環境変数が未設定です: DATABASE_URL, LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET
+```
 
 `.pem` は GitHub Actions の Secret として登録する。サーバーの `~/.ssh/authorized_keys` に
 すでにその公開鍵が入っているため、追加の鍵登録は不要。
+
+### 両方に出したままにする場合
+
+検証環境（GCP）を残すなら、両方のデプロイを有効にしておける（宛先ごとに Secret が分かれている）。
+そのとき **`SEND_MODE=live` にするのは本番だけ**にすること。
+別々のデータベースを見ているため `dedupe_key` が効かず、同じお客様へ二重に届く。
 
 ## つまずきやすいところ
 

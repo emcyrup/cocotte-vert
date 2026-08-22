@@ -7,6 +7,10 @@
 #        Variables: DEPLOY_ENABLED = true
 #   DEPLOY_ENABLED を設定するまでデプロイジョブはスキップされる（テストだけ動く）
 #
+#   Docker の無いサーバー（sudo が使えない本番 AWS 等）へ出す場合は、さらに:
+#        Variables: DEPLOY_STYLE = plain  … compose ではなく scripts/serve.sh で起動する
+#                   DEPLOY_PORT  = 8017   … docker のときのヘルスチェック先（plain では .env の PORT を見る）
+#
 # 任意の Secret:
 #   ANTHROPIC_API_KEY … 登録するとデプロイのたびに VM の .env へ反映する。
 #     未登録なら VM の .env はそのまま（既存の値を消さない）。
@@ -68,9 +72,19 @@ jobs:
               mv .env.new .env
               chmod 600 .env
             fi
-            docker compose --profile standalone up -d --build
-            sleep 5
-            curl -sf http://127.0.0.1:3000/health
+            # Docker のあるサーバーは compose、無いサーバー（sudo なしの本番 AWS 等）は
+            # serve.sh で直接起動する。DEPLOY_STYLE で切り替える（既定は docker）
+            if [ "'"$DEPLOY_STYLE"'" = "plain" ]; then
+              npm ci --omit=dev
+              ./scripts/serve.sh restart
+            else
+              docker compose --profile standalone up -d --build
+              sleep 5
+              curl -sf "http://127.0.0.1:'"$DEPLOY_PORT"'/health"
+            fi
           '
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # docker（既定・Caddy 同梱の compose）| plain（Docker の無いサーバー）
+          DEPLOY_STYLE: ${{ vars.DEPLOY_STYLE || 'docker' }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '3000' }}

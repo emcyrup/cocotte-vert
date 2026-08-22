@@ -259,6 +259,9 @@ app.post('/liff/reserve', async (req, res) => {
 
 // 管理 API（Basic 認証。ADMIN_USER / ADMIN_PASSWORD 未設定なら無効）
 const adminGuard = basicAuth({ user: config.adminUser, password: config.adminPassword });
+// ドメインだけで開かれたときの行き先。ルートに何も置いていないと Express の
+// 「Cannot GET /」が出て、サーバーが落ちているように見える
+app.get('/', (_req, res) => res.redirect('/mock/#resv'));
 // 旧管理画面（/admin/）はモック側の画面に統合した。ブックマーク・LINE内の旧リンク互換のためリダイレクトを残す
 app.get('/admin/customers.html', (_req, res) => res.redirect('/mock/#list'));
 app.get(['/admin', '/admin/index.html'], (_req, res) => res.redirect('/mock/#resv'));

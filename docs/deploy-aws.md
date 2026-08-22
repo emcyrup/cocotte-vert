@@ -211,7 +211,12 @@ GitHub の Settings → Secrets and variables → Actions で:
 | Secret | `PROD_VM_USER` | 配布された SSH ユーザー名 |
 | Secret | `PROD_VM_SSH_KEY` | 配布された `.pem` の中身（`-----BEGIN`〜`-----END` を含む全文） |
 | Variable | `PROD_DEPLOY_ENABLED` | `true` |
-| Variable | `PROD_DEPLOY_PORT` | 割り当てポート（既定 8017） |
+
+待ち受けポートは `.env` の `PORT` を見るので、変数では渡さない。
+
+**`DEPLOY_STYLE` / `DEPLOY_PORT` は設定しない。** これは検証環境と本番で共通の変数になり、
+片方に合わせると もう片方も巻き添えになる（検証環境には npm が無く、`plain` では動かない）。
+動かし方は宛先ごとにワークフローへ書いてある。
 
 以降、`main` が更新されるたびに、サーバー上で次が走る。
 

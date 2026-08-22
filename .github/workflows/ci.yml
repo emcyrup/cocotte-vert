@@ -6,13 +6,13 @@
 #   deploy       … 検証環境（GCP・Docker Compose）
 #     Secrets:   VM_HOST（IP またはドメイン） / VM_USER / VM_SSH_KEY（秘密鍵の全文）
 #     Variables: DEPLOY_ENABLED = true
-#                DEPLOY_STYLE   … 既定 docker。Docker の無いサーバーなら plain
-#                DEPLOY_PORT    … 既定 3000（docker のヘルスチェック先）
 #
 #   deploy-prod  … 本番環境（管理会社の共用サーバー。Docker も sudo も無いので plain 固定）
 #     Secrets:   PROD_VM_HOST / PROD_VM_USER / PROD_VM_SSH_KEY（配布された .pem の全文）
 #     Variables: PROD_DEPLOY_ENABLED = true
-#                PROD_DEPLOY_PORT    … 既定 8017（割り当てポート）
+#
+# 動かし方（docker / plain）は宛先ごとにワークフローへ書いてある。変数では切り替えない。
+# 共通の変数にすると、片方に合わせた設定がもう片方へも効いてしまうため。
 #
 # それぞれ *_DEPLOY_ENABLED を設定するまでスキップされる（テストだけ動く）。
 #
@@ -57,8 +57,10 @@ jobs:
           user: ${{ secrets.VM_USER }}
           ssh-key: ${{ secrets.VM_SSH_KEY }}
           repo-url: ${{ github.server_url }}/${{ github.repository }}.git
-          style: ${{ vars.DEPLOY_STYLE || 'docker' }}
-          port: ${{ vars.DEPLOY_PORT || '3000' }}
+          # 宛先ごとに固定する。共通の変数で切り替えると、片方に合わせた設定が
+          # もう片方へも効いてしまう（検証環境には npm が無く、plain では動かない）
+          style: docker
+          port: '3000'
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
 
   # 本番環境（管理会社の共用サーバー）。検証環境とは別の Secret を使うので、
@@ -76,7 +78,6 @@ jobs:
           user: ${{ secrets.PROD_VM_USER }}
           ssh-key: ${{ secrets.PROD_VM_SSH_KEY }}
           repo-url: ${{ github.server_url }}/${{ github.repository }}.git
-          # 本番は Docker が使えないため plain 固定
+          # 本番は Docker が使えないため plain。待ち受けポートは .env の PORT を見る
           style: plain
-          port: ${{ vars.PROD_DEPLOY_PORT || '8017' }}
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}

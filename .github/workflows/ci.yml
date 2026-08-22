@@ -1,21 +1,29 @@
-# CI/CD: 全ブランチでテスト実行、main へのプッシュで VM へ自動デプロイ。
+# CI/CD: 全ブランチでテスト実行、main へのプッシュでサーバーへ自動デプロイ。
 #
-# デプロイの有効化手順（docs/deploy.md にも記載）:
-#   1. VM に GitHub Actions 用の SSH 鍵を用意し、公開鍵を ~/.ssh/authorized_keys に追加
-#   2. リポジトリの Settings → Secrets and variables → Actions に登録:
-#        Secrets:   VM_HOST（IP またはドメイン） / VM_USER / VM_SSH_KEY（秘密鍵の中身）
-#        Variables: DEPLOY_ENABLED = true
-#   DEPLOY_ENABLED を設定するまでデプロイジョブはスキップされる（テストだけ動く）
+# 宛先は2つ。**別々の Secret を使う**ので、片方を足すときにもう片方を壊さない。
+# 手順は .github/actions/deploy に1つだけ置き、両方から呼んでいる。
 #
-#   Docker の無いサーバー（sudo が使えない本番 AWS 等）へ出す場合は、さらに:
-#        Variables: DEPLOY_STYLE = plain  … compose ではなく scripts/serve.sh で起動する
-#                   DEPLOY_PORT  = 8017   … docker のときのヘルスチェック先（plain では .env の PORT を見る）
+#   deploy       … 検証環境（GCP・Docker Compose）
+#     Secrets:   VM_HOST（IP またはドメイン） / VM_USER / VM_SSH_KEY（秘密鍵の全文）
+#     Variables: DEPLOY_ENABLED = true
+#                DEPLOY_STYLE   … 既定 docker。Docker の無いサーバーなら plain
+#                DEPLOY_PORT    … 既定 3000（docker のヘルスチェック先）
+#
+#   deploy-prod  … 本番環境（管理会社の共用サーバー。Docker も sudo も無いので plain 固定）
+#     Secrets:   PROD_VM_HOST / PROD_VM_USER / PROD_VM_SSH_KEY（配布された .pem の全文）
+#     Variables: PROD_DEPLOY_ENABLED = true
+#                PROD_DEPLOY_PORT    … 既定 8017（割り当てポート）
+#
+# それぞれ *_DEPLOY_ENABLED を設定するまでスキップされる（テストだけ動く）。
 #
 # 任意の Secret:
-#   ANTHROPIC_API_KEY … 登録するとデプロイのたびに VM の .env へ反映する。
-#     未登録なら VM の .env はそのまま（既存の値を消さない）。
-#   他の値は VM の .env で直接管理する。ここで配るのは、鍵の差し替えを
+#   ANTHROPIC_API_KEY … 登録するとデプロイのたびに両サーバーの .env へ反映する。
+#     未登録ならサーバーの .env はそのまま（既存の値を消さない）。
+#   他の値はサーバーの .env で直接管理する。ここで配るのは、鍵の差し替えを
 #   サーバーに入らずに済ませたいものだけに絞っている。
+#
+# 注意: 両方を動かす場合、**SEND_MODE が live なのは本番だけ**にすること。
+#   別々のデータベースを見ているため dedupe_key が効かず、二重で届く。
 name: ci
 
 on:
@@ -35,56 +43,40 @@ jobs:
       - run: npm ci
       - run: npm test
 
+  # 検証環境（GCP・Docker Compose）。既存の Secret をそのまま使う
   deploy:
-    # main が更新されたときだけ、テスト成功を条件に VM へ反映する
     if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.DEPLOY_ENABLED == 'true'
     needs: test
     runs-on: ubuntu-latest
     concurrency: deploy-vm   # 同時デプロイを防ぐ
     steps:
-      - name: Deploy to VM via SSH
-        run: |
-          mkdir -p ~/.ssh
-          # CR（Windows 改行）を除去し、末尾に改行を保証する
-          printf '%s\n' "${{ secrets.VM_SSH_KEY }}" | tr -d '\r' > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          # 秘密鍵として読めるかを SSH 前に検証し、原因を明確にする
-          if ! ssh-keygen -y -f ~/.ssh/deploy_key > /dev/null; then
-            echo "::error::VM_SSH_KEY が秘密鍵として読めません。deploy_key（秘密鍵）の全文を -----BEGIN/END----- 行込みで Secret に登録してください（.pub は公開鍵なので不可）"
-            exit 1
-          fi
-          ssh-keyscan -H "${{ secrets.VM_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
-          # 鍵は標準入力で渡す。コマンド引数に入れると VM の ps に見えてしまうため
-          printf '%s' "$ANTHROPIC_API_KEY" |
-          ssh -i ~/.ssh/deploy_key "${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}" '
-            set -e
-            IFS= read -r KEY || true
-            cd cocotte-vert
-            git fetch origin main
-            git checkout main
-            git pull --ff-only origin main
-            # Secret があるときだけ .env を書き換える（未登録なら既存の値を残す）。
-            # sed で値を埋め込むと記号で壊れるため、行を消してから printf で足す
-            if [ -n "$KEY" ]; then
-              touch .env
-              grep -v "^ANTHROPIC_API_KEY=" .env > .env.new || true
-              printf "ANTHROPIC_API_KEY=%s\n" "$KEY" >> .env.new
-              mv .env.new .env
-              chmod 600 .env
-            fi
-            # Docker のあるサーバーは compose、無いサーバー（sudo なしの本番 AWS 等）は
-            # serve.sh で直接起動する。DEPLOY_STYLE で切り替える（既定は docker）
-            if [ "'"$DEPLOY_STYLE"'" = "plain" ]; then
-              npm ci --omit=dev
-              ./scripts/serve.sh restart
-            else
-              docker compose --profile standalone up -d --build
-              sleep 5
-              curl -sf "http://127.0.0.1:'"$DEPLOY_PORT"'/health"
-            fi
-          '
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          # docker（既定・Caddy 同梱の compose）| plain（Docker の無いサーバー）
-          DEPLOY_STYLE: ${{ vars.DEPLOY_STYLE || 'docker' }}
-          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '3000' }}
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/deploy
+        with:
+          host: ${{ secrets.VM_HOST }}
+          user: ${{ secrets.VM_USER }}
+          ssh-key: ${{ secrets.VM_SSH_KEY }}
+          repo-url: ${{ github.server_url }}/${{ github.repository }}.git
+          style: ${{ vars.DEPLOY_STYLE || 'docker' }}
+          port: ${{ vars.DEPLOY_PORT || '3000' }}
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+
+  # 本番環境（管理会社の共用サーバー）。検証環境とは別の Secret を使うので、
+  # 既存の VM_* を書き換えずに増やせる
+  deploy-prod:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.PROD_DEPLOY_ENABLED == 'true'
+    needs: test
+    runs-on: ubuntu-latest
+    concurrency: deploy-prod
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/deploy
+        with:
+          host: ${{ secrets.PROD_VM_HOST }}
+          user: ${{ secrets.PROD_VM_USER }}
+          ssh-key: ${{ secrets.PROD_VM_SSH_KEY }}
+          repo-url: ${{ github.server_url }}/${{ github.repository }}.git
+          # 本番は Docker が使えないため plain 固定
+          style: plain
+          port: ${{ vars.PROD_DEPLOY_PORT || '8017' }}
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}

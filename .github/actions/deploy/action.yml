@@ -1,0 +1,85 @@
+name: Deploy over SSH
+description: サーバーへ SSH で入り、最新の main に更新して起動し直す
+
+# 宛先が2つ（検証環境と本番）あるため、手順はここに1つだけ置いて両方から呼ぶ。
+# 片方だけ直して食い違う、という事故を防ぐのが目的。
+
+inputs:
+  host:
+    description: サーバーの IP またはドメイン
+    required: true
+  user:
+    description: SSH ユーザー名
+    required: true
+  ssh-key:
+    description: 秘密鍵の全文（-----BEGIN/END----- 行を含む）
+    required: true
+  repo-url:
+    description: 初回に clone するリポジトリの URL
+    required: true
+  style:
+    description: docker（compose で起動）| plain（Docker の無いサーバー。serve.sh で起動）
+    default: docker
+  port:
+    description: docker のときのヘルスチェック先。plain では .env の PORT を見る
+    default: '3000'
+  anthropic-api-key:
+    description: 設定されていればサーバーの .env を書き換える。空なら既存の値を残す
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        SSH_KEY: ${{ inputs.ssh-key }}
+        HOST: ${{ inputs.host }}
+        USER_NAME: ${{ inputs.user }}
+        REPO_URL: ${{ inputs.repo-url }}
+        DEPLOY_STYLE: ${{ inputs.style }}
+        DEPLOY_PORT: ${{ inputs.port }}
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+      run: |
+        mkdir -p ~/.ssh
+        # CR（Windows 改行）を除去し、末尾に改行を保証する
+        printf '%s\n' "$SSH_KEY" | tr -d '\r' > ~/.ssh/deploy_key
+        chmod 600 ~/.ssh/deploy_key
+        # 秘密鍵として読めるかを SSH 前に検証し、原因を明確にする
+        if ! ssh-keygen -y -f ~/.ssh/deploy_key > /dev/null; then
+          echo "::error::SSH 鍵が秘密鍵として読めません。秘密鍵の全文を -----BEGIN/END----- 行込みで Secret に登録してください（.pub は公開鍵なので不可）"
+          exit 1
+        fi
+        ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+        # 鍵は標準入力で渡す。コマンド引数に入れるとサーバーの ps に見えてしまうため
+        printf '%s' "$ANTHROPIC_API_KEY" |
+        ssh -i ~/.ssh/deploy_key "$USER_NAME@$HOST" '
+          set -e
+          IFS= read -r KEY || true
+          # 初回だけ取ってくる。公開リポジトリなのでサーバー側に認証情報は要らない
+          if [ ! -d cocotte-vert/.git ]; then
+            git clone '"$REPO_URL"' cocotte-vert
+          fi
+          cd cocotte-vert
+          git fetch origin main
+          git checkout main
+          git pull --ff-only origin main
+          # Secret があるときだけ .env を書き換える（未登録なら既存の値を残す）。
+          # sed で値を埋め込むと記号で壊れるため、行を消してから printf で足す
+          if [ -n "$KEY" ]; then
+            touch .env
+            grep -v "^ANTHROPIC_API_KEY=" .env > .env.new || true
+            printf "ANTHROPIC_API_KEY=%s\n" "$KEY" >> .env.new
+            mv .env.new .env
+            chmod 600 .env
+          fi
+          # Docker のあるサーバーは compose、無いサーバー（sudo なしの本番 AWS 等）は
+          # serve.sh で直接起動する
+          if [ "'"$DEPLOY_STYLE"'" = "plain" ]; then
+            npm ci --omit=dev
+            ./scripts/serve.sh restart
+          else
+            docker compose --profile standalone up -d --build
+            sleep 5
+            curl -sf "http://127.0.0.1:'"$DEPLOY_PORT"'/health"
+          fi
+        '

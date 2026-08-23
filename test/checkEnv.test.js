@@ -38,6 +38,7 @@ const okChecks = {
   anthropic: { ok: true, detail: 'ok' },
   instagram: { ok: true, detail: '@cocotte' },
   threads: { ok: true, detail: '@cocotte' },
+  wordpress: { skipped: true },
 };
 
 const allRows = (c = config, checks = okChecks) => [
@@ -118,6 +119,19 @@ test('PUBLIC_BASE_URL が無いのは警告どまり（アプリは動く）', (
 });
 
 // ---- 任意の連携 ----
+
+test('WordPress は接続できればログイン名を出す', () => {
+  const wp = { ...config, wordpress: { ...config.wordpress, baseUrl: 'https://x.test', user: 'u', appPassword: 'p' } };
+  const checks = { ...okChecks, wordpress: { ok: true, detail: '店長' } };
+  assert.match(optionalRows(wp, checks).join('\n'), /✓ WordPress: 店長（draft \/ 投稿モード: dry_run）/);
+});
+
+test('WordPress の設定があるのに繋がらなければ ✗', () => {
+  const checks = { ...okChecks, wordpress: { ok: false, detail: 'WordPress API 401: 認証に失敗' } };
+  const rows = optionalRows(config, checks);
+  assert.equal(hasProblem(rows), true);
+  assert.match(rows.join('\n'), /✗ WordPress.*401/);
+});
 
 test('未設定の連携は問題にしない', () => {
   const bare = { ...config, anthropicApiKey: null };

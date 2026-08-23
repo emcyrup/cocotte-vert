@@ -16,6 +16,7 @@ import { loadStoreProfile } from '../src/store.js';
 import { pool } from '../src/db/pool.js';
 import { createInstagramClient } from '../src/instagram/client.js';
 import { createThreadsClient } from '../src/threads/client.js';
+import { createWordPressClient } from '../src/wordpress/client.js';
 import {
   requiredRows, sendModeRows, urlRows, optionalRows, storeRows, hasProblem,
   duplicateKeys, duplicateRows,
@@ -79,18 +80,28 @@ async function checkSns(client, token) {
   });
 }
 
+async function checkWordPress(config) {
+  const client = createWordPressClient({ config });
+  if (!client.enabled) return skipped;
+  return attempt(async () => {
+    const me = await client.whoAmI();
+    return me.name ?? me.slug;
+  });
+}
+
 async function main() {
   const config = loadConfig();
   const store = loadStoreProfile();
 
-  const [db, line, anthropic, instagram, threads] = await Promise.all([
+  const [db, line, anthropic, instagram, threads, wordpress] = await Promise.all([
     checkDb(),
     checkLine(config),
     checkAnthropic(config),
     checkSns(createInstagramClient({ config }), config.igAccessToken),
     checkSns(createThreadsClient({ config }), config.threadsAccessToken),
+    checkWordPress(config),
   ]);
-  const checks = { db, line, anthropic, instagram, threads };
+  const checks = { db, line, anthropic, instagram, threads, wordpress };
 
   // .env そのものも見る。同じキーが2行あると後の行が静かに勝つため
   const envText = await readFile('.env', 'utf8').catch(() => '');

@@ -99,16 +99,20 @@ export function optionalRows(config, checks) {
     else rows.push(line('ng', label, `確認できません: ${check.detail}`));
   }
 
-  // X と WordPress は署名・認証の形が違うため、ここでは設定の有無だけを見る
+  // X は署名（OAuth1）の形が違うため、ここでは設定の有無だけを見る
   const xReady = Boolean(config.x.apiKey && config.x.apiSecret
     && config.x.accessToken && config.x.accessSecret);
   rows.push(line(xReady ? 'ok' : 'off', 'X',
     xReady ? `4つとも設定あり（投稿モード: ${config.x.postMode}）` : '未設定'));
 
-  const wpReady = Boolean(config.wordpress.baseUrl && config.wordpress.user
-    && config.wordpress.appPassword);
-  rows.push(line(wpReady ? 'ok' : 'off', 'WordPress',
-    wpReady ? `設定あり（${config.wordpress.status} / 投稿モード: ${config.wordpress.postMode}）` : '未設定'));
+  const wp = config.wordpress;
+  const wpMode = `${wp.status} / 投稿モード: ${wp.postMode}`;
+  if (checks.wordpress.skipped) rows.push(line('off', 'WordPress', '未設定'));
+  else if (checks.wordpress.ok) {
+    rows.push(line('ok', 'WordPress', `${checks.wordpress.detail}（${wpMode}）`));
+  } else {
+    rows.push(line('ng', 'WordPress', `確認できません: ${checks.wordpress.detail}`));
+  }
 
   rows.push(line(config.adminUser && config.adminPassword ? 'ok' : 'warn', '管理画面の認証',
     config.adminUser && config.adminPassword ? '設定あり' : '未設定（管理画面は開けません）'));

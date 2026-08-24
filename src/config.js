@@ -175,6 +175,9 @@ export function loadConfig(env = process.env) {
       mode: eparkMode,
       user: env.EPARK_USER || null,
       password: env.EPARK_PASSWORD || null,
+      // 管理画面のルート。URL に店舗の識別子が入るため、設定ファイルではなく .env に置き、
+      // 設定ファイル側は {base} と書いておく（リポジトリは公開のため）
+      baseUrl: env.EPARK_BASE_URL || null,
       // 押す場所は JSON で外に出す（相手の画面が変わってもコードを触らずに済ませる）
       profilePath: env.EPARK_PROFILE || 'config/epark-profile.json',
       // 本番にブラウザを置けない構成のための逃げ道。未指定なら playwright の既定

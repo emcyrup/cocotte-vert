@@ -42,8 +42,10 @@ export function createEparkSync({ externalBlocks, driver, slack, config }) {
 
     await driver.open();
     try {
+      // 枠の刻みは相手の受付表しだい（実物は1時間）。駆動部が知っている値に合わせる
+      const slotMinutes = driver.slotMinutes ?? 60;
       for (const { row, action } of work) {
-        const slot = slotOf(row);
+        const slot = slotOf(row, { slotMinutes });
         try {
           if (mode === 'dry_run') {
             // 何を閉じるはずだったかと、いまの EPARK 側の状態を並べて出す。

@@ -1,41 +1,60 @@
-// EPARK 管理画面の「どこを押すか」を、コードではなく設定として持つ。
+// EPARK 管理画面（受付管理）の「どこを押すか」を、コードではなく設定として持つ。
 //
-// 実物の画面を見ないとセレクタは決まらない。CSV の列の対応づけと同じ理由で、
-// 決め打ちにすると画面が変わるたびにデプロイが要る。相手の都合で変わるものは
-// 外に出しておく（`docs/import-api.md` の「列の対応づけは画面から直す」と同じ方針）。
+// 実物の画面に合わせてセレクタは変わる。決め打ちにすると相手の都合でデプロイが要るため、
+// CSV の列の対応づけと同じく設定として外に出す。
 //
-// 形:
+// 実物から分かった作りに合わせてある:
 //
-//   {
-//     loginUrl: 'https://.../login',
-//     login: {
-//       user: '#loginId', password: '#password', submit: 'button[type="submit"]',
-//       ready: '.dashboard'            // ここが出たらログイン成功とみなす
-//     },
-//     dayUrl: 'https://.../schedule?date={date}',   // {date} は YYYY-MM-DD
-//     slot: '[data-time="{time}"]',                 // {time} は HH:MM
-//     closedWhen: '.is-closed',        // 枠がこの条件に当てはまれば「閉」
-//     close: [ { click: '{slot}' }, { click: 'button:has-text("枠を閉じる")' } ],
-//     open:  [ { click: '{slot}' }, { click: 'button:has-text("枠を開ける")' } ]
-//   }
+//   * 受付表は「ライン」ごとの縦列（例: トリミング申込 / ホテル宿泊申込）
+//   * 時間は固定の枠（実物は1時間刻み）。行は id="id_1000" のように HHMM
+//   * 枠を閉じる＝その枠のチェックボックスを入れて「仮受付」を押す
+//   * 枠を開け直す＝同じチェックボックスを入れて「キャンセル」を押す
+//   * 日付の移動は URL ではなく JavaScript の呼び出し
 //
-// close / open の1手は次のどれか。順に実行する。
-//   { click: <selector> }              押す
-//   { fill: <selector>, value: <str> } 入力する
-//   { select: <selector>, value: <str> } 選ぶ
-//   { waitFor: <selector> }            出るまで待つ（保存完了の合図など）
-//
-// selector には {slot} / {date} / {time} を埋め込める。
+// セレクタと手順に差し込める値:
+//   {base}         EPARK_BASE_URL（管理画面のルート。設定ファイルに識別子を書かないため）
+//   {date}         2026-09-01
+//   {dateCompact}  20260901
+//   {time}         10:00
+//   {timeCompact}  1000
+//   {line}         ライン ID（1 / 2 …）
+//   {checkbox}     cell.checkbox を展開したセレクタ（手順の中で使える）
 
 const ACTIONS = ['click', 'fill', 'select', 'waitFor'];
+const REQUIRED = ['loginUrl', 'login', 'day', 'lines', 'cell', 'close', 'open'];
+const CELL_KEYS = ['checkbox', 'closed', 'open', 'ours'];
 
-const REQUIRED = ['loginUrl', 'login', 'dayUrl', 'slot', 'closedWhen', 'close', 'open'];
-
-/** 差し込む値。埋め込みは1か所にまとめ、駆動部で書式を散らさない */
+/** 差し込み。埋め込みは1か所にまとめ、駆動部で書式を散らさない */
 export function fill(template, vars) {
-  return String(template).replace(/\{(slot|date|time)\}/g, (whole, key) =>
-    vars[key] == null ? whole : vars[key]
+  return String(template).replace(
+    /\{(base|date|dateCompact|time|timeCompact|line|checkbox)\}/g,
+    (whole, key) => (vars[key] == null ? whole : vars[key])
   );
+}
+
+/**
+ * コースの名前から、どのラインの枠を閉じるかを決める。
+ * どれにも当てはまらなければ null（＝自動では触らず、チェックリストに残す）。
+ * 取り違えて別のラインを閉じるより、人に回すほうが安い。
+ */
+export function lineFor(menu, lines) {
+  const text = String(menu ?? '');
+  for (const line of lines) {
+    if ((line.match ?? []).some((word) => word && text.includes(word))) return line;
+  }
+  return lines.find((l) => l.fallback) ?? null;
+}
+
+function checkSteps(name, steps) {
+  if (!Array.isArray(steps) || steps.length === 0) return `${name} の手順がありません`;
+  for (const [i, step] of steps.entries()) {
+    const used = ACTIONS.filter((a) => step?.[a]);
+    if (used.length !== 1) return `${name}[${i}] は ${ACTIONS.join(' / ')} のどれか1つ`;
+    if ((used[0] === 'fill' || used[0] === 'select') && step.value == null) {
+      return `${name}[${i}] に value がありません`;
+    }
+  }
+  return null;
 }
 
 /**
@@ -52,35 +71,49 @@ export function validateProfile(profile) {
   for (const key of ['user', 'password', 'submit', 'ready']) {
     if (!profile.login[key]) return { ok: false, error: `login.${key} がありません` };
   }
-  if (!String(profile.dayUrl).includes('{date}')) {
-    return { ok: false, error: 'dayUrl に {date} が入っていません' };
+
+  const { day } = profile;
+  if (!day.url) return { ok: false, error: 'day.url がありません' };
+  // 日付の移動は URL か JavaScript のどちらか。どちらも無いと毎回同じ日を開いてしまう
+  const movesByDate =
+    /\{date(Compact)?\}/.test(day.url) || /\{date(Compact)?\}/.test(day.script ?? '');
+  if (!movesByDate) return { ok: false, error: 'day.url か day.script に {date} が要ります' };
+  if (!day.ready) return { ok: false, error: 'day.ready がありません（開けたことを確かめられません）' };
+
+  if (!Array.isArray(profile.lines) || profile.lines.length === 0) {
+    return { ok: false, error: 'lines がありません' };
   }
-  if (!String(profile.slot).includes('{time}')) {
-    // 時刻が入らないと、その日の全部の枠を閉じてしまう
-    return { ok: false, error: 'slot に {time} が入っていません' };
+  for (const [i, line] of profile.lines.entries()) {
+    if (line.id == null || line.id === '') return { ok: false, error: `lines[${i}].id がありません` };
+  }
+
+  for (const key of CELL_KEYS) {
+    if (!profile.cell[key]) return { ok: false, error: `cell.${key} がありません` };
+    // 時刻とラインが入らないセレクタは、その日の枠を丸ごと掴んでしまう
+    if (!String(profile.cell[key]).includes('{timeCompact}')) {
+      return { ok: false, error: `cell.${key} に {timeCompact} が入っていません` };
+    }
+    if (!String(profile.cell[key]).includes('{line}')) {
+      return { ok: false, error: `cell.${key} に {line} が入っていません` };
+    }
   }
 
   for (const name of ['close', 'open']) {
-    const steps = profile[name];
-    if (!Array.isArray(steps) || steps.length === 0) {
-      return { ok: false, error: `${name} の手順がありません` };
-    }
-    for (const [i, step] of steps.entries()) {
-      const used = ACTIONS.filter((a) => step?.[a]);
-      if (used.length !== 1) {
-        return { ok: false, error: `${name}[${i}] は ${ACTIONS.join(' / ')} のどれか1つ` };
-      }
-      if ((used[0] === 'fill' || used[0] === 'select') && step.value == null) {
-        return { ok: false, error: `${name}[${i}] に value がありません` };
-      }
-    }
+    const error = checkSteps(name, profile[name]);
+    if (error) return { ok: false, error };
+  }
+
+  const minutes = profile.slotMinutes ?? 60;
+  if (!Number.isInteger(minutes) || minutes < 5 || minutes > 24 * 60) {
+    return { ok: false, error: `slotMinutes が不正です: ${profile.slotMinutes}` };
   }
   return { ok: true };
 }
 
-/** 設定ファイルを読む。無ければ null（EPARK_MODE=off のままで動かすため） */
-export async function loadProfile(path, readFile) {
+/** 設定ファイルを読み、{base} を環境変数の値に展開する */
+export async function loadProfile(path, readFile, base = null) {
   if (!path) return null;
   const text = await readFile(path, 'utf8');
-  return JSON.parse(text);
+  // 管理画面の URL には店舗の識別子が入る。設定ファイルには書かず .env から差し込む
+  return JSON.parse(base ? text.replaceAll('{base}', base) : text);
 }

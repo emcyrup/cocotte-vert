@@ -148,13 +148,42 @@ EPARK からの予約は**店舗が受付確認をして初めて確定する**�
 **③ 失敗はチェックリストに残す。** 済みにしないので画面の「EPARK未反映」に残り、
 Slack にも通知が飛ぶ。**自動化は手作業の置き換えであって、安全網は残したまま**にする。
 
+### 実物の画面から分かったこと（2026-08）
+
+管理画面の HTML を確認できた。**予約枠を直接「閉じる」機能は無く、代わりに枠へ「仮受付」を
+入れて埋める**作りになっている。すでに手作業でそう運用されている（確認した日は
+トリミングの10:00〜17:00が全部「仮受付」で埋まっていた）。
+
+| | |
+| --- | --- |
+| 受付表 | 「ライン」ごとの縦列。**トリミング申込**と**ホテル宿泊申込**の2本 |
+| 時間 | 1時間刻みの固定枠（10:00〜18:00）。行は `id="id_1000"` |
+| 枠の状態 | 埋まり=`.reserveFrame1000_1` / 空き=`.emptyFrame1000_1`（`HHMM_ラインID`） |
+| 仮受付の印 | `li.tentative-reservation`。**本物のご予約には付かない** |
+| 閉じる | 枠のチェックボックス → 画面下の「**仮受付**」 |
+| 開ける | 同じチェックボックス → 「**キャンセル**」 |
+| 日付の移動 | URL ではなく JavaScript（`multiSchedulerRequest_multiScheduler_Calendar('20260901')`） |
+
+これに合わせて次の3つを設計に入れた。
+
+**① コースからラインを選ぶ。** シャンプー・カットはトリミングの列、宿泊はホテルの列。
+どちらとも決められないコースは**自動では触らず**チェックリストに残す（取り違えて別の列を
+閉じるより、人に回すほうが安い）。
+
+**② またがる枠を全部閉じる。** 相手は1時間刻み、こちらの予約は所要時間がまちまち。
+90分の予約なら10:00と11:00の2枠を閉じる。1枠だけだと、はみ出した時間に別のお客様が入れる。
+
+**③ 開け直すのは自分が入れた仮受付だけ。** `li.tentative-reservation` が無い枠＝本物の
+ご予約なので、**絶対に触らない**（こちらの取消と入れ違いで EPARK からご予約が入っている
+ことがある）。見分けが付かない枠は例外にして人に回す。
+
 ### 構成
 
 | ファイル | 役割 |
 | --- | --- |
 | `src/reservations/externalBlock.js` | 作業の一覧（手作業と共通。自動化はこれを消し込むだけ） |
-| `src/epark/slot.js` | 予約から「閉じる枠」を切り出す。日付・時刻は JST で確定させる |
-| `src/epark/profile.js` | **押す場所の設定**（セレクタと手順）と、その検証 |
+| `src/epark/slot.js` | 予約から**またがる枠**を切り出す。日付・時刻は JST で確定させる |
+| `src/epark/profile.js` | **押す場所の設定**（セレクタと手順）、その検証、コース→ライン |
 | `src/epark/browserDriver.js` | ブラウザ操作。「どう押すか」だけを持ち、「どこを押すか」は持たない |
 | `src/epark/driver.js` | 駆動部の契約と、何もしない駆動部 |
 | `src/epark/sync.js` | 一覧を消化し、読み直して確認し、失敗を残す |
@@ -163,45 +192,60 @@ Slack にも通知が飛ぶ。**自動化は手作業の置き換えであって
 
 ### 押す場所はコードに書かない
 
-実物の画面を見ないとセレクタは決まらない。決め打ちにすると画面が変わるたびにデプロイが要る。
+実物の画面に合わせてセレクタは変わる。決め打ちにすると画面が変わるたびにデプロイが要る。
 **CSV の列の対応づけと同じ理由**で、相手の都合で変わるものは設定として外に出す。
 
-`config/epark-profile.json`（見本は `config/epark-profile.example.json`）:
+`config/epark-profile.json`（実物から起こした内容が `config/epark-profile.example.json`）:
 
 ```json
 {
-  "loginUrl": "https://.../admin/login",
-  "login": { "user": "#loginId", "password": "#password",
-             "submit": "button[type=\"submit\"]", "ready": "#dashboard" },
-  "dayUrl": "https://.../admin/schedule?date={date}",
-  "slot": ".slot[data-time=\"{time}\"]",
-  "closedWhen": ".is-closed",
-  "close": [ { "click": "{slot} a.edit" },
-             { "click": "button:has-text(\"この枠を閉じる\")" },
-             { "waitFor": "#dashboard" } ],
-  "open":  [ { "click": "{slot} a.edit" },
-             { "click": "button:has-text(\"この枠を開ける\")" },
-             { "waitFor": "#dashboard" } ]
+  "loginUrl": "{base}/login/index",
+  "day": {
+    "url": "{base}/hybAppoint/multischeduler/index",
+    "script": "multiSchedulerRequest_multiScheduler_Calendar('{dateCompact}')",
+    "ready": "#multiSchedulerHidAppointDate[value=\"{dateCompact}\"]"
+  },
+  "lines": [
+    { "id": "1", "match": ["シャンプー", "カット", "爪切り", "保育"] },
+    { "id": "2", "match": ["宿泊", "お泊まり"] }
+  ],
+  "slotMinutes": 60,
+  "cell": {
+    "checkbox": "input[name=\"appoint\"][value=\"{timeCompact}_{line}\"]",
+    "closed": ".reserveFrame{timeCompact}_{line}",
+    "open": ".emptyFrame{timeCompact}_{line}",
+    "ours": ".reserveFrame{timeCompact}_{line} li.tentative-reservation"
+  },
+  "close": [ { "click": "{checkbox}" },
+             { "click": "#multiple-select-panel .link.tentative-reservation a" } ],
+  "open":  [ { "click": "{checkbox}" },
+             { "click": "#multiple-select-panel .link.cancel a" } ]
 }
 ```
 
-- セレクタに `{slot}` / `{date}` / `{time}` を埋め込める
+- 差し込める値: `{base}` `{date}` `{dateCompact}` `{time}` `{timeCompact}` `{line}` `{checkbox}`
 - 1手は `click` / `fill` / `select` / `waitFor` のどれか1つ
-- `closedWhen` は `slot` に継ぎ足す。枠そのものに印が付くなら `".is-closed"`、
-  中の要素で表すなら `" .badge-closed"` のように先頭に空白を置く（子孫セレクタ）
-- **ログイン情報はここに書かない。** `.env` の `EPARK_USER` / `EPARK_PASSWORD` を使う
-- ファイルは `.gitignore` 済み（URL に店舗の識別子が入るため）
+- **`{base}` は `.env` の `EPARK_BASE_URL` に置き換わる。** 管理画面の URL には店舗の識別子が
+  入るため、公開リポジトリには書かない。ログイン情報も設定ファイルには書かない
+  （`EPARK_USER` / `EPARK_PASSWORD`）
+- 設定ファイルは `.gitignore` 済み
 
-`validateProfile` が起動前に検証する。とくに `dayUrl` に `{date}`、`slot` に `{time}` が
-入っていないものは弾く。**時刻が入らない設定はその日の枠を全部閉じてしまう**ため。
+`validateProfile` が起動前に検証する。とくに次は弾く。
+
+| 弾くもの | 理由 |
+| --- | --- |
+| `cell.*` に `{timeCompact}` が無い | その日の枠を丸ごと掴んでしまう |
+| `cell.*` に `{line}` が無い | 別の列まで閉じてしまう |
+| `day` に日付の差し込みが無い | 毎回同じ日を開いてしまう |
+| `day.ready` が無い | 開けた日付を確かめられない |
+| `cell.ours` が無い | 本物のご予約と仮受付を見分けられない |
 
 ### 実物の画面を調べる
 
-セレクタを埋めるには実物が要る。`scripts/epark-probe.js` は**見るだけ**で、何も書き換えない。
+`scripts/epark-probe.js` は**見るだけ**で、何も書き換えない。
 
 ```bash
 node --env-file-if-exists=.env scripts/epark-probe.js
-node --env-file-if-exists=.env scripts/epark-probe.js --url='https://.../schedule?date=2026-09-01'
 node --env-file-if-exists=.env scripts/epark-probe.js --headed --keep=180   # 手元の PC で手動操作
 ```
 
@@ -211,17 +255,21 @@ node --env-file-if-exists=.env scripts/epark-probe.js --headed --keep=180   # �
 
 ### 確かめたこと
 
-実物が見られないため、**作り物の管理画面**（`test/fixtures/eparkFake.js`）を立てて、
-実際の Chromium で駆動部を動かしている。実物に合わせるのは設定であって、この流れは変わらない。
+実物を直接叩けないため、**実物の HTML の作りを写した受付表**（`test/fixtures/eparkFake.js`）を
+立てて、実際の Chromium で駆動部を動かしている。ライン・1時間枠・`reserveFrame`/`emptyFrame`・
+仮受付の印・チェックして「仮受付」/「キャンセル」・日付移動が JavaScript、まで写してある。
+実物との差はセレクタの設定だけになる。
 
-- ログイン → 日付の画面 → 枠を押す → **読み直して閉じたことを確かめる**
-- 閉じた枠を開け直せる
-- **枠が見つからないときは例外にする**（「見つからない＝閉じている」と読むと、日付違いや
-  画面変更を成功と誤読して消し込んでしまう）
-- ログインできなければ画面を操作せずに止まる
-- パスワードを例外の文言に出さない
+- ログイン → 日付の受付表 → 枠を押す → **読み直して閉じたことを確かめる**
+- **90分の予約は2枠とも閉じる**／隣の枠・別のラインは触らない
+- コースの名前でラインを選ぶ。**決められないコースは勝手に閉じずに止まる**
+- 自分が入れた仮受付は開け直せる
+- **本物のご予約が入っている枠は開けない**（消さない）
+- 別の日付へ移れる。**日付が変わったことを確かめられなければ操作しない**
+- 枠そのものが無い時刻は「閉じている」とみなさず例外にする
+- ログインできなければ画面を操作せず、パスワードを例外の文言に出さない
 
-ブラウザが無い環境（CI など）では、この5件は自動で飛ぶ。
+ブラウザが無い環境（CI など）では、この一式は自動で飛ぶ。
 
 ### playwright の扱い
 
@@ -242,12 +290,17 @@ node --env-file-if-exists=.env scripts/epark-probe.js --headed --keep=180   # �
    アプリの API 経由で一覧を取り、消し込みを返す形にすればサーバー側に何も足さずに済む。
    定期実行は数分〜数十分ずれることがあるが、枠を閉じる用途では許容範囲
 
-### 残り
+### 残り（実物で確かめること）
 
-- `config/epark-profile.json` を実物の画面から埋める（`epark-probe.js` の出力待ち）
-- 二要素認証があるかの確認。あればセッションの持ち回しを考える必要がある
-- 実行場所の決定（アプリサーバーの cron か、GitHub Actions か）
-- `dry_run` で読み取りだけ検証 → 問題なければ `live`
+- **ログイン画面のセレクタ**。まだ見ていない（`login.*` は推測）
+- **「仮受付」を押したあとに確認のダイアログが出るか**。出るなら手順に1手足す
+- 「キャンセル」と「削除」の違い。いまは「キャンセル」を使う設定にしている
+- 日付の移動が `multiSchedulerRequest_multiScheduler_Calendar` で実際に効くか
+- **「WEB受付停止」**（受付表のラインごとにあるボタン）で、時間帯や日をまとめて止められないか。
+  できるなら1枠ずつの仮受付より筋が良い
+- 「外部機器設定」（`hybAppoint/pluginsetting`）に使える連携が無いか
+
+**必ず `EPARK_MODE=dry_run`（読むだけ）で確かめてから `live` にする。**
 
 ---
 

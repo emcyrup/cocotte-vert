@@ -1,12 +1,21 @@
-// EPARK 管理画面をブラウザで操作する駆動部。
+// EPARK 管理画面（受付管理）をブラウザで操作する駆動部。
 //
 // 押す場所は `profile.js` の設定から来る。ここには「どう押すか」だけを書き、
 // 「どこを押すか」は持たない（相手の画面が変わってもコードを触らずに済ませる）。
 //
+// 実物の作りに合わせた要点:
+//   * 枠を閉じる  … 枠のチェックボックスを入れて「仮受付」を押す
+//   * 枠を開ける  … 同じチェックボックスを入れて「キャンセル」を押す
+//   * 日付の移動  … URL ではなく画面の JavaScript を呼ぶ
+//   * 1件の予約が複数の枠にまたがる（90分なら2枠）
+//
+// **本物のご予約には絶対に触らない。** 開け直すのは「自分が入れた仮受付」だけ。
+// 見分けが付かない枠は例外にして、人に回す。
+//
 // playwright は optionalDependencies。EPARK を使わない環境・本番サーバーに
 // ブラウザを置けない環境でもアプリが起動するよう、**使うときだけ動的に読む**。
 
-import { fill, validateProfile } from './profile.js';
+import { fill, validateProfile, lineFor } from './profile.js';
 
 const DEFAULT_NAV_TIMEOUT = 30_000;
 const DEFAULT_STEP_TIMEOUT = 15_000;
@@ -22,11 +31,6 @@ async function loadPlaywright() {
   }
 }
 
-/**
- * @param {object} p
- * @param {object} p.profile   画面の設定（validateProfile を通ったもの）
- * @param {object} p.config    loadConfig() の結果（epark.user / epark.password を使う）
- */
 export function createBrowserDriver({
   profile,
   config,
@@ -36,39 +40,90 @@ export function createBrowserDriver({
 }) {
   const check = validateProfile(profile);
   if (!check.ok) throw new Error(`EPARK の画面設定が不正です: ${check.error}`);
-  const NAV_TIMEOUT = navTimeout;
-  const STEP_TIMEOUT = stepTimeout;
 
+  const slotMinutes = profile.slotMinutes ?? 60;
   let browser = null;
   let page = null;
-  // いま開いている日付。同じ日の枠が続くときに読み込み直さないため
   let openedDate = null;
 
-  function slotSelector(slot) {
-    return fill(profile.slot, { date: slot.date, time: slot.startTime });
+  /** その予約をどのラインの枠で押さえるか */
+  function lineOf(slot) {
+    const line = lineFor(slot.menu, profile.lines);
+    if (!line) {
+      // 取り違えて別のラインを閉じるより、人に回すほうが安い
+      throw new Error(`どのラインの枠か決められません（コース: ${slot.menu || '未設定'}）`);
+    }
+    return line;
   }
 
-  /** その日の画面を開く。force のときは開き直す（書き込み後の読み直しに使う） */
+  function varsFor(slot, time, line) {
+    return {
+      date: slot.date,
+      dateCompact: slot.dateCompact,
+      time,
+      timeCompact: time.replace(':', ''),
+      line: String(line.id),
+    };
+  }
+
+  const cellSelector = (key, vars) => fill(profile.cell[key], vars);
+
+  /** その日の受付表を開く。force のときは開き直す（書き込み後の読み直しに使う） */
   async function gotoDay(slot, { force = false } = {}) {
     if (!force && openedDate === slot.date) return;
-    await page.goto(fill(profile.dayUrl, { date: slot.date }), {
+    const vars = { date: slot.date, dateCompact: slot.dateCompact };
+
+    await page.goto(fill(profile.day.url, vars), {
       waitUntil: 'domcontentloaded',
-      timeout: NAV_TIMEOUT,
+      timeout: navTimeout,
     });
+    if (profile.day.script) {
+      // 日付の移動が画面の JavaScript でしかできない作りのため、その関数を呼ぶ
+      await page.evaluate(fill(profile.day.script, vars));
+    }
+    try {
+      // 日付の目印は hidden input のことが多い（実物もそう）。見えていなくても良い
+      await page
+        .locator(fill(profile.day.ready, vars))
+        .first()
+        .waitFor({ state: 'attached', timeout: navTimeout });
+    } catch {
+      // 開けた日付を確かめられないまま操作すると、別の日の枠を閉じかねない
+      throw new Error(`${slot.date} の受付表を開けませんでした（day.ready を確認してください）`);
+    }
     openedDate = slot.date;
   }
 
   /** 設定に書かれた手順を順に実行する */
-  async function runSteps(steps, slot) {
-    const vars = { slot: slotSelector(slot), date: slot.date, time: slot.startTime };
+  async function runSteps(steps, vars) {
+    const withCheckbox = { ...vars, checkbox: cellSelector('checkbox', vars) };
     for (const step of steps) {
-      if (step.click) await page.locator(fill(step.click, vars)).first().click({ timeout: STEP_TIMEOUT });
-      else if (step.fill) await page.locator(fill(step.fill, vars)).first().fill(String(step.value), { timeout: STEP_TIMEOUT });
-      else if (step.select) await page.locator(fill(step.select, vars)).first().selectOption(String(step.value), { timeout: STEP_TIMEOUT });
-      else if (step.waitFor) await page.locator(fill(step.waitFor, vars)).first().waitFor({ timeout: STEP_TIMEOUT });
+      const target = (sel) => page.locator(fill(sel, withCheckbox)).first();
+      if (step.click) await target(step.click).click({ timeout: stepTimeout });
+      else if (step.fill) await target(step.fill).fill(String(step.value), { timeout: stepTimeout });
+      else if (step.select) await target(step.select).selectOption(String(step.value), { timeout: stepTimeout });
+      else if (step.waitFor) await target(step.waitFor).waitFor({ timeout: stepTimeout });
     }
-    // 手順の途中で保存され、画面が作り替わっていることがある。次は開き直す
+    // 保存のたびに受付表が作り替えられる。次は開き直す
     openedDate = null;
+  }
+
+  /**
+   * 1つの枠がいま閉じているか。
+   * 「閉」でも「開」でも無い＝画面が読めていないので**例外にする**。
+   * 見つからないものを閉じている扱いにすると、失敗を成功と誤読して消し込んでしまう。
+   */
+  async function cellClosed(vars) {
+    const closed = await page.locator(cellSelector('closed', vars)).count();
+    const open = await page.locator(cellSelector('open', vars)).count();
+    if (closed > 0 && open === 0) return true;
+    if (open > 0 && closed === 0) return false;
+    throw new Error(`枠の状態を読めません（${vars.date} ${vars.time} line=${vars.line}）`);
+  }
+
+  /** その枠を埋めているのが「自分が入れた仮受付」か。本物のご予約なら false */
+  async function cellIsOurs(vars) {
+    return (await page.locator(cellSelector('ours', vars)).count()) > 0;
   }
 
   async function open() {
@@ -79,14 +134,14 @@ export function createBrowserDriver({
       ...launchOptions,
     });
     page = await browser.newPage();
-    page.setDefaultTimeout(STEP_TIMEOUT);
+    page.setDefaultTimeout(stepTimeout);
 
-    await page.goto(profile.loginUrl, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT });
+    await page.goto(profile.loginUrl, { waitUntil: 'domcontentloaded', timeout: navTimeout });
     await page.locator(profile.login.user).first().fill(config.epark.user);
     await page.locator(profile.login.password).first().fill(config.epark.password);
     await page.locator(profile.login.submit).first().click();
     try {
-      await page.locator(profile.login.ready).first().waitFor({ timeout: NAV_TIMEOUT });
+      await page.locator(profile.login.ready).first().waitFor({ timeout: navTimeout });
     } catch {
       // ここで止めないと、ログインできていない画面を操作して見当違いの結果になる。
       // パスワードは例外にも載せない
@@ -102,33 +157,44 @@ export function createBrowserDriver({
     openedDate = null;
   }
 
+  /** またがる枠を順に閉じる。すでに閉じている枠は飛ばす */
   async function closeSlot(slot) {
-    await gotoDay(slot);
-    await runSteps(profile.close, slot);
-  }
-
-  async function openSlot(slot) {
-    await gotoDay(slot);
-    await runSteps(profile.open, slot);
+    const line = lineOf(slot);
+    for (const time of slot.cells) {
+      const vars = varsFor(slot, time, line);
+      await gotoDay(slot);
+      if (await cellClosed(vars)) continue;
+      await runSteps(profile.close, vars);
+    }
   }
 
   /**
-   * いま閉じているかを画面から読み直す。
-   *
-   * **枠そのものが見つからないときは例外にする。** 「見つからない＝閉じている」と
-   * 解釈すると、日付を間違えた・画面が変わったといった失敗を「閉じられた」と
-   * 誤読して消し込んでしまう。分からないときは分からないと言う。
+   * またがる枠を開け直す。
+   * **自分が入れた仮受付だけ**を戻す。本物のご予約が入っている枠には手を出さない
+   * （こちらの取消と入れ違いで、EPARK からご予約が入っていることがある）。
    */
-  async function isSlotClosed(slot) {
-    await gotoDay(slot, { force: true });
-    const target = page.locator(slotSelector(slot)).first();
-    if ((await target.count()) === 0) {
-      throw new Error(`枠が見つかりません（${slot.date} ${slot.startTime}）`);
+  async function openSlot(slot) {
+    const line = lineOf(slot);
+    for (const time of slot.cells) {
+      const vars = varsFor(slot, time, line);
+      await gotoDay(slot);
+      if (!(await cellClosed(vars))) continue;
+      if (!(await cellIsOurs(vars))) {
+        throw new Error(`ご予約が入っている枠のため開けません（${slot.date} ${time}）`);
+      }
+      await runSteps(profile.open, vars);
     }
-    // closedWhen は枠のセレクタに継ぎ足す。枠そのものに印が付くなら ".is-closed"、
-    // 中の要素で表すなら " .badge-closed" のように先頭に空白を置く（CSS の子孫セレクタ）
-    return (await page.locator(`${slotSelector(slot)}${profile.closedWhen}`).count()) > 0;
   }
 
-  return { open, close, closeSlot, openSlot, isSlotClosed };
+  /** またがる枠が「全部閉じている」ときだけ閉じたとみなす */
+  async function isSlotClosed(slot) {
+    const line = lineOf(slot);
+    await gotoDay(slot, { force: true });
+    for (const time of slot.cells) {
+      if (!(await cellClosed(varsFor(slot, time, line)))) return false;
+    }
+    return true;
+  }
+
+  return { open, close, closeSlot, openSlot, isSlotClosed, slotMinutes };
 }

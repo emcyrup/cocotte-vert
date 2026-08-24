@@ -1,13 +1,13 @@
-// 駆動部を、作り物の管理画面に対して実際のブラウザで動かす。
+// 駆動部を、作り物の受付管理に対して実際のブラウザで動かす。
 //
-// 実物の EPARK は見られないので、ここで確かめるのは**仕組み**:
-// ログインできたか / 日付の画面を開けるか / 手順どおり押せるか /
-// 書いたあと読み直して確かめられるか / 分からないときに黙って進まないか。
-// 実物に合わせるのはセレクタの設定であって、この流れは変わらない。
+// 作り物は実物からもらった HTML の作りを写してある（ライン・1時間枠・仮受付の印・
+// チェックして「仮受付」/「キャンセル」・日付移動が JavaScript）。ここが通れば、
+// 実物との差はセレクタの設定だけになる。
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createBrowserDriver } from '../src/epark/browserDriver.js';
+import { slotOf } from '../src/epark/slot.js';
 import { startFakeEpark } from './fixtures/eparkFake.js';
 
 // playwright は optionalDependencies。ブラウザが無い環境（CI など）では飛ばす
@@ -23,10 +23,17 @@ async function browserAvailable() {
 }
 
 const HAS_BROWSER = await browserAvailable();
-const SLOT = { reservationId: 1, date: '2026-09-01', startTime: '11:00', endTime: '12:00', minutes: 60 };
-
+const skip = !HAS_BROWSER && 'ブラウザ未導入';
 // 失敗の確認で既定の30秒を待つと試験が長くなる。待ち時間だけ短くする
-const FAST = { navTimeout: 3000, stepTimeout: 3000 };
+const FAST = { navTimeout: 4000, stepTimeout: 4000 };
+
+// 2026-09-01 10:00 JST = 01:00 UTC
+const at = (hour, minutes = 60, menu = 'シャンプーコース') => slotOf({
+  id: 1,
+  reserved_at: `2026-09-01T${String(hour - 9).padStart(2, '0')}:00:00.000Z`,
+  menu,
+  duration_minutes: minutes,
+});
 
 function driverFor(fake, over = {}) {
   return createBrowserDriver({
@@ -36,59 +43,129 @@ function driverFor(fake, over = {}) {
   });
 }
 
-test('ログインして枠を閉じ、読み直して閉じたことを確かめられる', { skip: !HAS_BROWSER && 'ブラウザ未導入' }, async () => {
-  const fake = await startFakeEpark();
-  const driver = driverFor(fake);
+async function withDriver(fake, fn, over = {}) {
+  const driver = driverFor(fake, over);
   try {
     await driver.open();
-
-    assert.equal(await driver.isSlotClosed(SLOT), false, 'はじめは開いている');
-    await driver.closeSlot(SLOT);
-
-    assert.equal(await driver.isSlotClosed(SLOT), true);
-    assert.equal(fake.isClosed('2026-09-01', '11:00'), true, '作り物の側でも閉じている');
-    assert.equal(fake.isClosed('2026-09-01', '10:00'), false, '隣の枠は触らない');
+    await fn(driver);
   } finally {
     await driver.close();
     await fake.stop();
   }
+}
+
+test('ログインして枠を閉じ、読み直して閉じたことを確かめられる', { skip }, async () => {
+  const fake = await startFakeEpark();
+  await withDriver(fake, async (driver) => {
+    const slot = at(11);
+    assert.equal(await driver.isSlotClosed(slot), false, 'はじめは開いている');
+
+    await driver.closeSlot(slot);
+
+    assert.equal(await driver.isSlotClosed(slot), true);
+    assert.equal(fake.stateOf('20260901', '1100', '1'), 'tentative');
+    assert.equal(fake.stateOf('20260901', '1000', '1'), null, '隣の枠は触らない');
+    assert.equal(fake.stateOf('20260901', '1100', '2'), null, '別のラインは触らない');
+  });
 });
 
-test('閉じた枠を開け直せる', { skip: !HAS_BROWSER && 'ブラウザ未導入' }, async () => {
+test('90分の予約は、またがる2枠とも閉じる', { skip }, async () => {
+  // 1枠しか閉じないと、はみ出した時間に別のお客様が入れてしまう
   const fake = await startFakeEpark();
-  fake.setClosed('2026-09-01', '11:00');
-  const driver = driverFor(fake);
-  try {
-    await driver.open();
-    assert.equal(await driver.isSlotClosed(SLOT), true);
+  await withDriver(fake, async (driver) => {
+    const slot = at(11, 90);
+    assert.deepEqual(slot.cells, ['11:00', '12:00']);
 
-    await driver.openSlot(SLOT);
+    await driver.closeSlot(slot);
 
-    assert.equal(await driver.isSlotClosed(SLOT), false);
-    assert.equal(fake.isClosed('2026-09-01', '11:00'), false);
-  } finally {
-    await driver.close();
-    await fake.stop();
-  }
+    assert.equal(fake.stateOf('20260901', '1100', '1'), 'tentative');
+    assert.equal(fake.stateOf('20260901', '1200', '1'), 'tentative');
+    assert.equal(await driver.isSlotClosed(slot), true);
+  });
 });
 
-test('枠が見つからないときは「閉じている」と解釈せず例外にする', { skip: !HAS_BROWSER && 'ブラウザ未導入' }, async () => {
-  // 見つからない＝閉じた、と読むと、日付違いや画面変更を成功と誤読して消し込んでしまう
+test('またがる枠が1つでも開いていれば「閉じた」とみなさない', { skip }, async () => {
   const fake = await startFakeEpark();
-  const driver = driverFor(fake);
-  try {
-    await driver.open();
+  fake.setTentative('20260901', '1100', '1');
+  await withDriver(fake, async (driver) => {
+    assert.equal(await driver.isSlotClosed(at(11, 90)), false);
+  });
+});
+
+test('コースの名前でラインを選ぶ（宿泊はホテルの列）', { skip }, async () => {
+  const fake = await startFakeEpark();
+  await withDriver(fake, async (driver) => {
+    await driver.closeSlot(at(13, 60, '宿泊（レギュラーコース）'));
+
+    assert.equal(fake.stateOf('20260901', '1300', '2'), 'tentative');
+    assert.equal(fake.stateOf('20260901', '1300', '1'), null);
+  });
+});
+
+test('どのラインか決められないコースは、勝手に閉じずに止まる', { skip }, async () => {
+  const fake = await startFakeEpark();
+  await withDriver(fake, async (driver) => {
     await assert.rejects(
-      () => driver.isSlotClosed({ ...SLOT, startTime: '23:00' }),
-      /枠が見つかりません/
+      () => driver.closeSlot(at(13, 60, '未知のなにか')),
+      /どのラインの枠か決められません/
     );
-  } finally {
-    await driver.close();
-    await fake.stop();
-  }
+    assert.equal(fake.filled.size, 0);
+  });
 });
 
-test('ログインできなければ、画面を操作せずに止まる', { skip: !HAS_BROWSER && 'ブラウザ未導入' }, async () => {
+test('自分が入れた仮受付は開け直せる', { skip }, async () => {
+  const fake = await startFakeEpark();
+  fake.setTentative('20260901', '1100', '1');
+  await withDriver(fake, async (driver) => {
+    const slot = at(11);
+    assert.equal(await driver.isSlotClosed(slot), true);
+
+    await driver.openSlot(slot);
+
+    assert.equal(await driver.isSlotClosed(slot), false);
+    assert.equal(fake.stateOf('20260901', '1100', '1'), null);
+  });
+});
+
+test('本物のご予約が入っている枠は開けない', { skip }, async () => {
+  // こちらの取消と入れ違いで EPARK からご予約が入っていることがある。
+  // 仮受付と同じ扱いで消すと、お客様のご予約を消してしまう
+  const fake = await startFakeEpark();
+  fake.setBooked('20260901', '1100', '1');
+  await withDriver(fake, async (driver) => {
+    await assert.rejects(() => driver.openSlot(at(11)), /ご予約が入っている枠のため開けません/);
+    assert.equal(fake.stateOf('20260901', '1100', '1'), 'booked', '消していない');
+  });
+});
+
+test('別の日付の受付表へ移れる（移動は画面の JavaScript）', { skip }, async () => {
+  const fake = await startFakeEpark();
+  await withDriver(fake, async (driver) => {
+    const slot = slotOf({ id: 2, reserved_at: '2026-09-03T01:00:00.000Z', menu: 'カット', duration_minutes: 60 });
+    await driver.closeSlot(slot);
+
+    assert.equal(fake.stateOf('20260903', '1000', '1'), 'tentative');
+    assert.equal(fake.stateOf('20260901', '1000', '1'), null, '開いていた日の枠は触らない');
+  });
+});
+
+test('日付が変わったことを確かめられなければ操作しない', { skip }, async () => {
+  const fake = await startFakeEpark();
+  await withDriver(fake, async (driver) => {
+    await assert.rejects(() => driver.closeSlot(at(11)), /受付表を開けませんでした/);
+    assert.equal(fake.filled.size, 0);
+  }, { day: { ...fake.profile.day, ready: '#thereIsNoSuchThing' } });
+});
+
+test('枠そのものが無い時刻は、閉じているとみなさず例外にする', { skip }, async () => {
+  // 見つからない＝閉じている、と読むと、画面の変更を成功と誤読して消し込んでしまう
+  const fake = await startFakeEpark();
+  await withDriver(fake, async (driver) => {
+    await assert.rejects(() => driver.isSlotClosed(at(23)), /枠の状態を読めません/);
+  });
+});
+
+test('ログインできなければ、画面を操作せずに止まる', { skip }, async () => {
   const fake = await startFakeEpark();
   const driver = createBrowserDriver({
     profile: fake.profile,
@@ -97,14 +174,14 @@ test('ログインできなければ、画面を操作せずに止まる', { ski
   });
   try {
     await assert.rejects(() => driver.open(), /ログインできませんでした/);
-    assert.equal(fake.closed.size, 0);
+    assert.equal(fake.filled.size, 0);
   } finally {
     await driver.close();
     await fake.stop();
   }
 });
 
-test('パスワードは例外の文言に出さない', { skip: !HAS_BROWSER && 'ブラウザ未導入' }, async () => {
+test('パスワードは例外の文言に出さない', { skip }, async () => {
   const fake = await startFakeEpark();
   const driver = createBrowserDriver({
     profile: fake.profile,

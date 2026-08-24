@@ -30,7 +30,7 @@ const externalBlocks = createExternalBlocks({ pool });
 // （isSlotClosed が常に false）ので、消し込まれずチェックリストに残る
 let driver = createNullDriver();
 if (config.epark.mode !== 'off') {
-  const profile = await loadProfile(config.epark.profilePath, readFile).catch((err) => {
+  const profile = await loadProfile(config.epark.profilePath, readFile, config.epark.baseUrl).catch((err) => {
     console.error(`画面設定を読めません（${config.epark.profilePath}）: ${err.message}`);
     return null;
   });

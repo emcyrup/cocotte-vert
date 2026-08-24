@@ -1,38 +1,66 @@
 {
   "_comment": [
-    "EPARK 管理画面の「どこを押すか」。これを config/epark-profile.json にコピーして埋める。",
-    "実物の画面は scripts/epark-probe.js で撮れる（何も書き換えない）。",
-    "セレクタには {slot} / {date} / {time} を埋め込める。",
-    "close / open の1手は click / fill / select / waitFor のどれか1つ。",
-    "closedWhen は slot のセレクタに継ぎ足す。枠そのものに印が付くなら '.is-closed'、",
-    "中の要素で表すなら ' .badge-closed' のように先頭に空白を置く（子孫セレクタ）。",
-    "ログイン情報はここに書かない（.env の EPARK_USER / EPARK_PASSWORD を使う）。"
+    "EPARK 管理画面（受付管理）の「どこを押すか」。",
+    "config/epark-profile.json にコピーして使う。実物の画面から起こした内容が入っている。",
+    "",
+    "{base} は .env の EPARK_BASE_URL に置き換わる（管理画面の URL には店舗の識別子が",
+    "入るため、公開リポジトリには書かない）。ログイン情報もここには書かない。",
+    "",
+    "差し込める値: {base} {date}(2026-09-01) {dateCompact}(20260901)",
+    "              {time}(10:00) {timeCompact}(1000) {line} {checkbox}",
+    "",
+    "枠を閉じる = 枠のチェックボックスを入れて「仮受付」を押す",
+    "枠を開ける = 同じチェックボックスを入れて「キャンセル」を押す",
+    "",
+    "!! 実物での動作は未確認。まず EPARK_MODE=dry_run（読むだけ）で確かめること !!"
   ],
 
-  "loginUrl": "https://example.epark.invalid/admin/login",
+  "loginUrl": "{base}/login/index",
 
   "login": {
-    "user": "#loginId",
-    "password": "#password",
+    "user": "input[name=\"loginId\"]",
+    "password": "input[type=\"password\"]",
     "submit": "button[type=\"submit\"]",
-    "ready": "#dashboard"
+    "ready": "#multiSchedulerHidAppointDate"
   },
 
-  "dayUrl": "https://example.epark.invalid/admin/schedule?date={date}",
+  "day": {
+    "url": "{base}/hybAppoint/multischeduler/index",
+    "script": "multiSchedulerRequest_multiScheduler_Calendar('{dateCompact}')",
+    "ready": "#multiSchedulerHidAppointDate[value=\"{dateCompact}\"]"
+  },
 
-  "slot": ".slot[data-time=\"{time}\"]",
+  "lines": [
+    {
+      "id": "1",
+      "_name": "トリミング申込",
+      "match": ["シャンプー", "カット", "爪切り", "耳掃除", "保育", "一時預かり", "カウンセリング"]
+    },
+    {
+      "id": "2",
+      "_name": "ホテル宿泊申込",
+      "match": ["宿泊", "お泊まり", "ホテル"]
+    }
+  ],
 
-  "closedWhen": ".is-closed",
+  "slotMinutes": 60,
+
+  "cell": {
+    "checkbox": "input[name=\"appoint\"][value=\"{timeCompact}_{line}\"]",
+    "closed": ".reserveFrame{timeCompact}_{line}",
+    "open": ".emptyFrame{timeCompact}_{line}",
+    "ours": ".reserveFrame{timeCompact}_{line} li.tentative-reservation"
+  },
 
   "close": [
-    { "click": "{slot} a.edit" },
-    { "click": "button:has-text(\"この枠を閉じる\")" },
-    { "waitFor": "#dashboard" }
+    { "click": "{checkbox}" },
+    { "click": "#multiple-select-panel .link.tentative-reservation a" },
+    { "waitFor": "#multiSchedulerHidAppointDate" }
   ],
 
   "open": [
-    { "click": "{slot} a.edit" },
-    { "click": "button:has-text(\"この枠を開ける\")" },
-    { "waitFor": "#dashboard" }
+    { "click": "{checkbox}" },
+    { "click": "#multiple-select-panel .link.cancel a" },
+    { "waitFor": "#multiSchedulerHidAppointDate" }
   ]
 }

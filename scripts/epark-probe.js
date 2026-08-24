@@ -38,9 +38,11 @@ if (!config.epark.user || !config.epark.password) {
   console.error('EPARK_USER / EPARK_PASSWORD を .env に設定してください');
   process.exit(1);
 }
-const loginUrl = arg('login', process.env.EPARK_LOGIN_URL);
+const loginUrl =
+  arg('login', process.env.EPARK_LOGIN_URL) ||
+  (config.epark.baseUrl ? `${config.epark.baseUrl.replace(/\/$/, '')}/login/index` : null);
 if (!loginUrl) {
-  console.error('EPARK_LOGIN_URL（または --login=）に管理画面のログイン URL を指定してください');
+  console.error('EPARK_BASE_URL か EPARK_LOGIN_URL（または --login=）を指定してください');
   process.exit(1);
 }
 

@@ -37,12 +37,27 @@ function makeFakes({ toBlock = [], toRelease = [], driver = {}, mode = 'live' } 
 
 // ---- 枠の切り出し ----
 
-test('予約から JST の日付・開始・終了を作る', () => {
+test('予約から JST の日付・開始・終了と、またがる枠を作る', () => {
   // 10:00 JST = 01:00 UTC。サーバーの TZ に関わらず JST で確定させる
   const slot = slotOf(row({ reserved_at: '2026-09-01T01:00:00.000Z', duration_minutes: 90 }));
-  assert.deepEqual(slot, {
-    reservationId: 1, date: '2026-09-01', startTime: '10:00', endTime: '11:30', minutes: 90,
-  });
+  assert.equal(slot.date, '2026-09-01');
+  assert.equal(slot.dateCompact, '20260901');
+  assert.equal(slot.startTime, '10:00');
+  assert.equal(slot.endTime, '11:30');
+  // 1枠しか閉じないと、はみ出した時間に別のお客様が入れてしまう
+  assert.deepEqual(slot.cells, ['10:00', '11:00']);
+});
+
+test('枠の頭からずれた予約は、またがる枠を頭から拾う', () => {
+  // 10:30 JST 開始の60分 → 10:00 と 11:00 の枠にかかる
+  const slot = slotOf(row({ reserved_at: '2026-09-01T01:30:00.000Z', duration_minutes: 60 }));
+  assert.deepEqual(slot.cells, ['10:00', '11:00']);
+});
+
+test('日をまたぐ予約でも、その日の枠までしか閉じない', () => {
+  // 23:00 JST 開始の3時間。翌日の枠は勝手に触らない
+  const slot = slotOf(row({ reserved_at: '2026-09-01T14:00:00.000Z', duration_minutes: 180 }));
+  assert.deepEqual(slot.cells, ['23:00']);
 });
 
 test('所要時間が無い予約は既定の枠にする（狭く閉じて隣に入られるのを避ける）', () => {

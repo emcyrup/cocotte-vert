@@ -27,6 +27,7 @@ import { createReservationDrafts } from './reservations/draftService.js';
 import { createShiftService } from './shifts/service.js';
 import { createPlanService } from './plans/service.js';
 import { createReservationService } from './reservations/service.js';
+import { createExternalBlocks } from './reservations/externalBlock.js';
 import { basicAuth, bearerAuth } from './http/auth.js';
 import { createAdminRouter } from './http/adminRoutes.js';
 import { createImportRouter } from './http/importRoutes.js';
@@ -64,6 +65,8 @@ const reservationService = createReservationService({ pool, slack, lineClient })
 // 営業時間を渡すのは、「2時」のように午前・午後が書かれていない時刻を決めるため
 const entryParser = createReservationEntryParser({ apiKey: config.anthropicApiKey, store });
 const reservationDrafts = createReservationDrafts({ pool, reservationService });
+// EPARK 等の外部サイトで枠を閉じる作業の記録。書き込む口が無いため手作業を支える
+const externalBlocks = createExternalBlocks({ pool });
 // 回数券・保育コースの回数管理（残回数は元帳の合計から導く）
 const planService = createPlanService({ pool });
 
@@ -278,6 +281,7 @@ app.use(
     reminderSettings,
     customerReminders,
     planService,
+    externalBlocks,
   })
 );
 

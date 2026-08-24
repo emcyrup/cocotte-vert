@@ -481,6 +481,12 @@ textarea{width:100%; border:1px solid var(--line); border-radius:8px; background
 /* 承認待ちは見落とすと顧客を待たせるため、行ごと強調する */
 tr.await td{background:var(--warn-soft)}
 .rowacts{display:flex; flex-wrap:wrap; gap:5px}
+/* EPARK未反映のチェックリスト。押し間違いが「やったこと」になるため、行ごと押せる大きさにする */
+.ebrow{display:flex; align-items:flex-start; gap:9px; padding:7px 8px; border:1px solid var(--line);
+  border-radius:8px; margin-bottom:6px; font-size:13px; cursor:pointer}
+.ebrow:hover{background:var(--surface2)}
+.ebrow input[type="checkbox"]{margin-top:2px; flex:0 0 auto; width:17px; height:17px}
+.ebmenu{display:block; font-size:11.5px; color:var(--muted)}
 .sbtn{border:1px solid var(--line); background:var(--surface); color:var(--ink); font:inherit;
   font-size:11.5px; font-weight:700; border-radius:7px; padding:4px 9px; cursor:pointer; white-space:nowrap}
 .sbtn:hover{background:var(--surface2)}
@@ -778,6 +784,16 @@ tr.await td{background:var(--warn-soft)}
         </thead>
         <tbody id="rvrows"></tbody>
       </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="hd"><h2>EPARK未反映</h2><span class="pill mut" id="eb-count">—</span></div>
+    <div class="bd">
+      <p class="hint">この画面で入ったご予約は、<b>EPARK側の同じ枠を手で閉じて</b>ください。
+      閉じ忘れると同じ時間に別のお客様が入ってしまいます。閉じ終えたらチェックを付けて消し込みます。</p>
+      <div id="eb-block"></div>
+      <div id="eb-release"></div>
     </div>
   </div>
 
@@ -3806,7 +3822,82 @@ async function rvReload(){
   RESV.length = 0;
   reservations.forEach(r => RESV.push(rvMap(r)));
   renderResv();
+  // 予約を触ったあとに未反映が増減するため、一覧と一緒に読み直す
+  await ebReload();
 }
+
+// ---- EPARK未反映（枠を閉じる／開け直す）----
+// EPARK には外部から書き込む口が無く、閉じる作業そのものは手でやってもらうしかない。
+// ここは「やり忘れ」を目に見えるところへ出すためだけの一覧。
+const ebCount = document.getElementById('eb-count');
+const ebBlockEl = document.getElementById('eb-block');
+const ebReleaseEl = document.getElementById('eb-release');
+const EB = { toBlock: [], toRelease: [] };
+
+function ebRow(r, kind){
+  const row = document.createElement('label');
+  row.className = 'ebrow';
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  const text = document.createElement('span');
+  text.innerHTML = '<b class="num">' + esc(snsFmtJst(r.reserved_at)) + '</b> ' + esc(r.customer_name)
+    + '<span class="ebmenu">' + esc(r.menu || 'ご予約')
+    + (r.staff_name ? '／' + esc(r.staff_name) : '') + '</span>';
+  cb.addEventListener('change', async () => {
+    cb.disabled = true;
+    try {
+      await adminApi('/external-blocks/' + r.id, { method: 'PATCH', body: JSON.stringify({ done: true }) });
+      showToast(kind === 'block' ? 'EPARK側の枠を閉じたものとして消し込みました' : 'EPARK側の枠を開け直したものとして消し込みました');
+      await ebReload();
+    } catch (err) {
+      // 消し込めていないのにリストから消えると、やり忘れたまま気付けない
+      cb.checked = false;
+      cb.disabled = false;
+      showToast('記録できませんでした: ' + err.message);
+    }
+  });
+  row.append(cb, text);
+  return row;
+}
+
+function ebSection(el, rows, kind, heading, empty){
+  el.innerHTML = '';
+  const h = document.createElement('p');
+  h.className = 'hint';
+  h.innerHTML = '<b>' + heading + '</b>';
+  el.appendChild(h);
+  if (!rows.length) {
+    const p = document.createElement('p');
+    p.className = 'hint';
+    p.textContent = empty;
+    el.appendChild(p);
+    return;
+  }
+  rows.forEach(r => el.appendChild(ebRow(r, kind)));
+}
+
+function ebRender(){
+  ebSection(ebBlockEl, EB.toBlock, 'block',
+    'EPARK側で枠を閉じる', '閉じ忘れているご予約はありません。');
+  // 取り消したのに閉じたままだと、その時間のご予約を取り逃がす
+  ebSection(ebReleaseEl, EB.toRelease, 'release',
+    'EPARK側で枠を開け直す（取消・見送り分）', '開け直しの残りはありません。');
+  const n = EB.toBlock.length + EB.toRelease.length;
+  ebCount.textContent = n ? '未反映 ' + n + '件' : '未反映なし';
+  ebCount.className = 'pill ' + (n ? 'warn' : 'good');
+}
+
+async function ebReload(){
+  if (!adminLive) return;
+  const { toBlock, toRelease } = await adminApi('/external-blocks');
+  EB.toBlock = toBlock || [];
+  EB.toRelease = toRelease || [];
+  ebRender();
+}
+
+// モック単体で開いたときは、空の一覧を「やり忘れなし」と読み違えないようにしておく
+ebBlockEl.innerHTML = '<p class="hint">実データに接続すると、'
+  + 'EPARK側へまだ反映していないご予約がここに並びます。</p>';
 // 状態変更。実運用モードでは取り消しできないため、実行前に confirm で確認する
 async function rvAct(r, status, demoMsg, confirmMsg){
   if (!adminLive) { rvSetStatus(r, status, demoMsg); return; }

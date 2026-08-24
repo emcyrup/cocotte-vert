@@ -25,6 +25,7 @@ export const TEST_MESSAGE_TYPES = [
 ];
 
 export function createAdminRouter({
+  externalBlocks = null,
   pool,
   reservationService,
   lineClient,
@@ -642,6 +643,31 @@ export function createAdminRouter({
         [from, to]
       );
       res.json({ reservations: rows });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // EPARK など外部サイトの枠を閉じる／開け直す作業の一覧。
+  // 自動で送るわけではなく、やり忘れを画面に出すためのもの
+  router.get('/external-blocks', async (_req, res, next) => {
+    try {
+      if (!externalBlocks) return res.json({ toBlock: [], toRelease: [] });
+      res.json(await externalBlocks.listPending());
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.patch('/external-blocks/:id', async (req, res, next) => {
+    try {
+      if (!externalBlocks) return res.status(503).json({ error: 'unavailable' });
+      const result = await externalBlocks.setDone({
+        id: Number(req.params.id),
+        done: req.body?.done !== false,
+      });
+      if (!result.ok) return res.status(result.error === 'not_found' ? 404 : 400).json(result);
+      res.json(result);
     } catch (err) {
       next(err);
     }

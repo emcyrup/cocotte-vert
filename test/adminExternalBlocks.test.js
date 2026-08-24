@@ -57,7 +57,7 @@ test('チェックを付けると済みとして記録する', async () => {
   const res = await request(app, 'PATCH', '/api/admin/external-blocks/5', { done: true });
 
   assert.equal(res.status, 200);
-  assert.deepEqual(calls, [{ id: 5, done: true }]);
+  assert.deepEqual(calls, [{ id: 5, done: true, cells: null }]);
 });
 
 test('チェックを外すと未済へ戻す', async () => {
@@ -69,7 +69,7 @@ test('チェックを外すと未済へ戻す', async () => {
 
   await request(app, 'PATCH', '/api/admin/external-blocks/5', { done: false });
 
-  assert.deepEqual(calls, [{ id: 5, done: false }]);
+  assert.deepEqual(calls, [{ id: 5, done: false, cells: null }]);
 });
 
 test('対象が無ければ 404、値がおかしければ 400', async () => {
@@ -82,4 +82,60 @@ test('対象が無ければ 404、値がおかしければ 400', async () => {
 
   assert.equal((await request(app, 'PATCH', '/api/admin/external-blocks/99', { done: true })).status, 404);
   assert.equal((await request(app, 'PATCH', '/api/admin/external-blocks/1', { done: true })).status, 400);
+});
+
+// ---- 自動化（GitHub Actions）から使うとき ----
+
+test('fields=sync では、お客様の氏名を返さない', async () => {
+  // 一覧は外（GitHub Actions）へ出ていく。要らない個人情報は渡さない
+  const row = {
+    id: 1, reserved_at: '2026-09-01T01:00:00.000Z', menu: 'カット', status: 'confirmed',
+    duration_minutes: 60, external_blocked_cells: ['10:00'], action: 'block',
+    customer_name: '田中花子', staff_name: '佐藤',
+  };
+  const app = makeApp({
+    listPending: async () => ({ toBlock: [row], toRelease: [] }),
+    setDone: async () => ({ ok: true }),
+  });
+
+  const res = await request(app, 'GET', '/api/admin/external-blocks?fields=sync');
+
+  assert.equal(res.status, 200);
+  assert.deepEqual(Object.keys(res.body.toBlock[0]).sort(), [
+    'action', 'duration_minutes', 'external_blocked_cells', 'id', 'menu', 'reserved_at', 'status',
+  ]);
+  assert.doesNotMatch(JSON.stringify(res.body), /田中花子|佐藤/);
+});
+
+test('画面向け（既定）では、これまでどおり氏名も返す', async () => {
+  const app = makeApp({
+    listPending: async () => ({ toBlock: [{ id: 1, customer_name: '田中花子' }], toRelease: [] }),
+    setDone: async () => ({ ok: true }),
+  });
+  const res = await request(app, 'GET', '/api/admin/external-blocks');
+  assert.equal(res.body.toBlock[0].customer_name, '田中花子');
+});
+
+test('自動化が閉じた枠を受け取って記録する', async () => {
+  const calls = [];
+  const app = makeApp({
+    listPending: async () => ({ toBlock: [], toRelease: [] }),
+    setDone: async (args) => { calls.push(args); return { ok: true }; },
+  });
+
+  await request(app, 'PATCH', '/api/admin/external-blocks/5', { done: true, cells: ['10:00'] });
+
+  assert.deepEqual(calls, [{ id: 5, done: true, cells: ['10:00'] }]);
+});
+
+test('画面のチェックからは枠が来ない（手作業ではどこを触ったか分からない）', async () => {
+  const calls = [];
+  const app = makeApp({
+    listPending: async () => ({ toBlock: [], toRelease: [] }),
+    setDone: async (args) => { calls.push(args); return { ok: true }; },
+  });
+
+  await request(app, 'PATCH', '/api/admin/external-blocks/5', { done: true });
+
+  assert.deepEqual(calls, [{ id: 5, done: true, cells: null }]);
 });

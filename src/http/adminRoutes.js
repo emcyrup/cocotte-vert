@@ -649,11 +649,23 @@ export function createAdminRouter({
   });
 
   // EPARK など外部サイトの枠を閉じる／開け直す作業の一覧。
-  // 自動で送るわけではなく、やり忘れを画面に出すためのもの
-  router.get('/external-blocks', async (_req, res, next) => {
+  //
+  // 画面（チェックリスト）と、自動化（GitHub Actions からブラウザを動かす）の両方が使う。
+  // 自動化には氏名が要らないので、?fields=sync では**個人情報を返さない**。
+  // 外へ出す量は少ないほどよい
+  const SYNC_FIELDS = ['id', 'reserved_at', 'menu', 'status', 'duration_minutes',
+    'external_blocked_cells', 'action'];
+  const forSync = (row) => Object.fromEntries(SYNC_FIELDS.map((k) => [k, row[k]]));
+
+  router.get('/external-blocks', async (req, res, next) => {
     try {
       if (!externalBlocks) return res.json({ toBlock: [], toRelease: [] });
-      res.json(await externalBlocks.listPending());
+      const pending = await externalBlocks.listPending();
+      if (req.query.fields !== 'sync') return res.json(pending);
+      res.json({
+        toBlock: pending.toBlock.map(forSync),
+        toRelease: pending.toRelease.map(forSync),
+      });
     } catch (err) {
       next(err);
     }
@@ -665,6 +677,8 @@ export function createAdminRouter({
       const result = await externalBlocks.setDone({
         id: Number(req.params.id),
         done: req.body?.done !== false,
+        // 自動化が実際に閉じた枠。画面のチェックからは来ない（手作業では分からないため）
+        cells: Array.isArray(req.body?.cells) ? req.body.cells : null,
       });
       if (!result.ok) return res.status(result.error === 'not_found' ? 404 : 400).json(result);
       res.json(result);

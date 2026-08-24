@@ -1,0 +1,69 @@
+# EPARK 側の枠を、こちらの予約に合わせて閉じる／開け直す。
+#
+# ブラウザ（Chromium）とデータベースの両方に届く場所が無いので、ここで動かす。
+#   GitHub Actions … ブラウザはあるが、データベースには届かない
+#   アプリサーバー … データベースには届くが、ブラウザを置けない（sudo なし）
+# 作業の一覧と消し込みは管理 API 越しに行う。**サーバーには何も足さない。**
+#
+# 取ってくる一覧には**お客様の氏名・電話番号は含まれない**（?fields=sync）。
+#
+# 必要な Secrets:
+#   EPARK_BASE_URL / EPARK_USER / EPARK_PASSWORD   EPARK 管理画面
+#   ADMIN_BASE_URL / ADMIN_USER / ADMIN_PASSWORD   こちらの管理画面（Basic 認証）
+#   SLACK_WEBHOOK_URL                              任意。無ければログにだけ出す
+#
+# 必要な Variables:
+#   EPARK_SYNC_ENABLED = true   これが無いうちは定期実行も手動実行も動かない
+#   EPARK_SYNC_MODE             既定 dry_run。実際に書き換えるときだけ live にする
+name: epark-sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'dry_run（読むだけ）/ live（実際に閉じる）'
+        required: true
+        default: dry_run
+        type: choice
+        options: [dry_run, live]
+  schedule:
+    # 30分ごと。EPARK の予約は承認制なので、多少の遅れは事故にならない
+    - cron: '5,35 * * * *'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    # 設定が揃うまでは動かさない。EPARK を書き換える処理なので既定は止めておく
+    if: vars.EPARK_SYNC_ENABLED == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - name: ブラウザを入れる（このランナーにだけ入れる。サーバーには置かない）
+        run: npx playwright install --with-deps chromium
+
+      - name: 画面設定を用意する
+        run: cp config/epark-profile.example.json config/epark-profile.json
+
+      - name: 枠を反映する
+        env:
+          # 手動実行では選んだモード、定期実行では Variable（既定は読むだけ）
+          EPARK_MODE: ${{ inputs.mode || vars.EPARK_SYNC_MODE || 'dry_run' }}
+          EPARK_BASE_URL: ${{ secrets.EPARK_BASE_URL }}
+          EPARK_USER: ${{ secrets.EPARK_USER }}
+          EPARK_PASSWORD: ${{ secrets.EPARK_PASSWORD }}
+          ADMIN_BASE_URL: ${{ secrets.ADMIN_BASE_URL }}
+          ADMIN_USER: ${{ secrets.ADMIN_USER }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          # config.js の必須チェックを通すためのダミー。API 経由なので DB は使わない
+          DATABASE_URL: postgres://unused/unused
+          LINE_CHANNEL_ACCESS_TOKEN: unused
+          LINE_CHANNEL_SECRET: unused
+          STAFF_NOTIFY_CHANNEL: line
+          TZ: Asia/Tokyo
+        run: node scripts/run-epark-sync.js --via=api

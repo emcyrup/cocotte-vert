@@ -40,7 +40,10 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      # playwright のブラウザ本体は落とさない。EPARK 駆動部の試験はブラウザが無ければ自動で飛ぶ
       - run: npm ci
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
       - run: npm test
 
   # 検証環境（GCP・Docker Compose）。既存の Secret をそのまま使う

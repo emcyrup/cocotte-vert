@@ -187,7 +187,18 @@ export function createReservationService({ pool, slack, lineClient = null }) {
 
     const { rows } = await pool.query(
       `UPDATE reservations
-          SET reserved_at = $2, menu = $3, staff_id = $4, duration_minutes = $5, updated_at = now()
+          SET reserved_at = $2, menu = $3, staff_id = $4, duration_minutes = $5,
+              -- 日時が動くと、外部サイトで閉じた枠がずれる。閉じ直してもらうため未反映へ戻す
+              external_blocked_at = CASE
+                WHEN reserved_at IS DISTINCT FROM $2::timestamptz THEN NULL
+                ELSE external_blocked_at
+              END,
+              -- 時間が動けば、閉じた枠の記録も意味を失う
+              external_blocked_cells = CASE
+                WHEN reserved_at IS DISTINCT FROM $2::timestamptz THEN NULL
+                ELSE external_blocked_cells
+              END,
+              updated_at = now()
         WHERE id = $1
         RETURNING id, to_char(reserved_at AT TIME ZONE 'Asia/Tokyo', 'YYYY-MM-DD"T"HH24:MI') AS reserved_at`,
       [id, reservedAt, menu || null, staffId || null, durationMinutes]

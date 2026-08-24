@@ -8,6 +8,8 @@ const REQUIRED_VARS = ['DATABASE_URL', 'LINE_CHANNEL_ACCESS_TOKEN', 'LINE_CHANNE
 
 const STAFF_NOTIFY_CHANNELS = ['slack', 'line', 'both'];
 const IG_POST_MODES = ['dry_run', 'live'];
+// EPARK は「送信」ではなく相手の画面を書き換える操作なので、触らない状態（off）を既定に置く
+const EPARK_MODES = ['off', 'dry_run', 'live'];
 
 export function loadConfig(env = process.env) {
   const missing = REQUIRED_VARS.filter((key) => !env[key]);
@@ -69,6 +71,16 @@ export function loadConfig(env = process.env) {
   const wpStatus = env.WP_STATUS || 'draft';
   if (!WP_STATUSES.includes(wpStatus)) {
     throw new Error(`WP_STATUS が不正です: "${wpStatus}"（${WP_STATUSES.join(' | ')} のいずれか）`);
+  }
+
+  // EPARK 管理画面の自動操作。既定は off で、明示しない限り EPARK を一切触らない。
+  // dry_run は「ログインして枠の状態を読むだけ」。駆動部の検証をここで済ませてから live へ移す
+  const eparkMode = env.EPARK_MODE || 'off';
+  if (!EPARK_MODES.includes(eparkMode)) {
+    throw new Error(`EPARK_MODE が不正です: "${eparkMode}"（${EPARK_MODES.join(' | ')} のいずれか）`);
+  }
+  if (eparkMode !== 'off' && !(env.EPARK_USER && env.EPARK_PASSWORD)) {
+    throw new Error(`EPARK_MODE=${eparkMode} には EPARK_USER / EPARK_PASSWORD が必要です`);
   }
 
   // 配信の起点となる日数。店舗によって「何日前に確認するか」が変わるため設定にする。
@@ -157,6 +169,19 @@ export function loadConfig(env = process.env) {
       // 下書きで止めるか、そのまま公開するか
       status: wpStatus,
       postMode: wpPostMode,
+    },
+    // EPARK 管理画面の自動操作。ログイン情報は .env にのみ置き、ログにも画面にも出さない
+    epark: {
+      mode: eparkMode,
+      user: env.EPARK_USER || null,
+      password: env.EPARK_PASSWORD || null,
+      // 管理画面のルート。URL に店舗の識別子が入るため、設定ファイルではなく .env に置き、
+      // 設定ファイル側は {base} と書いておく（リポジトリは公開のため）
+      baseUrl: env.EPARK_BASE_URL || null,
+      // 押す場所は JSON で外に出す（相手の画面が変わってもコードを触らずに済ませる）
+      profilePath: env.EPARK_PROFILE || 'config/epark-profile.json',
+      // 本番にブラウザを置けない構成のための逃げ道。未指定なら playwright の既定
+      browserPath: env.EPARK_BROWSER_PATH || null,
     },
     // Instagram は投稿画像を公開 URL から取得するため、外から見える自分の URL が要る
     publicBaseUrl: env.PUBLIC_BASE_URL || (env.DOMAIN ? `https://${env.DOMAIN}` : null),

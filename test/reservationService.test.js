@@ -219,6 +219,16 @@ test('updateManual: 通らない値では書き換えない', async () => {
   }
 });
 
+test('updateManual: 日時が動いたら EPARK への反映を未済へ戻す', async () => {
+  const f = makeUpdateFakes();
+  await createReservationService(f).updateManual({
+    id: 7, reservedAt: '2026-09-02T10:30:00+09:00', menu: 'シャンプー', staffId: null,
+  });
+  // 前の時間の枠を閉じたままでは、その時間のご予約を取り逃がす
+  assert.match(f.queries[0].sql, /external_blocked_at = CASE/);
+  assert.match(f.queries[0].sql, /reserved_at IS DISTINCT FROM \$2::timestamptz THEN NULL/);
+});
+
 test('updateManual: 対象が無ければ not_found', async () => {
   const f = makeUpdateFakes([]);
   const result = await createReservationService(f).updateManual({

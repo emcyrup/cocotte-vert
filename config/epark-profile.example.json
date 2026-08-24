@@ -1,0 +1,71 @@
+{
+  "_comment": [
+    "EPARK 管理画面（受付管理）の「どこを押すか」。",
+    "config/epark-profile.json にコピーして使う。実物の画面から起こした内容が入っている。",
+    "",
+    "{base} は .env の EPARK_BASE_URL に置き換わる（管理画面の URL には店舗の識別子が",
+    "入るため、公開リポジトリには書かない）。ログイン情報もここには書かない。",
+    "",
+    "差し込める値: {base} {date}(2026-09-01) {dateCompact}(20260901)",
+    "              {time}(10:00) {timeCompact}(1000) {line} {checkbox}",
+    "",
+    "枠を閉じる = 枠のチェックボックスを入れて「仮受付」を押す",
+    "枠を開ける = 同じチェックボックスを入れて「キャンセル」を押す",
+    "",
+    "送信ボタンは type=\"button\" + onclick なので submit では押せない（実物で確認）。",
+    "ログインの成否は #errorList のエラー表示で判定する。",
+    "「仮受付」を押しても確認画面は出ない（実物で確認）。区切りが無いので、",
+    "waitFor に {closed} / {open} を置き、その枠が実際に変わるまで待つ。",
+    "",
+    "!! 実物での動作は未確認。まず EPARK_MODE=dry_run（読むだけ）で確かめること !!"
+  ],
+
+  "loginUrl": "{base}/login/Login/index",
+
+  "login": {
+    "user": "#loginId",
+    "password": "#pwd",
+    "submit": "input.Bloginbtn",
+    "error": "#errorList li"
+  },
+
+  "day": {
+    "url": "{base}/hybAppoint/multischeduler/index",
+    "script": "multiSchedulerRequest_multiScheduler_Calendar('{dateCompact}')",
+    "ready": "#multiSchedulerHidAppointDate[value=\"{dateCompact}\"]"
+  },
+
+  "lines": [
+    {
+      "id": "1",
+      "_name": "トリミング申込",
+      "match": ["シャンプー", "カット", "爪切り", "耳掃除", "保育", "一時預かり", "カウンセリング"]
+    },
+    {
+      "id": "2",
+      "_name": "ホテル宿泊申込",
+      "match": ["宿泊", "お泊まり", "ホテル"]
+    }
+  ],
+
+  "slotMinutes": 60,
+
+  "cell": {
+    "checkbox": "input[name=\"appoint\"][value=\"{timeCompact}_{line}\"]",
+    "closed": ".reserveFrame{timeCompact}_{line}",
+    "open": ".emptyFrame{timeCompact}_{line}",
+    "ours": ".reserveFrame{timeCompact}_{line} li.tentative-reservation"
+  },
+
+  "close": [
+    { "click": "{checkbox}" },
+    { "click": "#multiple-select-panel .link.tentative-reservation a" },
+    { "waitFor": "{closed}" }
+  ],
+
+  "open": [
+    { "click": "{checkbox}" },
+    { "click": "#multiple-select-panel .link.cancel a" },
+    { "waitFor": "{open}" }
+  ]
+}

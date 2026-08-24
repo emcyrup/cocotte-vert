@@ -27,6 +27,7 @@ import { createReservationDrafts } from './reservations/draftService.js';
 import { createShiftService } from './shifts/service.js';
 import { createPlanService } from './plans/service.js';
 import { createReservationService } from './reservations/service.js';
+import { createExternalBlocks } from './reservations/externalBlock.js';
 import { basicAuth, bearerAuth } from './http/auth.js';
 import { createAdminRouter } from './http/adminRoutes.js';
 import { createImportRouter } from './http/importRoutes.js';
@@ -36,6 +37,7 @@ import { createStaffReserveRouter } from './http/staffReserveRoutes.js';
 import { createSnsRouter } from './http/snsRoutes.js';
 import { createInstagramClient } from './instagram/client.js';
 import { createThreadsClient } from './threads/client.js';
+import { createWordPressClient } from './wordpress/client.js';
 import { createSnsPublisher } from './jobs/snsPublisher.js';
 import { mkdirSync, statSync } from 'node:fs';
 import cron from 'node-cron';
@@ -63,6 +65,8 @@ const reservationService = createReservationService({ pool, slack, lineClient })
 // 営業時間を渡すのは、「2時」のように午前・午後が書かれていない時刻を決めるため
 const entryParser = createReservationEntryParser({ apiKey: config.anthropicApiKey, store });
 const reservationDrafts = createReservationDrafts({ pool, reservationService });
+// EPARK 等の外部サイトで枠を閉じる作業の記録。書き込む口が無いため手作業を支える
+const externalBlocks = createExternalBlocks({ pool });
 // 回数券・保育コースの回数管理（残回数は元帳の合計から導く）
 const planService = createPlanService({ pool });
 
@@ -277,6 +281,7 @@ app.use(
     reminderSettings,
     customerReminders,
     planService,
+    externalBlocks,
   })
 );
 
@@ -317,9 +322,12 @@ app.use('/sns-media', express.static(snsDataDir, { maxAge: '7d', immutable: true
 
 const instagram = createInstagramClient({ config, settings });
 const threads = createThreadsClient({ config, settings });
+// WordPress は記事なので、写真をあちらのメディアライブラリへ入れてから載せる
+// （こちらのサーバーを参照させると、移設や停止で過去の記事の画像が消える）
+const wordpress = createWordPressClient({ config });
 // 投稿先は clients に集める。未設定のものは null のままにしておき、
 // publisher 側で「設定されていません」と記録される
-const snsClients = { instagram, threads };
+const snsClients = { instagram, threads, ...(wordpress.enabled ? { wordpress } : {}) };
 const snsPublisher = createSnsPublisher({ pool, clients: snsClients, slack, config });
 // API キー未設定なら渡さない（キャプション生成だけ 503 になり、投稿機能は動く）
 const captionWriter = config.anthropicApiKey

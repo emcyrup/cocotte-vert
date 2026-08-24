@@ -1,0 +1,67 @@
+# EPARK 管理画面の設定が実物と合っているかを、手元に何も用意せずに確かめる。
+#
+# 手元の PC・GCP・AWS のどれにも Chromium が無い（本番は sudo なしで入れられない）。
+# GitHub Actions のランナーには一式そろっているので、点検はここから流す。
+#
+# **読むだけで、EPARK には一切書き込まない。** データベースにも接続しない。
+# 出るのは枠ごとの状態だけで、お客様の氏名・電話番号は含まれない。
+#
+# 使い方: GitHub の Actions タブ →「epark-check」→「Run workflow」→ 日付を入れて実行
+#
+# 必要な Secrets（Settings → Secrets and variables → Actions）:
+#   EPARK_BASE_URL  管理画面のルート（例: https://control.example.jp/xxxxxxxx）
+#   EPARK_USER      ログインID
+#   EPARK_PASSWORD  パスワード
+name: epark-check
+
+on:
+  workflow_dispatch:
+    inputs:
+      date:
+        description: '確かめる日付（YYYY-MM-DD。空なら今日）'
+        required: false
+        default: ''
+      from:
+        description: '見はじめる時刻'
+        required: false
+        default: '08:00'
+      to:
+        description: '見おわる時刻'
+        required: false
+        default: '21:00'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    # 設定が無いうちに動かしても失敗するだけなので、明示的に有効化してもらう
+    if: vars.EPARK_CHECK_ENABLED == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - name: ブラウザを入れる（このランナーにだけ入れる。サーバーには置かない）
+        run: npx playwright install --with-deps chromium
+
+      - name: 画面設定を用意する
+        run: cp config/epark-profile.example.json config/epark-profile.json
+
+      - name: 受付表を読む（書き込みはしない）
+        env:
+          EPARK_MODE: dry_run
+          EPARK_BASE_URL: ${{ secrets.EPARK_BASE_URL }}
+          EPARK_USER: ${{ secrets.EPARK_USER }}
+          EPARK_PASSWORD: ${{ secrets.EPARK_PASSWORD }}
+          # config.js の必須チェックを通すためのダミー。EPARK の点検では使わない
+          DATABASE_URL: postgres://unused/unused
+          LINE_CHANNEL_ACCESS_TOKEN: unused
+          LINE_CHANNEL_SECRET: unused
+          STAFF_NOTIFY_CHANNEL: line
+          TZ: Asia/Tokyo
+        run: |
+          node scripts/epark-check.js \
+            ${{ inputs.date && format('--date={0}', inputs.date) || '' }} \
+            --from='${{ inputs.from }}' --to='${{ inputs.to }}'

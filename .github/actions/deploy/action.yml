@@ -75,7 +75,9 @@ runs:
           # Docker のあるサーバーは compose、無いサーバー（sudo なしの本番 AWS 等）は
           # serve.sh で直接起動する
           if [ "'"$DEPLOY_STYLE"'" = "plain" ]; then
-            npm ci --omit=dev
+            # playwright は optionalDependencies。ブラウザ本体（数百MB）は
+            # EPARK の自動操作を行う環境でだけ入れる
+            PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm ci --omit=dev
             ./scripts/serve.sh restart
           else
             docker compose --profile standalone up -d --build

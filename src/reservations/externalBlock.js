@@ -14,8 +14,9 @@
 // 外部から取り込んだ予約（external_id あり）は、もともと EPARK 側にあるので対象外
 const FROM_THIS_APP = 'r.external_id IS NULL';
 
+// duration_minutes は「どこからどこまでの枠を閉じるか」に要る（自動化の駆動部が使う）
 const COLUMNS = `
-  r.id, r.reserved_at, r.menu, r.status::text AS status,
+  r.id, r.reserved_at, r.menu, r.status::text AS status, r.duration_minutes,
   c.name AS customer_name, s.name AS staff_name`;
 
 export function createExternalBlocks({ pool }) {

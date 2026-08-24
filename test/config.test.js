@@ -93,3 +93,18 @@ test('配信の日数の書き間違いは起動時に落とす', () => {
   assert.throws(() => loadConfig({ ...baseEnv, DORMANT_DAYS: '90日' }), /DORMANT_DAYS/);
   assert.throws(() => loadConfig({ ...baseEnv, AFTER_VISIT_DAYS_AFTER: '1.5' }), /AFTER_VISIT_DAYS_AFTER/);
 });
+
+test('EPARK の自動操作は既定で off（明示しない限り相手の画面を触らない）', () => {
+  assert.equal(loadConfig({ ...baseEnv }).epark.mode, 'off');
+});
+
+test('EPARK を動かすならログイン情報が要る', () => {
+  assert.throws(() => loadConfig({ ...baseEnv, EPARK_MODE: 'live' }), /EPARK_USER/);
+  assert.throws(() => loadConfig({ ...baseEnv, EPARK_MODE: 'dry_run' }), /EPARK_USER/);
+  const config = loadConfig({ ...baseEnv, EPARK_MODE: 'live', EPARK_USER: 'u', EPARK_PASSWORD: 'p' });
+  assert.equal(config.epark.mode, 'live');
+});
+
+test('不正な EPARK_MODE は拒否する', () => {
+  assert.throws(() => loadConfig({ ...baseEnv, EPARK_MODE: 'test' }), /EPARK_MODE/);
+});

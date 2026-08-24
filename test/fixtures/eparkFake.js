@@ -8,6 +8,7 @@
 //   * 埋まっている枠は .reserveFrame1000_1、空き枠は .emptyFrame1000_1
 //   * 仮受付には li.tentative-reservation が付く（本物のご予約には付かない）
 //   * 閉じる＝チェック→「仮受付」、開ける＝チェック→「キャンセル」
+//   * チェックボックスは CSS で隠され、見た目は <span class="box">（label を押す）
 //   * 日付の移動は URL ではなく JavaScript（multiSchedulerCalendar）
 //   * 空き枠の「受付」から顧客検索及び新規受付登録が開き、院内メモを添えて仮受付にできる
 //     （「受付」ボタンは顧客を選ぶまで disabled、「仮受付」は押せる）
@@ -67,6 +68,12 @@ export async function startFakeEpark({
     }).join('');
 
     return `<!doctype html><meta charset="utf-8"><title>受付管理</title>
+      <style>
+        /* 実物と同じく、チェックボックスは隠して span を見た目に使う。
+           input を直接押そうとすると時間切れになる（実物で踏んだ壊れ方） */
+        input[name="appoint"] { position: absolute; opacity: 0; width: 0; height: 0; }
+        .box { display: inline-block; width: 16px; height: 16px; border: 1px solid #999; }
+      </style>
       <input type="hidden" id="multiSchedulerHidAppointDate" value="${date}">
       <div id="timetable">${rows}</div>
       <div id="multiple-select-panel">
@@ -207,7 +214,7 @@ export async function startFakeEpark({
       ],
       slotMinutes: 60,
       cell: {
-        checkbox: 'input[name="appoint"][value="{timeCompact}_{line}"]',
+        checkbox: 'label:has(input[name="appoint"][value="{timeCompact}_{line}"])',
         closed: '.reserveFrame{timeCompact}_{line}',
         open: '.emptyFrame{timeCompact}_{line}',
         ours: '.reserveFrame{timeCompact}_{line} li.tentative-reservation',

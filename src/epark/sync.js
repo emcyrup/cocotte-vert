@@ -18,6 +18,7 @@
 import { isValidDriver } from './driver.js';
 import { slotOf, slotLabel } from './slot.js';
 import { detailsText } from './details.js';
+import { lineFor } from './profile.js';
 
 const EMPTY = { total: 0, done: 0, dryRun: 0, failed: 0, errors: [] };
 
@@ -50,10 +51,27 @@ export function createEparkSync({ externalBlocks, driver, slack, config }) {
     try {
       // 枠の刻みは相手の受付表しだい（実物は1時間）。駆動部が知っている値に合わせる
       const slotMinutes = driver.slotMinutes ?? 60;
+      // コースからラインを引く。開け直すとき「同じラインの他のご予約」を見分けるのに使う
+      const lineOf = (menu) => lineFor(menu, driver.lines ?? [])?.id ?? null;
       for (const { row, action } of work) {
         // 開け直すのは「自分が実際に閉じた枠」だけ。スタッフが手で止めた枠は触らない
-        const slot = slotOf(row, { slotMinutes, action: action === 'open' ? 'release' : 'close' });
+        const slot = slotOf(row, {
+          slotMinutes,
+          action: action === 'open' ? 'release' : 'close',
+          lineOf,
+        });
         try {
+          // 触る枠が無い＝やることが無い（開け直す枠を、他の確定予約が全部使っている等）。
+          // EPARK を見に行かずに済みにする。残しておくとチェックリストに居座り続ける
+          if (slot.cells.length === 0) {
+            console.log(`[epark] ${action} 触る枠なし ${slotLabel(slot)}`);
+            if (mode === 'dry_run') { summary.dryRun += 1; continue; }
+            const result = await externalBlocks.setDone({ id: slot.reservationId, done: true });
+            if (!result.ok) throw new Error(`記録できません: ${result.error}`);
+            summary.done += 1;
+            continue;
+          }
+
           if (mode === 'dry_run') {
             // 何を閉じるはずだったかと、いまの EPARK 側の状態を並べて出す。
             // 駆動部が正しく読めているかは、この2つを突き合わせて判断する

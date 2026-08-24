@@ -23,7 +23,20 @@ const COLUMNS = `
   c.name AS customer_name, c.phone_norm, s.name AS staff_name,
   -- ペットが1頭のときだけ名前を出す。複数いるとどの子の予約か決められないので
   -- HAVING で1頭以外は行ごと落とし、NULL にする
-  (SELECT max(p.name) FROM pets p WHERE p.customer_id = c.id HAVING count(*) = 1) AS pet_name`;
+  (SELECT max(p.name) FROM pets p WHERE p.customer_id = c.id HAVING count(*) = 1) AS pet_name,
+  -- 同じ日に確定している他のご予約。取消の枠を開け直すとき、そのご予約が使っている
+  -- 枠まで開けてしまわないために要る（予約は重なる）。枠の割り出しは epark/slot.js。
+  -- 氏名は入れない（外へ出るのは時刻とコース名だけ）
+  (SELECT json_agg(json_build_object(
+            'reserved_at', o.reserved_at,
+            'duration_minutes', o.duration_minutes,
+            'menu', o.menu))
+     FROM reservations o
+    WHERE o.id <> r.id
+      AND o.external_id IS NULL
+      AND o.status = 'confirmed'
+      AND (o.reserved_at AT TIME ZONE 'Asia/Tokyo')::date
+        = (r.reserved_at AT TIME ZONE 'Asia/Tokyo')::date) AS same_day`;
 
 export function createExternalBlocks({ pool }) {
   /**

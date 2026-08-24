@@ -12,6 +12,10 @@
     "枠を閉じる = 枠のチェックボックスを入れて「仮受付」を押す",
     "枠を開ける = 同じチェックボックスを入れて「キャンセル」を押す",
     "",
+    "cell.checkbox が input ではなく label なのは、実物のチェックボックスが",
+    "<label><input type=\"checkbox\"><span class=\"box\"></span></label> の作りで、",
+    "input が CSS で隠されているため（直接押すと時間切れになる。実物で確認）。",
+    "",
     "register = 空き枠から「顧客検索及び新規受付登録」を開き、院内メモに",
     "お名前・電話番号・コースを書いてから「仮受付」を押す手順。",
     "  * 顧客検索（電話番号での突合）と顧客登録は**しない**。同姓同名で別の方に",
@@ -64,7 +68,7 @@
   "slotMinutes": 60,
 
   "cell": {
-    "checkbox": "input[name=\"appoint\"][value=\"{timeCompact}_{line}\"]",
+    "checkbox": "label:has(input[name=\"appoint\"][value=\"{timeCompact}_{line}\"])",
     "closed": ".reserveFrame{timeCompact}_{line}",
     "open": ".emptyFrame{timeCompact}_{line}",
     "ours": ".reserveFrame{timeCompact}_{line} li.tentative-reservation"

@@ -248,26 +248,29 @@ export function createBrowserDriver({
       if (await cellClosed(vars)) continue;
 
       if (details && profile.register && closed.length === 0) {
-        const submitted = await registerCell(vars, details);
-        // 登録画面を開いたまま／閉じたままの画面を使い回さない。必ず受付表に戻る
+        await registerCell(vars, details);
+        // 登録画面を開いたまま／閉じたままの画面を使い回さない。必ず受付表に戻る。
+        // **押せたかどうかは読み直しでしか分からない。** 実物では仮受付が入ったのに、
+        // 入ったことを待ち構える手順のほうが時間切れになることがあった。
+        // この枠は直前に「開」だと確かめてあるので、閉じていれば自分が閉じたもの
         await gotoDay(slot, { force: true });
-        if (submitted && (await cellClosed(vars))) {
+        if (await cellClosed(vars)) {
           closed.push(time);
           continue;
         }
-        // 押す前に躓いた、または閉じられていない。無名の仮受付に落として枠だけ押さえる
+        // 何も入らなかった。無名の仮受付に落として枠だけ押さえる
       }
 
       // 実物は「仮受付」を押しても確認画面が出ない。押せたかどうかは
       // **読み直して確かめるしかない**。閉じられていない枠を「自分が閉じた」と
       // 記録すると、取消のときにスタッフが止めていた枠を開けてしまう
       const failed = await runSteps(profile.close, vars).then(() => null, briefly);
-      if (!failed) {
-        await gotoDay(slot, { force: true });
-        if (await cellClosed(vars)) {
-          closed.push(time);
-          continue;
-        }
+      // 手順が途中で転んでも読み直す。書けていたのに失敗として残すと、
+      // チェックリストに「もう閉じている枠」が並び続ける
+      await gotoDay(slot, { force: true });
+      if (await cellClosed(vars)) {
+        closed.push(time);
+        continue;
       }
       throw new Error(`枠を閉じられませんでした（${slot.date} ${time}）${failed ? `: ${failed}` : ''}`);
     }
@@ -288,12 +291,10 @@ export function createBrowserDriver({
       if (!(await cellIsOurs(vars))) {
         throw new Error(`ご予約が入っている枠のため開けません（${slot.date} ${time}）`);
       }
-      // 閉じるときと同じく、開いたことも読み直して確かめる
+      // 閉じるときと同じく、開いたことも読み直して確かめる（手順が転んでも読み直す）
       const failed = await runSteps(profile.open, vars).then(() => null, briefly);
-      if (!failed) {
-        await gotoDay(slot, { force: true });
-        if (!(await cellClosed(vars))) continue;
-      }
+      await gotoDay(slot, { force: true });
+      if (!(await cellClosed(vars))) continue;
       throw new Error(`枠を開けられませんでした（${slot.date} ${time}）${failed ? `: ${failed}` : ''}`);
     }
   }

@@ -294,3 +294,67 @@ test('お名前も電話番号も、ログや通知には出さない', async ()
   assert.equal(f.notices.length, 1);
   assert.doesNotMatch(f.notices[0], /田中花子|09012345678/);
 });
+
+// ---- 取消の枠を開け直すとき、他のご予約が使っている枠は残す ----
+
+const LINES = [{ id: '1', match: ['カット', 'シャンプー'] }, { id: '2', match: ['宿泊'] }];
+const lineOf = (menu) => LINES.find((l) => l.match.some((w) => String(menu ?? '').includes(w)))?.id ?? null;
+
+test('重なっている確定予約の枠は、開け直す対象から外す', () => {
+  // 取消 13:30-14:30（枠は13:00と14:00）。14:00 は別の確定予約が使っている
+  const slot = slotOf(
+    row({
+      reserved_at: '2026-08-30T04:30:00.000Z', duration_minutes: 60, status: 'cancelled',
+      same_day: [{ reserved_at: '2026-08-30T05:00:00.000Z', duration_minutes: 60, menu: 'カット' }],
+    }),
+    { action: 'release', lineOf }
+  );
+  assert.deepEqual(slot.cells, ['13:00'], '14:00 は残す');
+});
+
+test('ラインが違えば別の列なので、開け直しを止めない', () => {
+  const slot = slotOf(
+    row({
+      reserved_at: '2026-08-30T04:30:00.000Z', duration_minutes: 60, status: 'cancelled',
+      same_day: [{ reserved_at: '2026-08-30T05:00:00.000Z', duration_minutes: 60, menu: 'ホテル宿泊' }],
+    }),
+    { action: 'release', lineOf }
+  );
+  assert.deepEqual(slot.cells, ['13:00', '14:00']);
+});
+
+test('ラインを決められないときは触らない側に倒す', () => {
+  const slot = slotOf(
+    row({
+      reserved_at: '2026-08-30T04:30:00.000Z', duration_minutes: 60, status: 'cancelled',
+      same_day: [{ reserved_at: '2026-08-30T05:00:00.000Z', duration_minutes: 60, menu: '???' }],
+    }),
+    { action: 'release', lineOf }
+  );
+  assert.deepEqual(slot.cells, ['13:00'], '判断できない枠は閉じたまま残す');
+});
+
+test('閉じるときは他の予約を気にしない（自分の枠を全部押さえる）', () => {
+  const slot = slotOf(
+    row({
+      reserved_at: '2026-08-30T04:30:00.000Z', duration_minutes: 60,
+      same_day: [{ reserved_at: '2026-08-30T05:00:00.000Z', duration_minutes: 60, menu: 'カット' }],
+    }),
+    { action: 'close', lineOf }
+  );
+  assert.deepEqual(slot.cells, ['13:00', '14:00']);
+});
+
+test('開ける枠が1つも残らなければ、EPARK を触らずに済みにする', async () => {
+  const f = makeFakes({
+    toRelease: [row({
+      status: 'cancelled', duration_minutes: 60,
+      same_day: [{ reserved_at: '2026-09-01T01:00:00.000Z', duration_minutes: 60, menu: 'カット' }],
+    })],
+  });
+  const summary = await f.sync.run();
+  assert.equal(summary.done, 1);
+  assert.equal(summary.failed, 0);
+  assert.deepEqual(f.calls.filter((c) => c[0] === 'openSlot'), [], '画面には触らない');
+  assert.deepEqual(f.done, [{ id: 1, done: true }]);
+});

@@ -60,12 +60,12 @@ test('確定の予約は、済みで時刻が入り、未済で消える', async
   const pool = makePool([{ id: 5, status: 'confirmed' }]);
   const blocks = createExternalBlocks({ pool });
 
-  const done = await blocks.setDone({ id: 5, done: true });
+  const done = await blocks.setDone({ id: 5, done: true, cells: ['10:00', '11:00'] });
   assert.equal(done.ok, true);
-  assert.deepEqual(pool.queries[0].params, [5, true]);
+  assert.deepEqual(pool.queries[0].params, [5, true, '["10:00","11:00"]']);
 
   await blocks.setDone({ id: 5, done: false });
-  assert.deepEqual(pool.queries[1].params, [5, false]);
+  assert.deepEqual(pool.queries[1].params, [5, false, null]);
 
   // 向きは SQL 側で状態から決める（画面の申告を信用しない）
   assert.match(pool.queries[0].sql, /WHEN status = 'confirmed' THEN \(CASE WHEN \$2 THEN now\(\) ELSE NULL END\)/);

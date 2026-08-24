@@ -45,7 +45,8 @@ export function createEparkSync({ externalBlocks, driver, slack, config }) {
       // 枠の刻みは相手の受付表しだい（実物は1時間）。駆動部が知っている値に合わせる
       const slotMinutes = driver.slotMinutes ?? 60;
       for (const { row, action } of work) {
-        const slot = slotOf(row, { slotMinutes });
+        // 開け直すのは「自分が実際に閉じた枠」だけ。スタッフが手で止めた枠は触らない
+        const slot = slotOf(row, { slotMinutes, action: action === 'open' ? 'release' : 'close' });
         try {
           if (mode === 'dry_run') {
             // 何を閉じるはずだったかと、いまの EPARK 側の状態を並べて出す。
@@ -56,7 +57,8 @@ export function createEparkSync({ externalBlocks, driver, slack, config }) {
             continue;
           }
 
-          if (action === 'close') await driver.closeSlot(slot);
+          let touched = null;
+          if (action === 'close') ({ closed: touched } = await driver.closeSlot(slot));
           else await driver.openSlot(slot);
 
           // ここが要。書けたと信じずに読み直す
@@ -66,7 +68,11 @@ export function createEparkSync({ externalBlocks, driver, slack, config }) {
             throw new Error(`反映を確認できません（期待=${wanted ? '閉' : '開'} 実際=${closed ? '閉' : '開'}）`);
           }
 
-          const result = await externalBlocks.setDone({ id: slot.reservationId, done: true });
+          const result = await externalBlocks.setDone({
+            id: slot.reservationId,
+            done: true,
+            cells: touched,
+          });
           if (!result.ok) throw new Error(`記録できません: ${result.error}`);
           console.log(`[epark] ${action} ${slotLabel(slot)}`);
           summary.done += 1;

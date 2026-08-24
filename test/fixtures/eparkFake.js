@@ -78,18 +78,26 @@ export async function startFakeEpark({ user = 'shop', password = 'pw' } = {}) {
     const today = '20260901';
 
     if (url.pathname === '/login' && req.method === 'GET') {
-      return send(`<!doctype html><meta charset="utf-8"><form method="post" action="/login">
-        <input name="u" id="loginId"><input name="p" id="password" type="password">
-        <button type="submit">ログイン</button></form>`);
+      // 実物と同じく、送信は type="button" ＋ onclick（submit ではない）
+      const failed = url.searchParams.get('ng')
+        ? '<li>ログインIDまたはパスワードが違います。</li>' : '';
+      return send(`<!doctype html><meta charset="utf-8">
+        <div id="errorPop"><ul id="errorList">${failed}</ul></div>
+        <form method="post" action="/login" id="loginForm">
+          <input type="text" id="loginId" name="loginId">
+          <input type="password" id="pwd" name="pwd">
+        </form>
+        <input name="login" type="button" class="Bloginbtn" value="ログイン"
+               onclick="document.getElementById('loginForm').submit();">`);
     }
     if (url.pathname === '/login' && req.method === 'POST') {
       let body = '';
       req.on('data', (c) => { body += c; });
       req.on('end', () => {
         const form = new URLSearchParams(body);
-        session = form.get('u') === user && form.get('p') === password;
-        if (!session) return send('<!doctype html><meta charset="utf-8"><p class="error">ログインできません</p>');
-        res.writeHead(302, { Location: `/schedule?date=${today}` });
+        session = form.get('loginId') === user && form.get('pwd') === password;
+        // 実物はログイン画面に留まってエラーを出す（別ページへは飛ばない）
+        res.writeHead(302, { Location: session ? `/schedule?date=${today}` : '/login?ng=1' });
         res.end();
       });
       return undefined;
@@ -130,7 +138,12 @@ export async function startFakeEpark({ user = 'shop', password = 'pw' } = {}) {
     /** この作り物に合わせた画面設定。実物ではここだけが変わる */
     profile: {
       loginUrl: `${base}/login`,
-      login: { user: '#loginId', password: '#password', submit: 'button[type="submit"]', ready: '#timetable' },
+      login: {
+        user: '#loginId',
+        password: '#pwd',
+        submit: 'input.Bloginbtn',
+        error: '#errorList li',
+      },
       day: {
         url: `${base}/schedule?date=20260901`,
         script: "multiSchedulerCalendar('{dateCompact}')",

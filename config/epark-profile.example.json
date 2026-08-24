@@ -12,16 +12,19 @@
     "枠を閉じる = 枠のチェックボックスを入れて「仮受付」を押す",
     "枠を開ける = 同じチェックボックスを入れて「キャンセル」を押す",
     "",
+    "送信ボタンは type=\"button\" + onclick なので submit では押せない（実物で確認）。",
+    "ログインの成否は #errorList のエラー表示で判定する。",
+    "",
     "!! 実物での動作は未確認。まず EPARK_MODE=dry_run（読むだけ）で確かめること !!"
   ],
 
-  "loginUrl": "{base}/login/index",
+  "loginUrl": "{base}/login/Login/index",
 
   "login": {
-    "user": "input[name=\"loginId\"]",
-    "password": "input[type=\"password\"]",
-    "submit": "button[type=\"submit\"]",
-    "ready": "#multiSchedulerHidAppointDate"
+    "user": "#loginId",
+    "password": "#pwd",
+    "submit": "input.Bloginbtn",
+    "error": "#errorList li"
   },
 
   "day": {

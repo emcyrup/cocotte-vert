@@ -68,8 +68,13 @@ export function validateProfile(profile) {
   const missing = REQUIRED.filter((key) => !profile[key]);
   if (missing.length > 0) return { ok: false, error: `項目が足りません: ${missing.join(', ')}` };
 
-  for (const key of ['user', 'password', 'submit', 'ready']) {
+  for (const key of ['user', 'password', 'submit']) {
     if (!profile.login[key]) return { ok: false, error: `login.${key} がありません` };
+  }
+  // ログインできたかを判断する手立てが要る。ready（入れた目印）か error（弾かれた目印）。
+  // どちらも無いと、入れていない画面をそのまま操作しかねない
+  if (!profile.login.ready && !profile.login.error) {
+    return { ok: false, error: 'login.ready か login.error のどちらかが要ります' };
   }
 
   const { day } = profile;

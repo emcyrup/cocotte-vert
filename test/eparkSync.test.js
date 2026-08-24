@@ -16,7 +16,7 @@ function makeFakes({ toBlock = [], toRelease = [], driver = {}, mode = 'live' } 
   const base = {
     async open() { calls.push(['open']); },
     async close() { calls.push(['close']); },
-    async closeSlot(s) { calls.push(['closeSlot', s.reservationId]); },
+    async closeSlot(s) { calls.push(['closeSlot', s.reservationId]); return { closed: s.cells }; },
     async openSlot(s) { calls.push(['openSlot', s.reservationId]); },
     async isSlotClosed(s) { calls.push(['isSlotClosed', s.reservationId]); return true; },
   };
@@ -116,7 +116,8 @@ test('閉じたあと読み直して、確認できたときだけ済みにす�
 
   assert.equal(summary.done, 1);
   assert.deepEqual(calls, [['open'], ['closeSlot', 5], ['isSlotClosed', 5], ['close']]);
-  assert.deepEqual(done, [{ id: 5, done: true }]);
+  // 自分が閉じた枠を記録する。開け直すときはここだけを戻す
+  assert.deepEqual(done, [{ id: 5, done: true, cells: ['10:00'] }]);
 });
 
 test('取消の予約は開け直す。開いたことを確認して済みにする', async () => {
@@ -129,7 +130,7 @@ test('取消の予約は開け直す。開いたことを確認して済みに�
 
   assert.equal(summary.done, 1);
   assert.deepEqual(calls.map((c) => c[0]), ['open', 'openSlot', 'close']);
-  assert.deepEqual(done, [{ id: 7, done: true }]);
+  assert.deepEqual(done, [{ id: 7, done: true, cells: null }]);
 });
 
 test('閉じたつもりで閉じられていなければ、済みにせず失敗として残す', async () => {
@@ -152,7 +153,10 @@ test('1件失敗しても、残りの枠は閉じる', async () => {
   const { sync, done } = makeFakes({
     toBlock: [row({ id: 1 }), row({ id: 2 }), row({ id: 3 })],
     driver: {
-      async closeSlot(s) { if (s.reservationId === 2) throw new Error('画面が開けません'); },
+      async closeSlot(s) {
+        if (s.reservationId === 2) throw new Error('画面が開けません');
+        return { closed: s.cells };
+      },
     },
   });
 
@@ -221,8 +225,8 @@ test('記録に失敗したら済みにしない（画面に残す）', async ()
       setDone: async () => ({ ok: false, error: 'not_found' }),
     },
     driver: {
-      async open() {}, async close() {}, async closeSlot() {}, async openSlot() {},
-      async isSlotClosed() { return true; },
+      async open() {}, async close() {}, async closeSlot() { return { closed: [] }; },
+      async openSlot() {}, async isSlotClosed() { return true; },
     },
     slack: { notify: async (t) => notices.push(t), notifyError: async () => {} },
     config: { epark: { mode: 'live' } },
@@ -232,4 +236,33 @@ test('記録に失敗したら済みにしない（画面に残す）', async ()
 
   assert.equal(summary.failed, 1);
   assert.match(notices.join('\n'), /not_found/);
+});
+
+// ---- 自分が閉じた枠だけを開け直す ----
+
+test('開け直すときは、記録された枠だけを対象にする', () => {
+  // スタッフが手作業で止めた枠（お昼休みなど）まで開けてしまわないため
+  const slot = slotOf(
+    row({ status: 'cancelled', duration_minutes: 180, external_blocked_cells: ['11:00'] }),
+    { action: 'release' }
+  );
+  assert.deepEqual(slot.cells, ['11:00']);
+});
+
+test('記録が無ければ全部を候補にする（仮受付の印で守る）', () => {
+  const slot = slotOf(row({ status: 'cancelled', duration_minutes: 120 }), { action: 'release' });
+  assert.deepEqual(slot.cells, ['10:00', '11:00']);
+});
+
+test('記録が予約の時間から外れていたら使わない（日時を直した場合の保険）', () => {
+  const slot = slotOf(
+    row({ status: 'cancelled', duration_minutes: 60, external_blocked_cells: ['15:00'] }),
+    { action: 'release' }
+  );
+  assert.deepEqual(slot.cells, []);
+});
+
+test('閉じるときは記録を見ない（またがる枠を全部閉じる）', () => {
+  const slot = slotOf(row({ duration_minutes: 120, external_blocked_cells: ['11:00'] }));
+  assert.deepEqual(slot.cells, ['10:00', '11:00']);
 });

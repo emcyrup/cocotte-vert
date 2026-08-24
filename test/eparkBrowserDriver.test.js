@@ -165,6 +165,29 @@ test('枠そのものが無い時刻は、閉じているとみなさず例外�
   });
 });
 
+test('閉じた枠だけを返す（すでに閉じていた枠は自分のものにしない）', { skip }, async () => {
+  // スタッフが手で止めていた枠を、あとで取消のときに勝手に開けてしまわないため
+  const fake = await startFakeEpark();
+  fake.setTentative('20260901', '1100', '1');
+  await withDriver(fake, async (driver) => {
+    const { closed } = await driver.closeSlot(at(11, 120));
+    assert.deepEqual(closed, ['12:00'], '自分が閉じたのは12:00だけ');
+  });
+});
+
+test('開け直すのは渡された枠だけ（スタッフが止めた枠は残す）', { skip }, async () => {
+  const fake = await startFakeEpark();
+  fake.setTentative('20260901', '1100', '1');   // スタッフが手で止めた枠
+  fake.setTentative('20260901', '1200', '1');   // 自分が閉じた枠
+  await withDriver(fake, async (driver) => {
+    // 自分が閉じた枠だけを cells に入れて渡す（sync が記録から作る）
+    await driver.openSlot({ ...at(11, 120), cells: ['12:00'] });
+
+    assert.equal(fake.stateOf('20260901', '1100', '1'), 'tentative', 'スタッフの枠は残す');
+    assert.equal(fake.stateOf('20260901', '1200', '1'), null);
+  });
+});
+
 test('ログインできなければ、画面を操作せずに止まる', { skip }, async () => {
   const fake = await startFakeEpark();
   const driver = createBrowserDriver({

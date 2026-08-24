@@ -137,15 +137,34 @@ export function createBrowserDriver({
     page.setDefaultTimeout(stepTimeout);
 
     await page.goto(profile.loginUrl, { waitUntil: 'domcontentloaded', timeout: navTimeout });
+    const loginUrl = page.url();
     await page.locator(profile.login.user).first().fill(config.epark.user);
     await page.locator(profile.login.password).first().fill(config.epark.password);
+    // 実物の送信は type="button" ＋ onclick。submit ではないので押した後の遷移を自分で待つ
     await page.locator(profile.login.submit).first().click();
-    try {
-      await page.locator(profile.login.ready).first().waitFor({ timeout: navTimeout });
-    } catch {
-      // ここで止めないと、ログインできていない画面を操作して見当違いの結果になる。
+    await page.waitForLoadState('domcontentloaded').catch(() => {});
+
+    // 入力が違えば画面にエラーが出る。ここで気付けると原因が分かりやすい
+    if (profile.login.error) {
+      const failed = await page
+        .locator(profile.login.error)
+        .first()
+        .waitFor({ state: 'visible', timeout: 3000 })
+        .then(() => true, () => false);
       // パスワードは例外にも載せない
-      throw new Error('EPARK にログインできませんでした（画面設定 login.ready を確認してください）');
+      if (failed) throw new Error('EPARK にログインできませんでした（ID かパスワードを確認してください）');
+    }
+
+    if (profile.login.ready) {
+      try {
+        await page.locator(profile.login.ready).first().waitFor({ state: 'attached', timeout: navTimeout });
+      } catch {
+        throw new Error('EPARK にログインできませんでした（画面設定 login.ready を確認してください）');
+      }
+    } else if (page.url() === loginUrl) {
+      // ログイン画面に留まったまま＝入れていない。ここで止めないと、
+      // ログインできていない画面を操作して見当違いの結果になる
+      throw new Error('EPARK にログインできませんでした（ログイン画面から進んでいません）');
     }
     openedDate = null;
   }
@@ -157,15 +176,23 @@ export function createBrowserDriver({
     openedDate = null;
   }
 
-  /** またがる枠を順に閉じる。すでに閉じている枠は飛ばす */
+  /**
+   * またがる枠を順に閉じる。すでに閉じている枠は飛ばす。
+   * **自分が実際に閉じた枠を返す。** スタッフが手作業で止めていた枠を、
+   * あとで取消のときに勝手に開けてしまわないため。
+   * @returns {Promise<{closed: string[]}>}
+   */
   async function closeSlot(slot) {
     const line = lineOf(slot);
+    const closed = [];
     for (const time of slot.cells) {
       const vars = varsFor(slot, time, line);
       await gotoDay(slot);
       if (await cellClosed(vars)) continue;
       await runSteps(profile.close, vars);
+      closed.push(time);
     }
+    return { closed };
   }
 
   /**

@@ -193,6 +193,11 @@ export function createReservationService({ pool, slack, lineClient = null }) {
                 WHEN reserved_at IS DISTINCT FROM $2::timestamptz THEN NULL
                 ELSE external_blocked_at
               END,
+              -- 時間が動けば、閉じた枠の記録も意味を失う
+              external_blocked_cells = CASE
+                WHEN reserved_at IS DISTINCT FROM $2::timestamptz THEN NULL
+                ELSE external_blocked_cells
+              END,
               updated_at = now()
         WHERE id = $1
         RETURNING id, to_char(reserved_at AT TIME ZONE 'Asia/Tokyo', 'YYYY-MM-DD"T"HH24:MI') AS reserved_at`,

@@ -14,9 +14,11 @@
 // 外部から取り込んだ予約（external_id あり）は、もともと EPARK 側にあるので対象外
 const FROM_THIS_APP = 'r.external_id IS NULL';
 
-// duration_minutes は「どこからどこまでの枠を閉じるか」に要る（自動化の駆動部が使う）
+// duration_minutes は「どこからどこまでの枠を閉じるか」に要る（自動化の駆動部が使う）。
+// external_blocked_cells は「自分が実際に閉じた枠」。開け直すのはここだけに限る
 const COLUMNS = `
   r.id, r.reserved_at, r.menu, r.status::text AS status, r.duration_minutes,
+  r.external_blocked_cells,
   c.name AS customer_name, s.name AS staff_name`;
 
 export function createExternalBlocks({ pool }) {
@@ -50,8 +52,11 @@ export function createExternalBlocks({ pool }) {
    * どちらの向きの作業かは**予約の状態から決める**（画面の申告は使わない。
    * 一覧を開いたあとに状態が変われば、押した時点の意味が変わるため）。
    */
-  async function setDone({ id, done }) {
+  async function setDone({ id, done, cells = null }) {
     if (!Number.isInteger(id) || id <= 0) return { ok: false, error: 'invalid_id' };
+    // 画面のチェックからは cells が来ない（手作業なのでどの枠を触ったか分からない）。
+    // その場合は記録を消す。開け直すときは予約の時間から算出し、仮受付の印で守る
+    const cellsJson = Array.isArray(cells) && cells.length > 0 ? JSON.stringify(cells) : null;
 
     const { rows } = await pool.query(
       `UPDATE reservations
@@ -61,10 +66,15 @@ export function createExternalBlocks({ pool }) {
                 -- 取消: 開け直したら記録を消す（もう閉じていないため）
                 ELSE (CASE WHEN $2 THEN NULL ELSE now() END)
               END,
+              -- 閉じたときだけ「自分が閉じた枠」を残す。開けたら消す
+              external_blocked_cells = CASE
+                WHEN status = 'confirmed' AND $2 THEN $3::jsonb
+                ELSE NULL
+              END,
               updated_at = now()
         WHERE id = $1 AND external_id IS NULL
         RETURNING id, status::text AS status`,
-      [id, Boolean(done)]
+      [id, Boolean(done), cellsJson]
     );
     if (rows.length === 0) return { ok: false, error: 'not_found' };
     // 顧客は内部 id でのみ参照する（氏名はログに残さない）

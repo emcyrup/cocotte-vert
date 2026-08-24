@@ -55,15 +55,24 @@ export function cellTimes(startTime, minutes, slotMinutes) {
 
 /**
  * 一覧の1行から、駆動部へ渡す枠を作る。
+ *
+ * `action` で `cells`（駆動部が触る枠）が変わる。
+ *   close   … 予約がまたがる枠すべて
+ *   release … **自分が実際に閉じた枠だけ**（記録があれば）。
+ *             スタッフが手作業で止めた枠まで開けてしまわないため。
+ *             記録が無いときは全部を候補にし、仮受付の印で守る
+ *
  * @returns {{reservationId:number, date:string, dateCompact:string, startTime:string,
  *            endTime:string, minutes:number, menu:string, cells:string[]}}
  */
-export function slotOf(row, { slotMinutes = 60 } = {}) {
+export function slotOf(row, { slotMinutes = 60, action = 'close' } = {}) {
   const minutes = Number(row.duration_minutes) > 0
     ? Number(row.duration_minutes)
     : DEFAULT_DURATION_MINUTES;
   const { date, time } = jstFields(new Date(row.reserved_at));
   const endMinutes = Math.min(toMinutes(time) + minutes, 24 * 60 - 1);
+  const covered = cellTimes(time, minutes, slotMinutes);
+  const recorded = Array.isArray(row.external_blocked_cells) ? row.external_blocked_cells : null;
   return {
     reservationId: Number(row.id),
     date,
@@ -72,7 +81,10 @@ export function slotOf(row, { slotMinutes = 60 } = {}) {
     endTime: toTime(endMinutes),
     minutes,
     menu: row.menu ?? '',
-    cells: cellTimes(time, minutes, slotMinutes),
+    // 記録された枠のうち、いまの予約時間に収まるものだけを使う（時間が動いた場合の保険）
+    cells: action === 'release' && recorded
+      ? recorded.filter((t) => covered.includes(t))
+      : covered,
   };
 }
 

@@ -79,6 +79,13 @@ TZ=Asia/Tokyo
 SEND_MODE=dry_run
 ```
 
+> **`<DB名>` まで入れること。** 末尾の `/` で終わっているとデプロイが
+> 「DATABASE_URL にデータベース名がありません」で止まる。
+> パスワードに `@ : / ? #` が入っていても壊れる（記号を避けるか URL エンコードする）。
+> `.env` に **`DATABASE_URL` が2行あると後の行が勝つ**ので、`.env.example` を写した
+> 見本の行が残っていないか確認する（`node scripts/check-env.js` が検知する）。
+
+
 LINE・Slack・Claude・管理画面のパスワードなど、残りは**検証環境の `.env` からそのまま写す**。
 `POSTGRES_PASSWORD` と `DOMAIN` は Docker Compose 用なので本番では不要。
 

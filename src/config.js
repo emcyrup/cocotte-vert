@@ -11,11 +11,48 @@ const IG_POST_MODES = ['dry_run', 'live'];
 // EPARK は「送信」ではなく相手の画面を書き換える操作なので、触らない状態（off）を既定に置く
 const EPARK_MODES = ['off', 'dry_run', 'live'];
 
+const DB_URL_SHAPE = 'postgres://ユーザー:パスワード@ホスト:5432/データベース名';
+
+/**
+ * DATABASE_URL の形を確かめる。
+ * 値そのものはエラーに出さない（パスワードが入っているため）。
+ * どこが足りないかだけを言う。
+ */
+function assertDatabaseUrl(raw) {
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error(
+      `DATABASE_URL の形が正しくありません（${DB_URL_SHAPE}）。` +
+        'パスワードに @ : / ? # が入っていると壊れます。記号を避けるか URL エンコードしてください'
+    );
+  }
+  if (!['postgres:', 'postgresql:'].includes(url.protocol)) {
+    throw new Error(`DATABASE_URL は postgres:// で始めてください（いまは ${url.protocol}//）`);
+  }
+  if (!url.hostname) throw new Error(`DATABASE_URL にホスト名がありません（${DB_URL_SHAPE}）`);
+  // ユーザー名は省略できる（OS のユーザーで繋ぐ書き方が正当なため、ここでは求めない）
+  // ここが本番で実際に詰まったところ。データベース名が決まるまで空になりやすい
+  const database = url.pathname.replace(/^\//, '');
+  if (!database) {
+    throw new Error(
+      `DATABASE_URL にデータベース名がありません（${DB_URL_SHAPE}）。` +
+        'ホスト名のうしろに /データベース名 が要ります'
+    );
+  }
+}
+
 export function loadConfig(env = process.env) {
   const missing = REQUIRED_VARS.filter((key) => !env[key]);
   if (missing.length > 0) {
     throw new Error(`環境変数が未設定です: ${missing.join(', ')}`);
   }
+
+  // 形が壊れていると pg が "Invalid URL" とだけ言って落ちる。何を直せばいいのか
+  // 分からないので、ここで形を見て具体的に言う（サーバーに入らず原因が分かるように）。
+  // パスワードが入りうる値なので、**値そのものは決してエラーに載せない**
+  assertDatabaseUrl(env.DATABASE_URL);
 
   // 未指定なら必ず dry_run。live を既定値にできる経路を作らない
   const sendMode = env.SEND_MODE || 'dry_run';

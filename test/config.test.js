@@ -108,3 +108,69 @@ test('EPARK を動かすならログイン情報が要る', () => {
 test('不正な EPARK_MODE は拒否する', () => {
   assert.throws(() => loadConfig({ ...baseEnv, EPARK_MODE: 'test' }), /EPARK_MODE/);
 });
+
+/** 投げられた例外を取り出す（メッセージの中身まで確かめたいとき） */
+function catchError(fn) {
+  try {
+    fn();
+  } catch (err) {
+    return err;
+  }
+  throw new Error('例外が投げられませんでした');
+}
+
+// ---- DATABASE_URL の形 ----
+// 壊れていると pg が "Invalid URL" とだけ言って落ちる。サーバーに入らず原因が分かるようにする
+
+test('データベース名が抜けていると、そう言って落ちる', () => {
+  // 本番で実際に詰まったところ。名前が決まるまで空になりやすい
+  assert.throws(
+    () => loadConfig({ ...baseEnv, DATABASE_URL: 'postgres://user:pw@db.example:5432/' }),
+    /データベース名がありません/
+  );
+});
+
+test('ホスト名が抜けていてもそう言う', () => {
+  assert.throws(
+    () => loadConfig({ ...baseEnv, DATABASE_URL: 'postgres://user:pw@:5432/mydb' }),
+    /形が正しくありません/
+  );
+});
+
+test('ユーザー名の省略は認める（OS のユーザーで繋ぐ書き方）', () => {
+  const url = 'postgres://db.example:5432/mydb';
+  assert.equal(loadConfig({ ...baseEnv, DATABASE_URL: url }).databaseUrl, url);
+});
+
+test('URL として読めない値は、記号の可能性まで案内する', () => {
+  // パスワードに @ や / が入っていると壊れる。実際に起きやすい
+  const err = catchError(() => loadConfig({ ...baseEnv, DATABASE_URL: 'これはURLではない' }));
+  assert.match(err.message, /形が正しくありません/);
+  assert.match(err.message, /URL エンコード/);
+});
+
+test('postgres 以外のプロトコルは断る', () => {
+  assert.throws(
+    () => loadConfig({ ...baseEnv, DATABASE_URL: 'mysql://user:pw@db.example:3306/mydb' }),
+    /postgres:\/\/ で始めてください/
+  );
+});
+
+test('エラーに DATABASE_URL の中身を出さない（パスワードが入るため）', () => {
+  const secret = 'himitsunoaikotoba';
+  const err = catchError(() =>
+    loadConfig({ ...baseEnv, DATABASE_URL: `postgres://user:${secret}@db.example:5432/` })
+  );
+  assert.match(err.message, /データベース名がありません/);
+  assert.doesNotMatch(err.message, new RegExp(secret));
+});
+
+test('正しい形なら通る（postgresql:// も可）', () => {
+  for (const url of [
+    'postgres://user:pw@db.example:5432/mydb',
+    'postgresql://user:pw@127.0.0.1:5432/postgres',
+    'postgres://user@localhost/mydb',
+  ]) {
+    assert.equal(loadConfig({ ...baseEnv, DATABASE_URL: url }).databaseUrl, url, url);
+  }
+});

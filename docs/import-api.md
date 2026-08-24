@@ -345,15 +345,45 @@ node --env-file-if-exists=.env scripts/epark-probe.js --headed --keep=180   # �
 **ブラウザ本体（数百MB）は落ちない**（`node_modules` は約 44MB 増える）。
 実際に動かす環境でだけ `npx playwright install chromium` を実行する。
 
+### 動かす場所（GitHub Actions ＋ 管理 API）
+
+ブラウザとデータベースの**両方に届く場所が無い**。
+
+| | ブラウザ | データベース |
+| --- | --- | --- |
+| GitHub Actions | ○ | **×**（外から届かない） |
+| アプリサーバー（GCP / AWS） | **×**（sudo なし・イメージに無し） | ○ |
+
+そこで**自動化は GitHub Actions で動かし、作業の一覧と消し込みは管理 API 越し**に行う。
+**サーバーには何も足さない。**
+
+> Actions タブ → **epark-sync** → Run workflow → `dry_run` か `live` を選ぶ
+
+```bash
+# 手元で同じことをする場合
+ADMIN_BASE_URL=https://<管理画面> node scripts/run-epark-sync.js --via=api --dry-run
+```
+
+必要な Secrets / Variables:
+
+| 種類 | 名前 | 中身 |
+| --- | --- | --- |
+| Secret | `EPARK_BASE_URL` / `EPARK_USER` / `EPARK_PASSWORD` | EPARK 管理画面 |
+| Secret | `ADMIN_BASE_URL` / `ADMIN_USER` / `ADMIN_PASSWORD` | こちらの管理画面（Basic 認証） |
+| Secret | `SLACK_WEBHOOK_URL` | 任意。無ければログにだけ出す |
+| Variable | `EPARK_SYNC_ENABLED` | `true`。これが無いうちは定期実行も手動実行も動かない |
+| Variable | `EPARK_SYNC_MODE` | 既定 `dry_run`。実際に書き換えるときだけ `live` |
+
+**一覧は `?fields=sync` で取る。お客様の氏名・電話番号は含まれない**（外へ出す量を減らすため）。
+定期実行は30分ごと。EPARK の予約は承認制なので、多少の遅れは事故にならない。
+
 ### 移設先での制約
 
-本番の AWS は **sudo なし・Docker なし**。Chromium はシステムライブラリを要求するため、
-そのままでは動かない可能性が高い。回避策は2つ。
+本番の AWS は **sudo なし・Docker なし**で Chromium を置けない。上記のとおり
+GitHub Actions から管理 API 越しに動かすことで解決した。サーバーに入れるものは無い。
 
-1. **インフラ会社に依存パッケージの導入を一度だけ依頼する**（`client_max_body_size` などと同じ扱い）
-2. **GitHub Actions の定期実行から動かす**。ランナーには一式が揃っている。
-   アプリの API 経由で一覧を取り、消し込みを返す形にすればサーバー側に何も足さずに済む。
-   定期実行は数分〜数十分ずれることがあるが、枠を閉じる用途では許容範囲
+将来サーバー側で動かしたくなった場合は、インフラ会社に Chromium の依存パッケージの
+導入を依頼すれば `--via=api` を外して直接データベースから読める。
 
 ### 残り（実物で確かめること）
 

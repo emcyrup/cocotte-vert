@@ -19,6 +19,8 @@
 //   {timeCompact}  1000
 //   {line}         ライン ID（1 / 2 …）
 //   {checkbox}     cell.checkbox を展開したセレクタ（手順の中で使える）
+//   {closed} {open}  cell.closed / cell.open を展開したセレクタ。
+//                  「押したあと、その枠が実際に変わるまで待つ」ために手順の waitFor で使う
 
 const ACTIONS = ['click', 'fill', 'select', 'waitFor'];
 const REQUIRED = ['loginUrl', 'login', 'day', 'lines', 'cell', 'close', 'open'];
@@ -27,7 +29,7 @@ const CELL_KEYS = ['checkbox', 'closed', 'open', 'ours'];
 /** 差し込み。埋め込みは1か所にまとめ、駆動部で書式を散らさない */
 export function fill(template, vars) {
   return String(template).replace(
-    /\{(base|date|dateCompact|time|timeCompact|line|checkbox)\}/g,
+    /\{(base|date|dateCompact|time|timeCompact|line|checkbox|closed|open)\}/g,
     (whole, key) => (vars[key] == null ? whole : vars[key])
   );
 }

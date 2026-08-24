@@ -188,6 +188,25 @@ test('開け直すのは渡された枠だけ（スタッフが止めた枠は�
   });
 });
 
+test('押しても何も起きない画面では、閉じたことにしない', { skip }, async () => {
+  // 実物は「仮受付」を押しても確認画面が出ない。押せていないことに気付けるのは
+  // 読み直しだけで、ここを外すと「閉じたつもり」で消し込んでしまう
+  const fake = await startFakeEpark({ silentFail: true });
+  await withDriver(fake, async (driver) => {
+    await assert.rejects(() => driver.closeSlot(at(11)), /枠を閉じられませんでした/);
+    assert.equal(fake.filled.size, 0);
+  });
+});
+
+test('開けたつもりで開いていなければ、済みにしない', { skip }, async () => {
+  const fake = await startFakeEpark({ silentFail: true });
+  fake.setTentative('20260901', '1100', '1');
+  await withDriver(fake, async (driver) => {
+    await assert.rejects(() => driver.openSlot(at(11)), /枠を開けられませんでした/);
+    assert.equal(fake.stateOf('20260901', '1100', '1'), 'tentative');
+  });
+});
+
 test('ログインできなければ、画面を操作せずに止まる', { skip }, async () => {
   const fake = await startFakeEpark();
   const driver = createBrowserDriver({

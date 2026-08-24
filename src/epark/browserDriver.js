@@ -20,6 +20,11 @@ import { fill, validateProfile, lineFor } from './profile.js';
 const DEFAULT_NAV_TIMEOUT = 30_000;
 const DEFAULT_STEP_TIMEOUT = 15_000;
 
+/** 画面操作の例外は長い。通知に載るのは1行目だけで足りる */
+function briefly(err) {
+  return String(err?.message ?? err).split('\n')[0].slice(0, 160);
+}
+
 async function loadPlaywright() {
   try {
     return await import('playwright');
@@ -96,16 +101,27 @@ export function createBrowserDriver({
 
   /** 設定に書かれた手順を順に実行する */
   async function runSteps(steps, vars) {
-    const withCheckbox = { ...vars, checkbox: cellSelector('checkbox', vars) };
-    for (const step of steps) {
-      const target = (sel) => page.locator(fill(sel, withCheckbox)).first();
-      if (step.click) await target(step.click).click({ timeout: stepTimeout });
-      else if (step.fill) await target(step.fill).fill(String(step.value), { timeout: stepTimeout });
-      else if (step.select) await target(step.select).selectOption(String(step.value), { timeout: stepTimeout });
-      else if (step.waitFor) await target(step.waitFor).waitFor({ timeout: stepTimeout });
+    // {closed} / {open} を使えるようにしておく。実物は「仮受付」を押しても確認画面が
+    // 出ないため、**その枠が実際に変わるまで待つ**のが唯一の区切りになる
+    const withSelectors = {
+      ...vars,
+      checkbox: cellSelector('checkbox', vars),
+      closed: cellSelector('closed', vars),
+      open: cellSelector('open', vars),
+    };
+    try {
+      for (const step of steps) {
+        const target = (sel) => page.locator(fill(sel, withSelectors)).first();
+        if (step.click) await target(step.click).click({ timeout: stepTimeout });
+        else if (step.fill) await target(step.fill).fill(String(step.value), { timeout: stepTimeout });
+        else if (step.select) await target(step.select).selectOption(String(step.value), { timeout: stepTimeout });
+        else if (step.waitFor) await target(step.waitFor).waitFor({ timeout: stepTimeout });
+      }
+    } finally {
+      // 保存のたびに受付表が作り替えられる。次は開き直す。
+      // 途中で失敗したときも、チェックが入ったままの画面を使い回さないため必ず捨てる
+      openedDate = null;
     }
-    // 保存のたびに受付表が作り替えられる。次は開き直す
-    openedDate = null;
   }
 
   /**
@@ -189,8 +205,18 @@ export function createBrowserDriver({
       const vars = varsFor(slot, time, line);
       await gotoDay(slot);
       if (await cellClosed(vars)) continue;
-      await runSteps(profile.close, vars);
-      closed.push(time);
+      // 実物は「仮受付」を押しても確認画面が出ない。押せたかどうかは
+      // **読み直して確かめるしかない**。閉じられていない枠を「自分が閉じた」と
+      // 記録すると、取消のときにスタッフが止めていた枠を開けてしまう
+      const failed = await runSteps(profile.close, vars).then(() => null, briefly);
+      if (!failed) {
+        await gotoDay(slot, { force: true });
+        if (await cellClosed(vars)) {
+          closed.push(time);
+          continue;
+        }
+      }
+      throw new Error(`枠を閉じられませんでした（${slot.date} ${time}）${failed ? `: ${failed}` : ''}`);
     }
     return { closed };
   }
@@ -209,7 +235,13 @@ export function createBrowserDriver({
       if (!(await cellIsOurs(vars))) {
         throw new Error(`ご予約が入っている枠のため開けません（${slot.date} ${time}）`);
       }
-      await runSteps(profile.open, vars);
+      // 閉じるときと同じく、開いたことも読み直して確かめる
+      const failed = await runSteps(profile.open, vars).then(() => null, briefly);
+      if (!failed) {
+        await gotoDay(slot, { force: true });
+        if (!(await cellClosed(vars))) continue;
+      }
+      throw new Error(`枠を開けられませんでした（${slot.date} ${time}）${failed ? `: ${failed}` : ''}`);
     }
   }
 

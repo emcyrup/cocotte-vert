@@ -14,6 +14,8 @@
     "",
     "送信ボタンは type=\"button\" + onclick なので submit では押せない（実物で確認）。",
     "ログインの成否は #errorList のエラー表示で判定する。",
+    "「仮受付」を押しても確認画面は出ない（実物で確認）。区切りが無いので、",
+    "waitFor に {closed} / {open} を置き、その枠が実際に変わるまで待つ。",
     "",
     "!! 実物での動作は未確認。まず EPARK_MODE=dry_run（読むだけ）で確かめること !!"
   ],
@@ -58,12 +60,12 @@
   "close": [
     { "click": "{checkbox}" },
     { "click": "#multiple-select-panel .link.tentative-reservation a" },
-    { "waitFor": "#multiSchedulerHidAppointDate" }
+    { "waitFor": "{closed}" }
   ],
 
   "open": [
     { "click": "{checkbox}" },
     { "click": "#multiple-select-panel .link.cancel a" },
-    { "waitFor": "#multiSchedulerHidAppointDate" }
+    { "waitFor": "{open}" }
   ]
 }

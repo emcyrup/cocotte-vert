@@ -19,7 +19,13 @@ const LINES = ['1', '2'];
 
 const key = (date, time, line) => `${date} ${time} ${line}`;
 
-export async function startFakeEpark({ user = 'shop', password = 'pw' } = {}) {
+/**
+ * @param {object} p
+ * @param {boolean} p.silentFail 押しても何も起きない画面を作る。
+ *   実物は「仮受付」を押しても確認画面が出ないため、押せていないことに
+ *   気付けるかを試す（自動化で一番怖い壊れ方）
+ */
+export async function startFakeEpark({ user = 'shop', password = 'pw', silentFail = false } = {}) {
   // 埋まっている枠 → 'tentative'（自分が入れた仮受付） か 'booked'（本物のご予約）
   const filled = new Map();
   let session = false;
@@ -113,6 +119,7 @@ export async function startFakeEpark({ user = 'shop', password = 'pw' } = {}) {
       const date = url.searchParams.get('date');
       const to = url.searchParams.get('to');
       for (const cell of (url.searchParams.get('cells') || '').split(',').filter(Boolean)) {
+        if (silentFail) continue;   // 押しても何も起きない画面
         const [time, line] = cell.split('_');
         if (to === 'tentative') filled.set(key(date, time, line), 'tentative');
         else filled.delete(key(date, time, line));
@@ -163,12 +170,12 @@ export async function startFakeEpark({ user = 'shop', password = 'pw' } = {}) {
       close: [
         { click: '{checkbox}' },
         { click: '#multiple-select-panel .tentative-reservation a' },
-        { waitFor: '#timetable' },
+        { waitFor: '{closed}' },
       ],
       open: [
         { click: '{checkbox}' },
         { click: '#multiple-select-panel .cancel a' },
-        { waitFor: '#timetable' },
+        { waitFor: '{open}' },
       ],
     },
   };

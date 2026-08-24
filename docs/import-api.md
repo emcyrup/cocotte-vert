@@ -160,7 +160,7 @@ Slack にも通知が飛ぶ。**自動化は手作業の置き換えであって
 | 時間 | 1時間刻みの固定枠（10:00〜18:00）。行は `id="id_1000"` |
 | 枠の状態 | 埋まり=`.reserveFrame1000_1` / 空き=`.emptyFrame1000_1`（`HHMM_ラインID`） |
 | 仮受付の印 | `li.tentative-reservation`。**本物のご予約には付かない** |
-| 閉じる | 枠のチェックボックス → 画面下の「**仮受付**」 |
+| 閉じる | 枠のチェックボックス → 画面下の「**仮受付**」。**確認ダイアログは出ない** |
 | 開ける | 同じチェックボックス → 「**キャンセル**」 |
 | 日付の移動 | URL ではなく JavaScript（`multiSchedulerRequest_multiScheduler_Calendar('20260901')`） |
 
@@ -181,7 +181,12 @@ Slack にも通知が飛ぶ。**自動化は手作業の置き換えであって
 ご予約なので、**絶対に触らない**（こちらの取消と入れ違いで EPARK からご予約が入っている
 ことがある）。見分けが付かない枠は例外にして人に回す。
 
-**④ 自分が閉じた枠しか開けない。** スタッフも同じ画面で手作業の仮受付を入れている
+**④ 押したあと必ず読み直す。** 「仮受付」を押しても**確認画面が出ない**ので、
+押せたかどうかを教えてくれるものが何も無い。手順の最後に `waitFor: {closed}` を置いて
+**その枠が実際に変わるまで待ち**、さらに画面を開き直して読み直す。変わっていなければ
+「閉じられませんでした」として失敗させ、チェックリストに残す。
+
+**⑤ 自分が閉じた枠しか開けない。** スタッフも同じ画面で手作業の仮受付を入れている
 （お昼休み・貸切など）。閉じにいった枠がすでに閉じていれば飛ばすが、そのまま取消のときに
 開けると**スタッフが意図して止めていた枠を勝手に開けてしまう**。そこで自動化が実際に
 閉じた枠を `reservations.external_blocked_cells` に残し、開け直すのはそこだけにする。
@@ -229,13 +234,17 @@ Slack にも通知が飛ぶ。**自動化は手作業の置き換えであって
     "ours": ".reserveFrame{timeCompact}_{line} li.tentative-reservation"
   },
   "close": [ { "click": "{checkbox}" },
-             { "click": "#multiple-select-panel .link.tentative-reservation a" } ],
+             { "click": "#multiple-select-panel .link.tentative-reservation a" },
+             { "waitFor": "{closed}" } ],
   "open":  [ { "click": "{checkbox}" },
-             { "click": "#multiple-select-panel .link.cancel a" } ]
+             { "click": "#multiple-select-panel .link.cancel a" },
+             { "waitFor": "{open}" } ]
 }
 ```
 
 - 差し込める値: `{base}` `{date}` `{dateCompact}` `{time}` `{timeCompact}` `{line}` `{checkbox}`
+- `{closed}` / `{open}` は枠の状態のセレクタ。**確認画面が出ない作りなので**、
+  手順の `waitFor` に置いて「その枠が変わるまで待つ」区切りに使う
 - 1手は `click` / `fill` / `select` / `waitFor` のどれか1つ
 - **`{base}` は `.env` の `EPARK_BASE_URL` に置き換わる。** 管理画面の URL には店舗の識別子が
   入るため、公開リポジトリには書かない。ログイン情報も設定ファイルには書かない
@@ -282,6 +291,8 @@ node --env-file-if-exists=.env scripts/epark-probe.js --headed --keep=180   # �
 - **本物のご予約が入っている枠は開けない**（消さない）
 - **すでに閉じていた枠は「自分が閉じた」ことにしない**／開け直すのは記録された枠だけ
   （スタッフが手で止めた枠を残す）
+- **押しても何も起きない画面では「閉じた」ことにしない**（確認画面が出ないぶん、
+  ここを外すと「閉じたつもり」で消し込んでしまう）
 - 別の日付へ移れる。**日付が変わったことを確かめられなければ操作しない**
 - 枠そのものが無い時刻は「閉じている」とみなさず例外にする
 - ログインできなければ画面を操作せず、パスワードを例外の文言に出さない
@@ -309,7 +320,6 @@ node --env-file-if-exists=.env scripts/epark-probe.js --headed --keep=180   # �
 
 ### 残り（実物で確かめること）
 
-- **「仮受付」を押したあとに確認のダイアログが出るか**。出るなら手順に1手足す
 - 日付の移動が `multiSchedulerRequest_multiScheduler_Calendar` で実際に効くか
 - ログイン後にどの画面へ飛ぶか（`login.ready` を足せるならそのほうが確実）
 - **「WEB受付停止」**（受付表のラインごとにあるボタン）で、時間帯や日をまとめて止められないか。

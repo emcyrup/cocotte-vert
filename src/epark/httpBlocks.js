@@ -9,10 +9,11 @@
 // `epark/sync.js` からはどちらを渡しても同じように動く。
 //
 // 取ってくるのは `?fields=sync`。**お客様の氏名・電話番号は含まれない。**
+// EPARK の仮受付にお名前を載せる運用のときだけ、`details` を立てて必要な分を足す。
 
 const TIMEOUT_MS = 20_000;
 
-export function createHttpBlocks({ baseUrl, user, password, fetchFn = fetch }) {
+export function createHttpBlocks({ baseUrl, user, password, details = false, fetchFn = fetch }) {
   const root = String(baseUrl).replace(/\/$/, '');
   const headers = {
     // 管理画面と同じ Basic 認証。資格情報は GitHub Secrets から渡す
@@ -36,7 +37,8 @@ export function createHttpBlocks({ baseUrl, user, password, fetchFn = fetch }) {
   }
 
   async function listPending() {
-    const { toBlock = [], toRelease = [] } = await call('/api/admin/external-blocks?fields=sync');
+    const path = `/api/admin/external-blocks?fields=sync${details ? '&details=1' : ''}`;
+    const { toBlock = [], toRelease = [] } = await call(path);
     return { toBlock, toRelease };
   }
 

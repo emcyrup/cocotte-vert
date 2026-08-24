@@ -651,20 +651,28 @@ export function createAdminRouter({
   // EPARK など外部サイトの枠を閉じる／開け直す作業の一覧。
   //
   // 画面（チェックリスト）と、自動化（GitHub Actions からブラウザを動かす）の両方が使う。
-  // 自動化には氏名が要らないので、?fields=sync では**個人情報を返さない**。
-  // 外へ出す量は少ないほどよい
+  // ?fields=sync では**個人情報を返さない**。外へ出す量は少ないほどよい。
+  //
+  // ただし EPARK の仮受付にお名前を載せる運用（EPARK_DETAILS=on）では、自動化側にも
+  // 氏名・電話番号が要る。そのときだけ &details=1 で明示的に足す。既定では返らない
   const SYNC_FIELDS = ['id', 'reserved_at', 'menu', 'status', 'duration_minutes',
     'external_blocked_cells', 'action'];
-  const forSync = (row) => Object.fromEntries(SYNC_FIELDS.map((k) => [k, row[k]]));
+  const DETAIL_FIELDS = ['customer_name', 'phone_norm', 'pet_name'];
+  const forSync = (row, withDetails) =>
+    Object.fromEntries(
+      [...SYNC_FIELDS, ...(withDetails ? DETAIL_FIELDS : [])].map((k) => [k, row[k]])
+    );
 
   router.get('/external-blocks', async (req, res, next) => {
     try {
       if (!externalBlocks) return res.json({ toBlock: [], toRelease: [] });
       const pending = await externalBlocks.listPending();
       if (req.query.fields !== 'sync') return res.json(pending);
+      const withDetails = req.query.details === '1';
       res.json({
-        toBlock: pending.toBlock.map(forSync),
-        toRelease: pending.toRelease.map(forSync),
+        toBlock: pending.toBlock.map((row) => forSync(row, withDetails)),
+        // 開け直すだけの予約に氏名は要らない（EPARK には何も書き込まない）
+        toRelease: pending.toRelease.map((row) => forSync(row, false)),
       });
     } catch (err) {
       next(err);

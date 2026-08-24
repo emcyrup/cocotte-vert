@@ -12,6 +12,19 @@
     "枠を閉じる = 枠のチェックボックスを入れて「仮受付」を押す",
     "枠を開ける = 同じチェックボックスを入れて「キャンセル」を押す",
     "",
+    "register = 空き枠から「顧客検索及び新規受付登録」を開き、院内メモに",
+    "お名前・電話番号・コースを書いてから「仮受付」を押す手順。",
+    "  * 顧客検索（電話番号での突合）と顧客登録は**しない**。同姓同名で別の方に",
+    "    紐づけると相手の台帳が壊れて戻せないため。メモに書くだけにする",
+    "  * 押すのは「受付」(#OP0062UD01) ではなく「仮受付」(#OP0062UD02)。",
+    "    仮受付の印が残らないと、取消のとき自分が入れた分を見分けられない",
+    "  * コース (#reservationIdName) は選ばない。選ぶと scheduleEndtimeChange() が",
+    "    終了時刻を勝手に動かし、閉じる枠がこちらの所要時間とずれる",
+    "  * 受付通知メモ (#txtMemoNotice) は使わない。お客様側へ出る可能性がある",
+    "  * verify は「開いた登録画面が本当にその枠のものか」の確認。実物の hidden が",
+    "    id か name かを確かめていないので、どちらでも当たる書き方にしてある",
+    "  * この節を消せば、これまでどおり無名の仮受付で枠だけ押さえる",
+    "",
     "送信ボタンは type=\"button\" + onclick なので submit では押せない（実物で確認）。",
     "ログインの成否は #errorList のエラー表示で判定する。",
     "「仮受付」を押しても確認画面は出ない（実物で確認）。区切りが無いので、",
@@ -67,5 +80,20 @@
     { "click": "{checkbox}" },
     { "click": "#multiple-select-panel .link.cancel a" },
     { "waitFor": "{open}" }
-  ]
+  ],
+
+  "register": {
+    "open": ".emptyFrame{timeCompact}_{line} .reserve-link a",
+    "ready": "#SearchCustomerAndRegisterAppoint",
+    "verify": [
+      "#hidSearchCustomerAndRegisterAppointAppointDate[value=\"{dateCompact}\"], [name=\"hidSearchCustomerAndRegisterAppointAppointDate\"][value=\"{dateCompact}\"]",
+      "#hidSearchCustomerAndRegisterAppointStartTime[value=\"{timeCompact}\"], [name=\"hidSearchCustomerAndRegisterAppointStartTime\"][value=\"{timeCompact}\"]",
+      "#hidSearchCustomerAndRegisterAppointLineId[value=\"{line}\"], [name=\"hidSearchCustomerAndRegisterAppointLineId\"][value=\"{line}\"]"
+    ],
+    "steps": [
+      { "fill": "#txtMemoNow", "value": "{details}" },
+      { "click": "#OP0062UD02" },
+      { "waitFor": "{closed}" }
+    ]
+  }
 }

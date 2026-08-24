@@ -139,3 +139,25 @@ test('画面のチェックからは枠が来ない（手作業ではどこを�
 
   assert.deepEqual(calls, [{ id: 5, done: true, cells: null }]);
 });
+
+test('details=1 のときだけ、仮受付に載せる分の氏名・電話番号を返す', async () => {
+  const row = {
+    id: 1, reserved_at: '2026-09-01T01:00:00.000Z', menu: 'カット', status: 'confirmed',
+    duration_minutes: 60, external_blocked_cells: null, action: 'block',
+    customer_name: '田中花子', phone_norm: '09012345678', pet_name: 'ポチ', staff_name: '佐藤',
+  };
+  const app = makeApp({
+    listPending: async () => ({ toBlock: [row], toRelease: [{ ...row, id: 2, action: 'release' }] }),
+    setDone: async () => ({ ok: true }),
+  });
+
+  const res = await request(app, 'GET', '/api/admin/external-blocks?fields=sync&details=1');
+
+  assert.equal(res.body.toBlock[0].customer_name, '田中花子');
+  assert.equal(res.body.toBlock[0].phone_norm, '09012345678');
+  assert.equal(res.body.toBlock[0].pet_name, 'ポチ');
+  // 担当者名は EPARK に載せないので、details=1 でも渡さない
+  assert.equal(res.body.toBlock[0].staff_name, undefined);
+  // 開け直すだけの予約は EPARK へ何も書き込まない。氏名を出す理由がない
+  assert.equal(res.body.toRelease[0].customer_name, undefined);
+});

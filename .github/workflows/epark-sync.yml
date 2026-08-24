@@ -5,7 +5,10 @@
 #   アプリサーバー … データベースには届くが、ブラウザを置けない（sudo なし）
 # 作業の一覧と消し込みは管理 API 越しに行う。**サーバーには何も足さない。**
 #
-# 取ってくる一覧には**お客様の氏名・電話番号は含まれない**（?fields=sync）。
+# 取ってくる一覧は既定では**お客様の氏名・電話番号を含まない**（?fields=sync）。
+# EPARK の仮受付にお名前を載せる運用（EPARK_DETAILS=on）のときだけ、院内メモに
+# 書くぶんの氏名・電話番号がここまで渡る。ログには出さない（画面に打ち込むだけ）。
+# 無名の仮受付に戻したいときは Variable の EPARK_DETAILS を off にする。
 #
 # 必要な Secrets:
 #   EPARK_BASE_URL / EPARK_USER / EPARK_PASSWORD   EPARK 管理画面
@@ -53,6 +56,8 @@ jobs:
         env:
           # 手動実行では選んだモード、定期実行では Variable（既定は読むだけ）
           EPARK_MODE: ${{ inputs.mode || vars.EPARK_SYNC_MODE || 'dry_run' }}
+          # 仮受付にお名前を載せるか。既定は on（off にすると無名の仮受付に戻る）
+          EPARK_DETAILS: ${{ vars.EPARK_DETAILS || 'on' }}
           EPARK_BASE_URL: ${{ secrets.EPARK_BASE_URL }}
           EPARK_USER: ${{ secrets.EPARK_USER }}
           EPARK_PASSWORD: ${{ secrets.EPARK_PASSWORD }}

@@ -9,14 +9,16 @@ const row = (over = {}) => ({
   status: 'confirmed', duration_minutes: 60, customer_name: '田中花子', ...over,
 });
 
-function makeFakes({ toBlock = [], toRelease = [], driver = {}, mode = 'live' } = {}) {
+function makeFakes({ toBlock = [], toRelease = [], driver = {}, mode = 'live', ...eparkConfig } = {}) {
   const calls = [];
   const notices = [];
   const done = [];
+  // 院内メモに載せた本文。ログや通知には出ないので、ここでだけ中身を見る
+  const details = [];
   const base = {
     async open() { calls.push(['open']); },
     async close() { calls.push(['close']); },
-    async closeSlot(s) { calls.push(['closeSlot', s.reservationId]); return { closed: s.cells }; },
+    async closeSlot(s, text) { calls.push(['closeSlot', s.reservationId]); details.push(text); return { closed: s.cells }; },
     async openSlot(s) { calls.push(['openSlot', s.reservationId]); },
     async isSlotClosed(s) { calls.push(['isSlotClosed', s.reservationId]); return true; },
   };
@@ -30,9 +32,9 @@ function makeFakes({ toBlock = [], toRelease = [], driver = {}, mode = 'live' } 
       notify: async (t) => { notices.push(t); },
       notifyError: async (c, e) => { notices.push(`${c}: ${e.message}`); },
     },
-    config: { epark: { mode } },
+    config: { epark: { mode, ...eparkConfig } },
   });
-  return { sync, calls, notices, done };
+  return { sync, calls, notices, done, details };
 }
 
 // ---- 枠の切り出し ----
@@ -265,4 +267,30 @@ test('記録が予約の時間から外れていたら使わない（日時を�
 test('閉じるときは記録を見ない（またがる枠を全部閉じる）', () => {
   const slot = slotOf(row({ duration_minutes: 120, external_blocked_cells: ['11:00'] }));
   assert.deepEqual(slot.cells, ['10:00', '11:00']);
+});
+
+// ---- 仮受付にお名前を載せる ----
+
+test('閉じるときは、誰のご予約かを駆動部へ渡す', async () => {
+  const f = makeFakes({
+    toBlock: [row({ phone_norm: '09012345678', pet_name: 'ポチ' })],
+  });
+  await f.sync.run();
+  assert.equal(f.details[0], 'LINE予約 / 田中花子 様 / ポチちゃん / 090-1234-5678 / カット / res=1');
+});
+
+test('EPARK_DETAILS=off なら、これまでどおり無名の仮受付にする', async () => {
+  const f = makeFakes({ toBlock: [row()], details: false });
+  await f.sync.run();
+  assert.equal(f.details[0], null);
+});
+
+test('お名前も電話番号も、ログや通知には出さない', async () => {
+  const f = makeFakes({
+    toBlock: [row({ phone_norm: '09012345678' })],
+    driver: { async closeSlot() { throw new Error('枠を閉じられませんでした'); } },
+  });
+  await f.sync.run();
+  assert.equal(f.notices.length, 1);
+  assert.doesNotMatch(f.notices[0], /田中花子|09012345678/);
 });

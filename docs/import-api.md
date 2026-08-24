@@ -154,26 +154,83 @@ Slack にも通知が飛ぶ。**自動化は手作業の置き換えであって
 | --- | --- |
 | `src/reservations/externalBlock.js` | 作業の一覧（手作業と共通。自動化はこれを消し込むだけ） |
 | `src/epark/slot.js` | 予約から「閉じる枠」を切り出す。日付・時刻は JST で確定させる |
+| `src/epark/profile.js` | **押す場所の設定**（セレクタと手順）と、その検証 |
+| `src/epark/browserDriver.js` | ブラウザ操作。「どう押すか」だけを持ち、「どこを押すか」は持たない |
 | `src/epark/driver.js` | 駆動部の契約と、何もしない駆動部 |
 | `src/epark/sync.js` | 一覧を消化し、読み直して確認し、失敗を残す |
+| `scripts/epark-probe.js` | 管理画面を**見る**だけの道具（何も書き換えない） |
 | `scripts/run-epark-sync.js` | 手動実行（`--dry-run` で安全側に落とせる） |
 
-```bash
-node --env-file-if-exists=.env scripts/run-epark-sync.js --dry-run
+### 押す場所はコードに書かない
+
+実物の画面を見ないとセレクタは決まらない。決め打ちにすると画面が変わるたびにデプロイが要る。
+**CSV の列の対応づけと同じ理由**で、相手の都合で変わるものは設定として外に出す。
+
+`config/epark-profile.json`（見本は `config/epark-profile.example.json`）:
+
+```json
+{
+  "loginUrl": "https://.../admin/login",
+  "login": { "user": "#loginId", "password": "#password",
+             "submit": "button[type=\"submit\"]", "ready": "#dashboard" },
+  "dayUrl": "https://.../admin/schedule?date={date}",
+  "slot": ".slot[data-time=\"{time}\"]",
+  "closedWhen": ".is-closed",
+  "close": [ { "click": "{slot} a.edit" },
+             { "click": "button:has-text(\"この枠を閉じる\")" },
+             { "waitFor": "#dashboard" } ],
+  "open":  [ { "click": "{slot} a.edit" },
+             { "click": "button:has-text(\"この枠を開ける\")" },
+             { "waitFor": "#dashboard" } ]
+}
 ```
 
-### 未着手：ブラウザ駆動部
+- セレクタに `{slot}` / `{date}` / `{time}` を埋め込める
+- 1手は `click` / `fill` / `select` / `waitFor` のどれか1つ
+- `closedWhen` は `slot` に継ぎ足す。枠そのものに印が付くなら `".is-closed"`、
+  中の要素で表すなら `" .badge-closed"` のように先頭に空白を置く（子孫セレクタ）
+- **ログイン情報はここに書かない。** `.env` の `EPARK_USER` / `EPARK_PASSWORD` を使う
+- ファイルは `.gitignore` 済み（URL に店舗の識別子が入るため）
 
-`src/epark/browserDriver.js` が要る。**EPARK の管理画面を見ないと書けない**ので未着手。
-必要なもの:
+`validateProfile` が起動前に検証する。とくに `dayUrl` に `{date}`、`slot` に `{time}` が
+入っていないものは弾く。**時刻が入らない設定はその日の枠を全部閉じてしまう**ため。
 
-- ログイン画面と、二要素認証の有無
-- 予約枠／営業時間の編集画面と、枠を閉じる操作の手順
-- 閉じた枠が画面上でどう見えるか（`isSlotClosed` の判定に使う）
-- 枠の粒度（1枠ずつか、時間帯単位か、1日単位か）
+### 実物の画面を調べる
 
-ブラウザ操作のライブラリ（Playwright 等）は**まだ入れていない**。依存を増やす前に、
-実際の画面で操作が成立するかを確かめる。
+セレクタを埋めるには実物が要る。`scripts/epark-probe.js` は**見るだけ**で、何も書き換えない。
+
+```bash
+node --env-file-if-exists=.env scripts/epark-probe.js
+node --env-file-if-exists=.env scripts/epark-probe.js --url='https://.../schedule?date=2026-09-01'
+node --env-file-if-exists=.env scripts/epark-probe.js --headed --keep=180   # 手元の PC で手動操作
+```
+
+`epark-probe/` にスクリーンショットと HTML が落ちる。二要素認証があるときは `--headed` で
+手で通す。**HTML にお客様の氏名・電話番号が含まれることがある**ので、共有前に必ず中身を
+確認する（`.gitignore` 済み）。
+
+### 確かめたこと
+
+実物が見られないため、**作り物の管理画面**（`test/fixtures/eparkFake.js`）を立てて、
+実際の Chromium で駆動部を動かしている。実物に合わせるのは設定であって、この流れは変わらない。
+
+- ログイン → 日付の画面 → 枠を押す → **読み直して閉じたことを確かめる**
+- 閉じた枠を開け直せる
+- **枠が見つからないときは例外にする**（「見つからない＝閉じている」と読むと、日付違いや
+  画面変更を成功と誤読して消し込んでしまう）
+- ログインできなければ画面を操作せずに止まる
+- パスワードを例外の文言に出さない
+
+ブラウザが無い環境（CI など）では、この5件は自動で飛ぶ。
+
+### playwright の扱い
+
+`optionalDependencies` に入れ、**使うときだけ動的に読む**。EPARK を使わない環境や、
+本番サーバーにブラウザを置けない環境でもアプリは起動する。
+
+`PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` を Dockerfile・デプロイ・CI に設定してあるため、
+**ブラウザ本体（数百MB）は落ちない**（`node_modules` は約 44MB 増える）。
+実際に動かす環境でだけ `npx playwright install chromium` を実行する。
 
 ### 移設先での制約
 
@@ -184,6 +241,13 @@ node --env-file-if-exists=.env scripts/run-epark-sync.js --dry-run
 2. **GitHub Actions の定期実行から動かす**。ランナーには一式が揃っている。
    アプリの API 経由で一覧を取り、消し込みを返す形にすればサーバー側に何も足さずに済む。
    定期実行は数分〜数十分ずれることがあるが、枠を閉じる用途では許容範囲
+
+### 残り
+
+- `config/epark-profile.json` を実物の画面から埋める（`epark-probe.js` の出力待ち）
+- 二要素認証があるかの確認。あればセッションの持ち回しを考える必要がある
+- 実行場所の決定（アプリサーバーの cron か、GitHub Actions か）
+- `dry_run` で読み取りだけ検証 → 問題なければ `live`
 
 ---
 

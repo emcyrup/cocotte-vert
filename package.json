@@ -17,5 +17,8 @@
     "express": "^4.21.0",
     "node-cron": "^4.6.0",
     "pg": "^8.13.0"
+  },
+  "optionalDependencies": {
+    "playwright": "^1.62.1"
   }
 }

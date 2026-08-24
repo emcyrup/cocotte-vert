@@ -18,14 +18,25 @@ const { createSlackNotifier } = await import('../src/notify/slack.js');
 const { createExternalBlocks } = await import('../src/reservations/externalBlock.js');
 const { createEparkSync } = await import('../src/epark/sync.js');
 const { createNullDriver } = await import('../src/epark/driver.js');
+const { createBrowserDriver } = await import('../src/epark/browserDriver.js');
+const { loadProfile } = await import('../src/epark/profile.js');
+const { readFile } = await import('node:fs/promises');
 
 const config = loadConfig();
 const slack = createSlackNotifier({ webhookUrl: config.slackWebhookUrl });
 const externalBlocks = createExternalBlocks({ pool });
 
-// 実際にブラウザを動かす駆動部は、EPARK の管理画面を確認してから足す。
-// それまでは何もしない駆動部で動かす（「閉じた」と嘘をつかないので消し込まれない）
-const driver = createNullDriver();
+// 画面設定が無ければ何もしない駆動部で動かす。これは「閉じた」と嘘をつかない
+// （isSlotClosed が常に false）ので、消し込まれずチェックリストに残る
+let driver = createNullDriver();
+if (config.epark.mode !== 'off') {
+  const profile = await loadProfile(config.epark.profilePath, readFile).catch((err) => {
+    console.error(`画面設定を読めません（${config.epark.profilePath}）: ${err.message}`);
+    return null;
+  });
+  if (profile) driver = createBrowserDriver({ profile, config });
+  else console.error('画面設定が無いため、EPARK は操作しません（config/epark-profile.example.json を参照）');
+}
 
 const sync = createEparkSync({ externalBlocks, driver, slack, config });
 const summary = await sync.run();

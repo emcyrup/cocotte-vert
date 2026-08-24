@@ -7,3 +7,7 @@ data/
 # マニュアルの PDF は scripts/build-manual-pdf.js で作り直せる（1MB 超をコミットしない）
 docs/*.pdf
 run/
+# EPARK 管理画面の調査結果。お客様の情報が入りうるのでコミットしない
+epark-probe/
+# EPARK の画面設定（セレクタ）。URL に店舗の識別子が入るため各環境に置く
+config/epark-profile.json

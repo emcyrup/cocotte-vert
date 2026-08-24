@@ -1,7 +1,9 @@
 FROM node:22-slim
 
-# 日付比較は JST 前提のため、コンテナの TZ を固定する
-ENV NODE_ENV=production TZ=Asia/Tokyo
+# 日付比較は JST 前提のため、コンテナの TZ を固定する。
+# playwright は optionalDependencies（EPARK 管理画面の操作にだけ使う）。
+# ここでブラウザ本体まで落とすとイメージが数百MB 太るので、導入は使う環境で明示的に行う
+ENV NODE_ENV=production TZ=Asia/Tokyo PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 WORKDIR /app
 

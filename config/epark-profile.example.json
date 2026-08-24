@@ -1,0 +1,38 @@
+{
+  "_comment": [
+    "EPARK 管理画面の「どこを押すか」。これを config/epark-profile.json にコピーして埋める。",
+    "実物の画面は scripts/epark-probe.js で撮れる（何も書き換えない）。",
+    "セレクタには {slot} / {date} / {time} を埋め込める。",
+    "close / open の1手は click / fill / select / waitFor のどれか1つ。",
+    "closedWhen は slot のセレクタに継ぎ足す。枠そのものに印が付くなら '.is-closed'、",
+    "中の要素で表すなら ' .badge-closed' のように先頭に空白を置く（子孫セレクタ）。",
+    "ログイン情報はここに書かない（.env の EPARK_USER / EPARK_PASSWORD を使う）。"
+  ],
+
+  "loginUrl": "https://example.epark.invalid/admin/login",
+
+  "login": {
+    "user": "#loginId",
+    "password": "#password",
+    "submit": "button[type=\"submit\"]",
+    "ready": "#dashboard"
+  },
+
+  "dayUrl": "https://example.epark.invalid/admin/schedule?date={date}",
+
+  "slot": ".slot[data-time=\"{time}\"]",
+
+  "closedWhen": ".is-closed",
+
+  "close": [
+    { "click": "{slot} a.edit" },
+    { "click": "button:has-text(\"この枠を閉じる\")" },
+    { "waitFor": "#dashboard" }
+  ],
+
+  "open": [
+    { "click": "{slot} a.edit" },
+    { "click": "button:has-text(\"この枠を開ける\")" },
+    { "waitFor": "#dashboard" }
+  ]
+}

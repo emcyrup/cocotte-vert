@@ -173,9 +173,12 @@ export function loadConfig(env = process.env) {
     // EPARK 管理画面の自動操作。ログイン情報は .env にのみ置き、ログにも画面にも出さない
     epark: {
       mode: eparkMode,
-      loginUrl: env.EPARK_LOGIN_URL || null,
       user: env.EPARK_USER || null,
       password: env.EPARK_PASSWORD || null,
+      // 押す場所は JSON で外に出す（相手の画面が変わってもコードを触らずに済ませる）
+      profilePath: env.EPARK_PROFILE || 'config/epark-profile.json',
+      // 本番にブラウザを置けない構成のための逃げ道。未指定なら playwright の既定
+      browserPath: env.EPARK_BROWSER_PATH || null,
     },
     // Instagram は投稿画像を公開 URL から取得するため、外から見える自分の URL が要る
     publicBaseUrl: env.PUBLIC_BASE_URL || (env.DOMAIN ? `https://${env.DOMAIN}` : null),

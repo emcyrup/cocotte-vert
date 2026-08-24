@@ -316,3 +316,26 @@ test('お名前は例外の文言に出さない', { skip }, async () => {
     assert.doesNotMatch(err.stack || err.message, /山田 花子|090-1234-5678|ポチ/);
   });
 });
+
+test('隠れているチェックボックスでも押せる（label を押す）', { skip }, async () => {
+  const fake = await startFakeEpark();
+  await withDriver(fake, async (driver) => {
+    // 実物の input は CSS で隠れている。直接押すと時間切れになるので label を押す
+    assert.deepEqual(await driver.closeSlot(at(13)), { closed: ['13:00'] });
+    assert.equal(fake.stateOf('20260901', '1300', '1'), 'tentative');
+  });
+});
+
+test('押した手順が転んでも、実際に閉じていれば済みにする', { skip }, async () => {
+  const fake = await startFakeEpark();
+  // 「仮受付」は押せるが、そのあと待ち構えるところが当たらない設定
+  const close = [
+    { click: '{checkbox}' },
+    { click: '#multiple-select-panel .tentative-reservation a' },
+    { waitFor: '.never-appears' },
+  ];
+  await withDriver(fake, async (driver) => {
+    assert.deepEqual(await driver.closeSlot(at(13)), { closed: ['13:00'] });
+    assert.equal(fake.stateOf('20260901', '1300', '1'), 'tentative');
+  }, { close });
+});

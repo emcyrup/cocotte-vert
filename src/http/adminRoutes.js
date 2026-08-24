@@ -655,8 +655,10 @@ export function createAdminRouter({
   //
   // ただし EPARK の仮受付にお名前を載せる運用（EPARK_DETAILS=on）では、自動化側にも
   // 氏名・電話番号が要る。そのときだけ &details=1 で明示的に足す。既定では返らない
+  // same_day は「同じ日の他の確定予約」。取消の枠を開け直すとき、そのご予約が
+  // 使っている枠を残すために要る。氏名は含まれない（時刻とコース名だけ）
   const SYNC_FIELDS = ['id', 'reserved_at', 'menu', 'status', 'duration_minutes',
-    'external_blocked_cells', 'action'];
+    'external_blocked_cells', 'same_day', 'action'];
   const DETAIL_FIELDS = ['customer_name', 'phone_norm', 'pet_name'];
   const forSync = (row, withDetails) =>
     Object.fromEntries(

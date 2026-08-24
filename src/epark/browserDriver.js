@@ -76,7 +76,7 @@ export function createBrowserDriver({
   /** その日の受付表を開く。force のときは開き直す（書き込み後の読み直しに使う） */
   async function gotoDay(slot, { force = false } = {}) {
     if (!force && openedDate === slot.date) return;
-    const vars = { date: slot.date, dateCompact: slot.dateCompact };
+    const vars = { date: slot.date, dateCompact: slot.dateCompact ?? slot.date.replaceAll('-', '') };
 
     await page.goto(fill(profile.day.url, vars), {
       waitUntil: 'domcontentloaded',
@@ -255,5 +255,31 @@ export function createBrowserDriver({
     return true;
   }
 
-  return { open, close, closeSlot, openSlot, isSlotClosed, slotMinutes };
+  /**
+   * その日・そのラインの枠を読むだけ。**何も書き換えない。**
+   * 設定が実物と合っているかを確かめるために使う（`scripts/epark-check.js`）。
+   * 状態を読めない枠は例外にせず 'none'（枠なし）として返す。点検では全部見たいため。
+   * @returns {Promise<Array<{time:string, state:'closed'|'open'|'none', ours:boolean}>>}
+   */
+  async function readDay({ date, lineId, times }) {
+    const slot = { date, dateCompact: date.replaceAll('-', '') };
+    await gotoDay(slot, { force: true });
+    const rows = [];
+    for (const time of times) {
+      const vars = { ...slot, time, timeCompact: time.replace(':', ''), line: String(lineId) };
+      const closed = await page.locator(cellSelector('closed', vars)).count();
+      const isOpen = await page.locator(cellSelector('open', vars)).count();
+      const state = closed > 0 && isOpen === 0 ? 'closed'
+        : isOpen > 0 && closed === 0 ? 'open'
+        : 'none';
+      rows.push({
+        time,
+        state,
+        ours: state === 'closed' ? await cellIsOurs(vars) : false,
+      });
+    }
+    return rows;
+  }
+
+  return { open, close, closeSlot, openSlot, isSlotClosed, readDay, slotMinutes, lines: profile.lines };
 }

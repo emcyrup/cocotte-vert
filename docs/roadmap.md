@@ -287,7 +287,8 @@ LINE の表示名は名簿と一致しない。連携済みスタッフは 1:1 �
 - [x] playwright を optionalDependencies へ（ブラウザ本体は落とさない）
 - [x] 実物の受付表・ログイン画面の HTML から設定を起こす（`config/epark-profile.example.json`）
 - [x] 自分が閉じた枠の記録（`external_blocked_cells`）。開け直すのはそこだけ
-- [ ] 実物での `dry_run` 確認 → `live`
+- [x] `scripts/epark-check.js` と GitHub Actions（手元に Chromium が無くても点検できる）
+- [ ] 実物での点検 → `dry_run` → `live`
 - [x] 確認ダイアログの有無（出ないことを確認。読み直しで区切る）
 - [ ] 「WEB受付停止」でまとめて止められないかの確認（できれば1枠ずつより筋が良い）
 - [ ] 実行場所の決定（アプリサーバーの cron か、GitHub Actions か）
@@ -339,9 +340,10 @@ Slack にも飛ぶ。手作業の経路を消さないので、自動化が止�
 **枠が見つからないときは例外にする**: 「見つからない＝閉じている」と読むと、日付違いや
 画面変更を成功と誤読して消し込んでしまう。分からないときは分からないと言う。
 
-**移設先の制約**: 本番の AWS は sudo なし・Docker なし。Chromium はシステムライブラリを
-要求するためそのままでは動かない可能性が高い。インフラ会社への一度きりの依頼か、
-GitHub Actions の定期実行から動かすかのどちらか。
+**動かす場所は GitHub Actions**: 本番の AWS は sudo なし・Docker なし、検証環境の
+Docker イメージにも Chromium は入れていない。**手元の PC を含め、どこにもブラウザが無い**。
+ランナーには一式そろっているので、まず点検（`epark-check`）をそこから流せるようにした。
+本番運用も同じ場所から定期実行するのが素直。サーバーには何も足さずに済む。
 
 詳細は [import-api.md](import-api.md)。
 

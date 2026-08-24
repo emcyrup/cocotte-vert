@@ -264,7 +264,44 @@ Slack にも通知が飛ぶ。**自動化は手作業の置き換えであって
 | `cell.ours` が無い | 本物のご予約と仮受付を見分けられない |
 | `login.ready` も `login.error` も無い | ログインできたか判断できない |
 
-### 実物の画面を調べる
+### 設定が合っているかを確かめる（手元に何も要らない）
+
+**手元の PC・GCP・AWS のどれにも Chromium が無い。**（本番は sudo なしで入れられず、
+検証環境の Docker イメージにも入れていない。）そこで点検は **GitHub Actions から流す**。
+ランナーには一式そろっている。
+
+> GitHub の Actions タブ → **epark-check** → **Run workflow** → 日付を入れて実行
+
+必要な Secrets（Settings → Secrets and variables → Actions）と Variables:
+
+| 種類 | 名前 | 中身 |
+| --- | --- | --- |
+| Secret | `EPARK_BASE_URL` | 管理画面のルート |
+| Secret | `EPARK_USER` | ログインID |
+| Secret | `EPARK_PASSWORD` | パスワード |
+| Variable | `EPARK_CHECK_ENABLED` | `true`（設定が済むまでは動かさない） |
+
+中身は `scripts/epark-check.js`。**読むだけで EPARK には一切書き込まない。**
+データベースにも接続しない（`DATABASE_URL` はダミーで通る）。出るのは枠ごとの状態だけで、
+**お客様の氏名・電話番号は含まれない**ので、結果をそのまま貼って相談できる。
+
+```
+2026-09-01  トリミング申込（line=1） 枠 8/14
+  10:00  開（受付中）
+  11:00  閉（仮受付など）  ← 仮受付の印あり
+  13:00  閉（仮受付など）  ← 仮受付の印なし（ご予約？）
+```
+
+枠を1つも読めなければ「設定が実物と合っていない」として失敗する（`cell.*` か `day.*`）。
+ログインで弾かれた場合もその場で分かる。
+
+手元に Node.js がある環境なら、同じものを直接動かせる:
+
+```bash
+node --env-file-if-exists=.env scripts/epark-check.js --date=2026-09-01
+```
+
+### 実物の画面を調べる（HTML ごと欲しいとき）
 
 `scripts/epark-probe.js` は**見るだけ**で、何も書き換えない。
 
@@ -273,9 +310,9 @@ node --env-file-if-exists=.env scripts/epark-probe.js
 node --env-file-if-exists=.env scripts/epark-probe.js --headed --keep=180   # 手元の PC で手動操作
 ```
 
-`epark-probe/` にスクリーンショットと HTML が落ちる。二要素認証があるときは `--headed` で
-手で通す。**HTML にお客様の氏名・電話番号が含まれることがある**ので、共有前に必ず中身を
-確認する（`.gitignore` 済み）。
+`epark-probe/` にスクリーンショットと HTML が落ちる。**HTML にお客様の氏名・電話番号が
+含まれることがある**ので、共有前に必ず中身を確認する（`.gitignore` 済み）。
+枠の状態を見たいだけなら、上の `epark-check.js` のほうが安全。
 
 ### 確かめたこと
 
@@ -321,6 +358,7 @@ node --env-file-if-exists=.env scripts/epark-probe.js --headed --keep=180   # �
 ### 残り（実物で確かめること）
 
 - 日付の移動が `multiSchedulerRequest_multiScheduler_Calendar` で実際に効くか
+  → **`epark-check` を一度流せば分かる**
 - ログイン後にどの画面へ飛ぶか（`login.ready` を足せるならそのほうが確実）
 - **「WEB受付停止」**（受付表のラインごとにあるボタン）で、時間帯や日をまとめて止められないか。
   できるなら1枠ずつの仮受付より筋が良い

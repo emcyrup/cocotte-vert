@@ -109,6 +109,12 @@ test('不正な EPARK_MODE は拒否する', () => {
   assert.throws(() => loadConfig({ ...baseEnv, EPARK_MODE: 'test' }), /EPARK_MODE/);
 });
 
+test('仮受付にお名前を載せるのが既定。EPARK_DETAILS=off で無名に戻せる', () => {
+  assert.equal(loadConfig({ ...baseEnv }).epark.details, true);
+  assert.equal(loadConfig({ ...baseEnv, EPARK_DETAILS: 'off' }).epark.details, false);
+  assert.equal(loadConfig({ ...baseEnv, EPARK_DETAILS: 'on' }).epark.details, true);
+});
+
 /** 投げられた例外を取り出す（メッセージの中身まで確かめたいとき） */
 function catchError(fn) {
   try {

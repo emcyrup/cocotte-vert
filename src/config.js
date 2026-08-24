@@ -119,6 +119,9 @@ export function loadConfig(env = process.env) {
   if (eparkMode !== 'off' && !(env.EPARK_USER && env.EPARK_PASSWORD)) {
     throw new Error(`EPARK_MODE=${eparkMode} には EPARK_USER / EPARK_PASSWORD が必要です`);
   }
+  // EPARK の仮受付に、お名前・電話番号・コースを添えるか。
+  // off にすると、これまでどおり無名の仮受付で枠だけ押さえる
+  const eparkDetails = (env.EPARK_DETAILS || 'on') !== 'off';
 
   // 配信の起点となる日数。店舗によって「何日前に確認するか」が変わるため設定にする。
   // ジョブの SQL にはパラメータとして渡す（値を文字列で埋め込まない）
@@ -219,6 +222,8 @@ export function loadConfig(env = process.env) {
       profilePath: env.EPARK_PROFILE || 'config/epark-profile.json',
       // 本番にブラウザを置けない構成のための逃げ道。未指定なら playwright の既定
       browserPath: env.EPARK_BROWSER_PATH || null,
+      // 仮受付にお名前を添えるか。添えるときだけ、氏名・電話番号が自動化まで渡る
+      details: eparkDetails,
     },
     // Instagram は投稿画像を公開 URL から取得するため、外から見える自分の URL が要る
     publicBaseUrl: env.PUBLIC_BASE_URL || (env.DOMAIN ? `https://${env.DOMAIN}` : null),

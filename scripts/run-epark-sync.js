@@ -51,6 +51,8 @@ if (viaApi) {
     baseUrl,
     user: config.adminUser,
     password: config.adminPassword,
+    // お名前を仮受付に載せるときだけ、氏名・電話番号もここまで持ってくる
+    details: config.epark.details,
   });
   console.log(`作業の一覧は管理 API から取ります（${baseUrl}）`);
 } else {

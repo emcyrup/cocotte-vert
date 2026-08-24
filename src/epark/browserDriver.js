@@ -8,6 +8,8 @@
 //   * 枠を開ける  … 同じチェックボックスを入れて「キャンセル」を押す
 //   * 日付の移動  … URL ではなく画面の JavaScript を呼ぶ
 //   * 1件の予約が複数の枠にまたがる（90分なら2枠）
+//   * 空き枠から「顧客検索及び新規受付登録」を開くと、院内メモを添えて仮受付にできる。
+//     開けるのは1枠ずつなので、お名前が載るのは**先頭の枠だけ**（残りは無名で押さえる）
 //
 // **本物のご予約には絶対に触らない。** 開け直すのは「自分が入れた仮受付」だけ。
 // 見分けが付かない枠は例外にして、人に回す。
@@ -112,9 +114,11 @@ export function createBrowserDriver({
     try {
       for (const step of steps) {
         const target = (sel) => page.locator(fill(sel, withSelectors)).first();
+        // 打ち込む中身にも差し込みを効かせる（院内メモの {details} がこれで入る）
+        const value = () => fill(String(step.value), withSelectors);
         if (step.click) await target(step.click).click({ timeout: stepTimeout });
-        else if (step.fill) await target(step.fill).fill(String(step.value), { timeout: stepTimeout });
-        else if (step.select) await target(step.select).selectOption(String(step.value), { timeout: stepTimeout });
+        else if (step.fill) await target(step.fill).fill(value(), { timeout: stepTimeout });
+        else if (step.select) await target(step.select).selectOption(value(), { timeout: stepTimeout });
         else if (step.waitFor) await target(step.waitFor).waitFor({ timeout: stepTimeout });
       }
     } finally {
@@ -193,18 +197,67 @@ export function createBrowserDriver({
   }
 
   /**
+   * 空き枠から「顧客検索及び新規受付登録」を開き、院内メモにお名前を入れて仮受付にする。
+   *
+   * 相手の顧客台帳は検索も選択もしない（`epark/details.js` 参照）。押すのは「仮受付」で、
+   * 仮受付の印が付いたままになる。これが無いと取消のとき自分の分を見分けられない。
+   *
+   * @returns {Promise<boolean>} 押せたら true。躓いたら false（呼び側が無名の仮受付に落とす）
+   */
+  async function registerCell(vars, details) {
+    const { register } = profile;
+    try {
+      await page.locator(fill(register.open, vars)).first().click({ timeout: stepTimeout });
+      await page.locator(fill(register.ready, vars)).first().waitFor({ timeout: stepTimeout });
+      // 開いた登録画面が別の枠のものだと、まったく違う時間にご予約を入れてしまう。
+      // 画面が持っている日付・時刻・ラインを、閉じるつもりの枠と突き合わせる
+      for (const selector of register.verify ?? []) {
+        await page.locator(fill(selector, vars)).first().waitFor({ state: 'attached', timeout: stepTimeout });
+      }
+    } catch {
+      // ここまでは何も書き込んでいない。呼び側が従来の手順に落とす
+      return false;
+    }
+    try {
+      await runSteps(register.steps, { ...vars, details });
+      return true;
+    } catch {
+      // 例外の文面に氏名・電話番号が混じらないよう、中身は持ち出さない。
+      // 押せていたかどうかは、どのみち呼び側が読み直して確かめる
+      return false;
+    }
+  }
+
+  /**
    * またがる枠を順に閉じる。すでに閉じている枠は飛ばす。
    * **自分が実際に閉じた枠を返す。** スタッフが手作業で止めていた枠を、
    * あとで取消のときに勝手に開けてしまわないため。
+   *
+   * @param {object} slot
+   * @param {string|null} details 院内メモに載せる「誰のご予約か」。
+   *   登録画面は1枠ずつしか開けないので、**最初の1枠にだけ**入れる。
+   *   残りの枠はこれまでどおり無名の仮受付で押さえる
    * @returns {Promise<{closed: string[]}>}
    */
-  async function closeSlot(slot) {
+  async function closeSlot(slot, details = null) {
     const line = lineOf(slot);
     const closed = [];
     for (const time of slot.cells) {
       const vars = varsFor(slot, time, line);
       await gotoDay(slot);
       if (await cellClosed(vars)) continue;
+
+      if (details && profile.register && closed.length === 0) {
+        const submitted = await registerCell(vars, details);
+        // 登録画面を開いたまま／閉じたままの画面を使い回さない。必ず受付表に戻る
+        await gotoDay(slot, { force: true });
+        if (submitted && (await cellClosed(vars))) {
+          closed.push(time);
+          continue;
+        }
+        // 押す前に躓いた、または閉じられていない。無名の仮受付に落として枠だけ押さえる
+      }
+
       // 実物は「仮受付」を押しても確認画面が出ない。押せたかどうかは
       // **読み直して確かめるしかない**。閉じられていない枠を「自分が閉じた」と
       // 記録すると、取消のときにスタッフが止めていた枠を開けてしまう

@@ -11,14 +11,20 @@
 //
 // **書いたら必ず読み直す。** 読み直して意図どおりになっていたときだけ済みにする。
 // 書けていないのに済みにすると、チェックリストからも消えて誰も気付けなくなる。
+//
+// 閉じるときは、EPARK の院内メモに「誰のご予約か」を添える（`details.js`）。
+// 相手の顧客台帳は触らないので、間違っていても消せる範囲に収まる。
 
 import { isValidDriver } from './driver.js';
 import { slotOf, slotLabel } from './slot.js';
+import { detailsText } from './details.js';
 
 const EMPTY = { total: 0, done: 0, dryRun: 0, failed: 0, errors: [] };
 
 export function createEparkSync({ externalBlocks, driver, slack, config }) {
   const mode = config?.epark?.mode || 'off';
+  // EPARK_DETAILS=off で、これまでどおりの無名の仮受付に戻せる
+  const withDetails = config?.epark?.details !== false;
 
   /**
    * 未反映の作業を片付ける。
@@ -58,8 +64,12 @@ export function createEparkSync({ externalBlocks, driver, slack, config }) {
           }
 
           let touched = null;
-          if (action === 'close') ({ closed: touched } = await driver.closeSlot(slot));
-          else await driver.openSlot(slot);
+          if (action === 'close') {
+            // EPARK の受付表に「誰のご予約か」を出す。作った文字列は氏名・電話番号を
+            // 含むので、ログにも Slack にも載せない（渡すのは駆動部にだけ）
+            const details = withDetails ? detailsText(row) : null;
+            ({ closed: touched } = await driver.closeSlot(slot, details));
+          } else await driver.openSlot(slot);
 
           // ここが要。書けたと信じずに読み直す
           const closed = await driver.isSlotClosed(slot);

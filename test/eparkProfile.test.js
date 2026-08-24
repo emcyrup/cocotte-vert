@@ -151,3 +151,51 @@ test('{base} は .env の値に置き換える（設定ファイルに店舗の�
   assert.equal(profile.loginUrl, 'https://example.test/shop/login/index');
   assert.equal(validateProfile(profile).ok, true);
 });
+
+// ---- 顧客検索及び新規受付登録（お名前を載せる手順） ----
+
+const goodRegister = () => ({
+  open: '.emptyFrame{timeCompact}_{line} a',
+  ready: '#SearchCustomerAndRegisterAppoint',
+  verify: ['#hidDate[value="{dateCompact}"]'],
+  steps: [{ fill: '#txtMemoNow', value: '{details}' }, { click: '#OP0062UD02' }],
+});
+
+test('register は任意（無ければ無名の仮受付で枠だけ押さえる）', () => {
+  assert.deepEqual(validateProfile(good()), { ok: true });
+  assert.deepEqual(validateProfile({ ...good(), register: goodRegister() }), { ok: true });
+});
+
+test('register の項目が欠けていれば断る', () => {
+  for (const key of ['open', 'ready', 'steps']) {
+    const register = { ...goodRegister() };
+    delete register[key];
+    assert.match(validateProfile({ ...good(), register }).error, new RegExp(`register\\.${key}`));
+  }
+});
+
+test('どの枠から開くか決まらない設定は断る（別の時間に予約を入れてしまう）', () => {
+  const noTime = { ...goodRegister(), open: '.emptyFrame_{line} a' };
+  assert.match(validateProfile({ ...good(), register: noTime }).error, /register\.open に \{timeCompact\}/);
+
+  const noLine = { ...goodRegister(), open: '.emptyFrame{timeCompact} a' };
+  assert.match(validateProfile({ ...good(), register: noLine }).error, /register\.open に \{line\}/);
+});
+
+test('開くところにお客様の情報は混ぜさせない（セレクタが壊れる）', () => {
+  for (const key of ['open', 'ready']) {
+    const register = { ...goodRegister(), [key]: `#x{details}{timeCompact}{line}` };
+    assert.match(validateProfile({ ...good(), register }).error, /\{details\} は使えません/);
+  }
+  const register = { ...goodRegister(), verify: ['#hid{details}'] };
+  assert.match(validateProfile({ ...good(), register }).error, /register\.verify\[0\]/);
+});
+
+test('register の手順が空なら断る', () => {
+  const register = { ...goodRegister(), steps: [] };
+  assert.match(validateProfile({ ...good(), register }).error, /register\.steps の手順がありません/);
+});
+
+test('差し込みは院内メモの中身にも効く', () => {
+  assert.equal(fill('{details}', { details: '山田 様' }), '山田 様');
+});

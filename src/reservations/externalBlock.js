@@ -15,11 +15,15 @@
 const FROM_THIS_APP = 'r.external_id IS NULL';
 
 // duration_minutes は「どこからどこまでの枠を閉じるか」に要る（自動化の駆動部が使う）。
-// external_blocked_cells は「自分が実際に閉じた枠」。開け直すのはここだけに限る
+// external_blocked_cells は「自分が実際に閉じた枠」。開け直すのはここだけに限る。
+// phone_norm と pet_name は EPARK の仮受付に添える院内メモ用（`epark/details.js`）
 const COLUMNS = `
   r.id, r.reserved_at, r.menu, r.status::text AS status, r.duration_minutes,
   r.external_blocked_cells,
-  c.name AS customer_name, s.name AS staff_name`;
+  c.name AS customer_name, c.phone_norm, s.name AS staff_name,
+  -- ペットが1頭のときだけ名前を出す。複数いるとどの子の予約か決められないので
+  -- HAVING で1頭以外は行ごと落とし、NULL にする
+  (SELECT max(p.name) FROM pets p WHERE p.customer_id = c.id HAVING count(*) = 1) AS pet_name`;
 
 export function createExternalBlocks({ pool }) {
   /**

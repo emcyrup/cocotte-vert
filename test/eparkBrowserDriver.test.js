@@ -239,3 +239,80 @@ test('パスワードは例外の文言に出さない', { skip }, async () => {
     await fake.stop();
   }
 });
+
+// ---- 仮受付にお名前を載せる（顧客検索及び新規受付登録） ----
+
+const DETAILS = 'LINE予約 / 山田 花子 様 / ポチちゃん / 090-1234-5678 / カット / res=1';
+
+test('お名前を渡すと、登録画面の院内メモに入れて仮受付にする', { skip }, async () => {
+  const fake = await startFakeEpark();
+  await withDriver(fake, async (driver) => {
+    const slot = at(11);
+    assert.deepEqual(await driver.closeSlot(slot, DETAILS), { closed: ['11:00'] });
+    assert.equal(fake.stateOf('20260901', '1100', '1'), 'tentative');
+    assert.equal(fake.memoOf('20260901', '1100', '1'), DETAILS);
+  });
+});
+
+test('またがる枠は先頭だけお名前付き。残りは無名で押さえる', { skip }, async () => {
+  const fake = await startFakeEpark();
+  await withDriver(fake, async (driver) => {
+    const slot = at(11, 90);
+    assert.deepEqual(await driver.closeSlot(slot, DETAILS), { closed: ['11:00', '12:00'] });
+    assert.equal(fake.memoOf('20260901', '1100', '1'), DETAILS);
+    // 登録画面は1枠ずつしか開けない。2枠目は従来どおりの一括仮受付
+    assert.equal(fake.memoOf('20260901', '1200', '1'), null);
+    assert.equal(fake.stateOf('20260901', '1200', '1'), 'tentative');
+  });
+});
+
+test('お名前を渡さなければ、これまでどおり無名の仮受付になる', { skip }, async () => {
+  const fake = await startFakeEpark();
+  await withDriver(fake, async (driver) => {
+    assert.deepEqual(await driver.closeSlot(at(11)), { closed: ['11:00'] });
+    assert.equal(fake.memoOf('20260901', '1100', '1'), null);
+  });
+});
+
+test('別の枠の登録画面が開いたら、そこには書き込まず従来の手順に落とす', { skip }, async () => {
+  // 開いた登録画面が、頼んだ枠とは別の時刻を名乗る
+  const fake = await startFakeEpark({ mismatchModal: true });
+  await withDriver(fake, async (driver) => {
+    assert.deepEqual(await driver.closeSlot(at(12), DETAILS), { closed: ['12:00'] });
+    // 押す前に気付いて引き返す。お名前は載らないが、頼まれた枠は押さえる
+    assert.equal(fake.stateOf('20260901', '1200', '1'), 'tentative');
+    assert.equal(fake.memoOf('20260901', '1200', '1'), null);
+    // 名乗っていたほうの枠にも、何も書き込まない
+    assert.equal(fake.stateOf('20260901', '1100', '1'), null);
+  });
+});
+
+test('登録画面が開かなくても、枠だけは押さえる', { skip }, async () => {
+  const fake = await startFakeEpark();
+  const register = { ...fake.profile.register, open: '.emptyFrame{timeCompact}_{line} .nowhere a' };
+  await withDriver(fake, async (driver) => {
+    assert.deepEqual(await driver.closeSlot(at(11), DETAILS), { closed: ['11:00'] });
+    assert.equal(fake.stateOf('20260901', '1100', '1'), 'tentative');
+  }, { register });
+});
+
+test('登録画面を使っても、開け直せるのは自分が入れた分だけ', { skip }, async () => {
+  const fake = await startFakeEpark();
+  await withDriver(fake, async (driver) => {
+    const slot = at(11);
+    await driver.closeSlot(slot, DETAILS);
+    // 仮受付の印が残っているので、取消のときに自分の分だと分かる
+    await driver.openSlot(slot);
+    assert.equal(fake.stateOf('20260901', '1100', '1'), null);
+    assert.equal(fake.memoOf('20260901', '1100', '1'), null);
+  });
+});
+
+test('お名前は例外の文言に出さない', { skip }, async () => {
+  const fake = await startFakeEpark({ silentFail: true });
+  await withDriver(fake, async (driver) => {
+    const err = await driver.closeSlot(at(11), DETAILS).then(() => null, (e) => e);
+    assert.ok(err);
+    assert.doesNotMatch(err.stack || err.message, /山田 花子|090-1234-5678|ポチ/);
+  });
+});

@@ -85,3 +85,11 @@ test('通信そのものが失敗しても投げっぱなしにしない', async
   const result = await blocks(fetchFn).setDone({ id: 5, done: true });
   assert.deepEqual(result, { ok: false, error: '通信断' });
 });
+
+test('お名前を仮受付に載せるときだけ、氏名・電話番号も取りに行く', async () => {
+  const { fetchFn, calls } = makeFetch(() => ok({ toBlock: [], toRelease: [] }));
+  await createHttpBlocks({
+    baseUrl: 'https://example.test', user: 'a', password: 'b', details: true, fetchFn,
+  }).listPending();
+  assert.equal(calls[0].url, 'https://example.test/api/admin/external-blocks?fields=sync&details=1');
+});

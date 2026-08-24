@@ -21,15 +21,18 @@
 //   {checkbox}     cell.checkbox を展開したセレクタ（手順の中で使える）
 //   {closed} {open}  cell.closed / cell.open を展開したセレクタ。
 //                  「押したあと、その枠が実際に変わるまで待つ」ために手順の waitFor で使う
+//   {details}      院内メモに入れる「誰のご予約か」（register.steps の value でのみ使う）
 
 const ACTIONS = ['click', 'fill', 'select', 'waitFor'];
 const REQUIRED = ['loginUrl', 'login', 'day', 'lines', 'cell', 'close', 'open'];
 const CELL_KEYS = ['checkbox', 'closed', 'open', 'ours'];
+// 登録画面を開いて確かめるまでの部分。ここにお客様の情報を差し込ませない
+const REGISTER_SELECTOR_KEYS = ['open', 'ready'];
 
 /** 差し込み。埋め込みは1か所にまとめ、駆動部で書式を散らさない */
 export function fill(template, vars) {
   return String(template).replace(
-    /\{(base|date|dateCompact|time|timeCompact|line|checkbox|closed|open)\}/g,
+    /\{(base|date|dateCompact|time|timeCompact|line|checkbox|closed|open|details)\}/g,
     (whole, key) => (vars[key] == null ? whole : vars[key])
   );
 }
@@ -107,6 +110,36 @@ export function validateProfile(profile) {
 
   for (const name of ['close', 'open']) {
     const error = checkSteps(name, profile[name]);
+    if (error) return { ok: false, error };
+  }
+
+  // register は任意。無ければ従来どおり無名の仮受付で枠だけ押さえる
+  if (profile.register) {
+    const { register } = profile;
+    for (const key of [...REGISTER_SELECTOR_KEYS, 'steps']) {
+      if (!register[key]) return { ok: false, error: `register.${key} がありません` };
+    }
+    // どの枠から開くか決まらないセレクタだと、別の時間の登録画面を開いてしまう
+    for (const token of ['{timeCompact}', '{line}']) {
+      if (!String(register.open).includes(token)) {
+        return { ok: false, error: `register.open に ${token} が入っていません` };
+      }
+    }
+    // 開くところまでは、お客様の情報を混ぜない（セレクタに氏名が入ると壊れる）
+    for (const key of REGISTER_SELECTOR_KEYS) {
+      if (String(register[key]).includes('{details}')) {
+        return { ok: false, error: `register.${key} に {details} は使えません` };
+      }
+    }
+    if (register.verify != null) {
+      if (!Array.isArray(register.verify)) return { ok: false, error: 'register.verify は配列です' };
+      for (const [i, sel] of register.verify.entries()) {
+        if (!sel || String(sel).includes('{details}')) {
+          return { ok: false, error: `register.verify[${i}] が不正です` };
+        }
+      }
+    }
+    const error = checkSteps('register.steps', register.steps);
     if (error) return { ok: false, error };
   }
 

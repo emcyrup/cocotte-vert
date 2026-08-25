@@ -203,7 +203,9 @@ test('開けたつもりで開いていなければ、済みにしない', { ski
   const fake = await startFakeEpark({ silentFail: true });
   fake.setTentative('20260901', '1100', '1');
   await withDriver(fake, async (driver) => {
-    await assert.rejects(() => driver.openSlot(at(11)), /枠を開けられませんでした/);
+    // 受付番号が変わっていない＝押しても何も起きていない、と言い当てられること
+    await assert.rejects(() => driver.openSlot(at(11)),
+      /枠を開けられませんでした.*押しても何も起きていません/s);
     assert.equal(fake.stateOf('20260901', '1100', '1'), 'tentative');
   });
 });
@@ -329,6 +331,37 @@ test('控えた受付番号と違う枠には手を出さない', { skip }, asyn
     );
     assert.equal(fake.stateOf('20260901', '1100', '1'), 'tentative', '他人の枠は残る');
   });
+});
+
+test('キャンセルの確認画面には「はい」で答える', { skip }, async () => {
+  const fake = await startFakeEpark({ confirmOnCancel: true });
+  await withDriver(fake, async (driver) => {
+    const slot = at(11);
+    const { closed } = await driver.closeSlot(slot, FIELDS);
+
+    await driver.openSlot({ ...slot, cellIds: { '11:00': closed[0].id } });
+    assert.equal(fake.stateOf('20260901', '1100', '1'), null, '確認画面を越えて枠が空く');
+  });
+});
+
+test('確認画面の文面はログに出さない（種類だけ）', { skip }, async () => {
+  const fake = await startFakeEpark({ confirmOnCancel: true });
+  const lines = [];
+  const log = console.log;
+  console.log = (...args) => { lines.push(args.join(' ')); };
+  try {
+    await withDriver(fake, async (driver) => {
+      const slot = at(11);
+      const { closed } = await driver.closeSlot(slot, FIELDS);
+      await driver.openSlot({ ...slot, cellIds: { '11:00': closed[0].id } });
+    });
+  } finally {
+    console.log = log;
+  }
+  const said = lines.filter((l) => l.includes('確認画面'));
+  assert.equal(said.length, 1, '確認画面に答えたことは残す');
+  assert.match(said[0], /confirm/);
+  assert.ok(!said.some((l) => l.includes('取り消します')), '文面は残さない');
 });
 
 test('受付番号を控えていない枠は、これまでどおり仮受付の印で見分ける', { skip }, async () => {

@@ -31,9 +31,12 @@ const key = (date, time, line) => `${date} ${time} ${line}`;
  *   気付けるかを試す（自動化で一番怖い壊れ方）
  * @param {boolean} p.mismatchModal 受付登録の画面が、開いた枠とは別の時刻を名乗る。
  *   取り違えたまま押すと、まったく違う時間にご予約を入れてしまう
+ * @param {boolean} p.confirmOnCancel キャンセルを押すと確認画面が出る。
+ *   自動操作は既定で「いいえ」を答えるので、押しても何も起きないまま終わる
  */
 export async function startFakeEpark({
   user = 'shop', password = 'pw', silentFail = false, mismatchModal = false,
+  confirmOnCancel = false,
 } = {}) {
   // 埋まっている枠 → 'tentative'（自分が入れた仮受付） か 'booked'（本物のご予約）
   const filled = new Map();
@@ -110,6 +113,8 @@ export async function startFakeEpark({
           var picked = [].slice.call(document.querySelectorAll('input[name=appoint]:checked'))
             .map(function (el) { return el.value; });
           if (!picked.length) return false;
+          if (what === 'cancel' && ${confirmOnCancel ? 'true' : 'false'}
+              && !confirm('選択した受付を取り消します。よろしいですか？')) return false;
           location.href = '/apply?date=${date}&to=' + what + '&cells=' + picked.join(',');
           return false;
         }

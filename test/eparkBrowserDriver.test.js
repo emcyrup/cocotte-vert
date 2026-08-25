@@ -372,3 +372,45 @@ test('押した手順が転んでも、実際に閉じていれば済みにす�
     assert.equal(fake.stateOf('20260901', '1300', '1'), 'tentative');
   }, { close });
 });
+
+test('顧客情報の欄が入らなくても、院内メモまでは進む', { skip }, async () => {
+  const fake = await startFakeEpark();
+  // 実物の画面が変わってお名前の欄が見つからない状況
+  const register = {
+    ...fake.profile.register,
+    steps: [
+      { fill: '#nowhere-lastname', value: '{lastName}', optional: true },
+      { fill: '#txtMemoNow', value: '{details}' },
+      { click: '#OP0062UD02' },
+      { waitFor: '{closed}' },
+    ],
+  };
+  await withDriver(fake, async (driver) => {
+    const { closed } = await driver.closeSlot(at(11), FIELDS);
+    assert.equal(closed.length, 1);
+    assert.equal(fake.memoOf('20260901', '1100', '1'), DETAILS, '名前は入らないがメモは入る');
+    assert.equal(fake.nameOf('20260901', '1100', '1'), null);
+  }, { register });
+});
+
+test('登録画面で転んだ場所をログに残す（中身は出さない）', { skip }, async () => {
+  const fake = await startFakeEpark();
+  const register = {
+    ...fake.profile.register,
+    steps: [{ fill: '#nowhere-memo', value: '{details}' }, { click: '#OP0062UD02' }],
+  };
+  const warnings = [];
+  const warn = console.warn;
+  console.warn = (...args) => warnings.push(args.join(' '));
+  try {
+    await withDriver(fake, async (driver) => {
+      await driver.closeSlot(at(11), FIELDS);   // 無名の仮受付に落ちる
+    }, { register });
+  } finally {
+    console.warn = warn;
+  }
+  const line = warnings.find((w) => w.includes('登録画面を使えませんでした'));
+  assert.ok(line, `どこで転んだかを残す: ${warnings.join(' / ')}`);
+  assert.match(line, /#nowhere-memo/, 'セレクタは出す');
+  assert.doesNotMatch(line, /山田 花子|090-1234-5678/, '打ち込む中身は出さない');
+});

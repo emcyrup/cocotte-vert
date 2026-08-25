@@ -86,6 +86,11 @@ export function createEparkSync({ externalBlocks, driver, slack, config }) {
             // EPARK の受付表に「誰のご予約か」を出す。作った値は氏名・電話番号を
             // 含むので、ログにも Slack にも載せない（渡すのは駆動部にだけ）
             const fields = withDetails ? registerFields(row) : null;
+            // 「載せる情報が無い」のか「画面に入れられなかった」のかを分けて見たい。
+            // 名前が出ないときの原因がこの2つに分かれるため（氏名そのものは出さない）
+            if (withDetails && !fields) {
+              console.warn(`[epark] 載せる情報がありません res=${row.id}（一覧に氏名が来ていない）`);
+            }
             ({ closed: touched } = await driver.closeSlot(slot, fields));
           } else await driver.openSlot(slot);
 

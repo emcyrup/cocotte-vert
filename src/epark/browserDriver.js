@@ -101,7 +101,16 @@ export function createBrowserDriver({
     openedDate = slot.date;
   }
 
-  /** 設定に書かれた手順を順に実行する */
+  /**
+   * 設定に書かれた手順を順に実行する。
+   *
+   * どこで転んだのかが分からないと直しようがないので、**手順の番号とセレクタを
+   * 例外に載せる**。ただし打ち込む中身は載せない（お客様の情報が入りうるため、
+   * fill / select では相手の例外文もそのまま持ち出さない）。
+   *
+   * `optional: true` の手順は、転んでも先へ進む。相手の画面が少し変わっても、
+   * 入れられるところまでは入れたい欄に使う（例: お名前が入らなくても院内メモは入れる）。
+   */
   async function runSteps(steps, vars) {
     // {closed} / {open} を使えるようにしておく。実物は「仮受付」を押しても確認画面が
     // 出ないため、**その枠が実際に変わるまで待つ**のが唯一の区切りになる
@@ -112,14 +121,26 @@ export function createBrowserDriver({
       open: cellSelector('open', vars),
     };
     try {
-      for (const step of steps) {
+      for (const [i, step] of steps.entries()) {
         const target = (sel) => page.locator(fill(sel, withSelectors)).first();
         // 打ち込む中身にも差し込みを効かせる（院内メモの {details} がこれで入る）
         const value = () => fill(String(step.value), withSelectors);
-        if (step.click) await target(step.click).click({ timeout: stepTimeout });
-        else if (step.fill) await target(step.fill).fill(value(), { timeout: stepTimeout });
-        else if (step.select) await target(step.select).selectOption(value(), { timeout: stepTimeout });
-        else if (step.waitFor) await target(step.waitFor).waitFor({ timeout: stepTimeout });
+        const selector = step.click ?? step.fill ?? step.select ?? step.waitFor;
+        try {
+          if (step.click) await target(step.click).click({ timeout: stepTimeout });
+          else if (step.fill) await target(step.fill).fill(value(), { timeout: stepTimeout });
+          else if (step.select) await target(step.select).selectOption(value(), { timeout: stepTimeout });
+          else if (step.waitFor) await target(step.waitFor).waitFor({ timeout: stepTimeout });
+        } catch (err) {
+          // 値を運ぶ手順は、相手の例外文に打ち込んだ中身が混じりうる。理由は伏せる
+          const why = step.fill || step.select ? '打ち込めません' : briefly(err);
+          const where = `手順${i + 1}（${selector}）: ${why}`;
+          if (step.optional) {
+            console.warn(`[epark] 飛ばしました ${where}`);
+            continue;
+          }
+          throw new Error(where);
+        }
       }
     } finally {
       // 保存のたびに受付表が作り替えられる。次は開き直す。
@@ -231,25 +252,39 @@ export function createBrowserDriver({
    */
   async function registerCell(vars, fields) {
     const { register } = profile;
+    // どこで転んだかを残す。**無名の仮受付に落ちても静かに落ちるので、
+    // ログが無いと「なぜ名前が入らないのか」を追えない**（実物で一度これに詰まった）
+    const gaveUp = (where) => {
+      console.warn(`[epark] 登録画面を使えませんでした（${vars.date} ${vars.time}）: ${where}`);
+      return false;
+    };
+
     try {
       await page.locator(fill(register.open, vars)).first().click({ timeout: stepTimeout });
-      await page.locator(fill(register.ready, vars)).first().waitFor({ timeout: stepTimeout });
-      // 開いた登録画面が別の枠のものだと、まったく違う時間にご予約を入れてしまう。
-      // 画面が持っている日付・時刻・ラインを、閉じるつもりの枠と突き合わせる
-      for (const selector of register.verify ?? []) {
-        await page.locator(fill(selector, vars)).first().waitFor({ state: 'attached', timeout: stepTimeout });
-      }
-    } catch {
-      // ここまでは何も書き込んでいない。呼び側が従来の手順に落とす
-      return false;
+    } catch (err) {
+      return gaveUp(`開けません（${register.open}）: ${briefly(err)}`);
     }
+    try {
+      await page.locator(fill(register.ready, vars)).first().waitFor({ timeout: stepTimeout });
+    } catch (err) {
+      return gaveUp(`開いたか確かめられません（${register.ready}）: ${briefly(err)}`);
+    }
+    // 開いた登録画面が別の枠のものだと、まったく違う時間にご予約を入れてしまう。
+    // 画面が持っている日付・時刻・ラインを、閉じるつもりの枠と突き合わせる
+    for (const selector of register.verify ?? []) {
+      try {
+        await page.locator(fill(selector, vars)).first().waitFor({ state: 'attached', timeout: stepTimeout });
+      } catch (err) {
+        return gaveUp(`別の枠の画面かもしれません（${selector}）: ${briefly(err)}`);
+      }
+    }
+
     try {
       await runSteps(register.steps, { ...vars, ...fields });
       return true;
-    } catch {
-      // 例外の文面に氏名・電話番号が混じらないよう、中身は持ち出さない。
-      // 押せていたかどうかは、どのみち呼び側が読み直して確かめる
-      return false;
+    } catch (err) {
+      // runSteps は手順の番号とセレクタだけを載せる（打ち込んだ中身は載せない）
+      return gaveUp(err.message);
     }
   }
 

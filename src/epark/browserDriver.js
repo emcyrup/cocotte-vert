@@ -216,10 +216,10 @@ export function createBrowserDriver({
       (state === null ? missing : found).push(time);
     }
     if (found.length === 0) {
-      throw new Error(`枠の状態を読めません（${slot.date} ${slot.cells[0]} line=${line}）`);
+      throw new Error(`枠の状態を読めません（${slot.date} ${slot.cells[0]} line=${line.id}）`);
     }
     for (const time of missing) {
-      console.warn(`[epark] EPARK に枠がありません。飛ばしました（${slot.date} ${time} line=${line}）`);
+      console.warn(`[epark] EPARK に枠がありません。飛ばしました（${slot.date} ${time} line=${line.id}）`);
     }
     return found;
   }

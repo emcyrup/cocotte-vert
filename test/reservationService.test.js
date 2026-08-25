@@ -236,3 +236,78 @@ test('updateManual: 対象が無ければ not_found', async () => {
   });
   assert.deepEqual(result, { ok: false, error: 'not_found' });
 });
+
+// --- EPARK の即時反映 -------------------------------------------------------
+// 予約が動いたら、その場で EPARK 反映を起こす。**起こせなくても予約は通す**
+// （取りこぼしは30分ごとの定期実行が拾うので、遅れるだけで済む）。
+
+function eparkFakes() {
+  const reasons = [];
+  const pool = {
+    query: async (sql) => {
+      if (/SELECT name FROM customers/.test(sql)) return { rows: [{ name: '山田' }] };
+      if (/UPDATE reservations/.test(sql)) return { rows: [{ id: 1, reserved_at: '2026-09-02T10:30' }] };
+      return { rows: [{ id: 1 }] };
+    },
+  };
+  return { reasons, pool, slack: { notify: async () => {} } };
+}
+
+test('予約を登録すると EPARK 反映を起こす', async () => {
+  const { reasons, pool, slack } = eparkFakes();
+  const svc = createReservationService({ pool, slack, eparkTrigger: (r) => reasons.push(r) });
+
+  await svc.createManual({ customerId: 1, reservedAt: '2026-08-16T13:00:00+09:00', menu: 'A', staffId: null });
+  assert.deepEqual(reasons, ['予約の登録']);
+});
+
+test('日時を直すと EPARK 反映を起こす', async () => {
+  const { reasons, pool, slack } = eparkFakes();
+  const svc = createReservationService({ pool, slack, eparkTrigger: (r) => reasons.push(r) });
+
+  await svc.updateManual({ id: 1, reservedAt: '2026-09-02T10:30:00+09:00' });
+  assert.deepEqual(reasons, ['予約の修正']);
+});
+
+test('確定・取消でも EPARK 反映を起こす（来店・無断キャンセルでは起こさない）', async () => {
+  const fired = async (status) => {
+    const reasons = [];
+    const client = {
+      query: async (sql) => (/SELECT r.id, r.status/.test(sql)
+        ? { rows: [{ id: 1, status: 'requested', customer_id: 2, reserved_at: new Date(), menu: 'A', customer_name: '山田', line_user_id: null, staff_name: null }] }
+        : { rows: [] }),
+      release: () => {},
+    };
+    const pool = { connect: async () => client, query: client.query };
+    const svc = createReservationService({
+      pool, slack: { notify: async () => {} }, eparkTrigger: (r) => reasons.push(r),
+    });
+    await svc.setStatus(1, status);
+    return reasons;
+  };
+
+  assert.deepEqual(await fired('confirmed'), ['予約を確定']);
+  assert.deepEqual(await fired('cancelled'), ['予約を取消']);
+  assert.deepEqual(await fired('visited'), [], '枠はもう閉じてある');
+  assert.deepEqual(await fired('no_show'), [], '当日の枠を今から開けても意味がない');
+});
+
+test('EPARK 反映を起こせなくても、予約の登録は通す', async () => {
+  const { pool, slack } = eparkFakes();
+  const svc = createReservationService({
+    pool, slack, eparkTrigger: () => { throw new Error('起こせません'); },
+  });
+
+  const result = await svc.createManual({
+    customerId: 1, reservedAt: '2026-08-16T13:00:00+09:00', menu: 'A', staffId: null,
+  });
+  assert.equal(result.ok, true, '予約を巻き添えにしない');
+});
+
+test('起こす相手を渡さなくても動く（これまでどおり定期実行だけ）', async () => {
+  const { pool, slack } = eparkFakes();
+  const svc = createReservationService({ pool, slack });
+  assert.equal((await svc.createManual({
+    customerId: 1, reservedAt: '2026-08-16T13:00:00+09:00', menu: 'A', staffId: null,
+  })).ok, true);
+});

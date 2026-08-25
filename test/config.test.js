@@ -109,6 +109,29 @@ test('不正な EPARK_MODE は拒否する', () => {
   assert.throws(() => loadConfig({ ...baseEnv, EPARK_MODE: 'test' }), /EPARK_MODE/);
 });
 
+test('即時反映は既定で無効。有効にするなら宛先とトークンが揃っていること', () => {
+  assert.equal(loadConfig(baseEnv).epark.trigger.enabled, false);
+
+  // 揃わないまま有効にすると、起こせていないことに気付けないまま遅れ続ける
+  assert.throws(() => loadConfig({ ...baseEnv, EPARK_TRIGGER: 'on' }), /GITHUB_REPO/);
+  assert.throws(
+    () => loadConfig({ ...baseEnv, EPARK_TRIGGER: 'on', GITHUB_REPO: 'owner/repo' }),
+    /GITHUB_ACTIONS_TOKEN/
+  );
+  // owner/repo 以外を渡すと、存在しない宛先を叩き続けることになる
+  assert.throws(
+    () => loadConfig({ ...baseEnv, EPARK_TRIGGER: 'on', GITHUB_REPO: 'https://github.com/o/r', GITHUB_ACTIONS_TOKEN: 't' }),
+    /owner\/repo/
+  );
+
+  const on = loadConfig({
+    ...baseEnv, EPARK_TRIGGER: 'on', GITHUB_REPO: 'owner/repo', GITHUB_ACTIONS_TOKEN: 't',
+  }).epark.trigger;
+  assert.equal(on.enabled, true);
+  assert.equal(on.workflow, 'epark-sync.yml', '既定の宛先');
+  assert.equal(on.ref, 'main');
+});
+
 test('仮受付にお名前を載せるのが既定。EPARK_DETAILS=off で無名に戻せる', () => {
   assert.equal(loadConfig({ ...baseEnv }).epark.details, true);
   assert.equal(loadConfig({ ...baseEnv, EPARK_DETAILS: 'off' }).epark.details, false);

@@ -39,6 +39,7 @@ import { createInstagramClient } from './instagram/client.js';
 import { createThreadsClient } from './threads/client.js';
 import { createWordPressClient } from './wordpress/client.js';
 import { createSnsPublisher } from './jobs/snsPublisher.js';
+import { eparkTriggerFrom } from './epark/trigger.js';
 import { mkdirSync, statSync } from 'node:fs';
 import cron from 'node-cron';
 
@@ -60,7 +61,10 @@ const shiftParser = createShiftRequestParser({ apiKey: config.anthropicApiKey })
 const shiftService = createShiftService({ pool, lineClient, slack, settings, config });
 // 予約の書き込みは必ずこのアダプタを通す。webhook より前に用意する必要があるため、
 // 取り込み・LIFF より先にここで作る
-const reservationService = createReservationService({ pool, slack, lineClient });
+// 予約が入ったその場で EPARK 反映を走らせる（設定が揃っていなければ null）。
+// 本番にブラウザを置けないので、ここでできるのは GitHub Actions を起こすことまで
+const eparkTrigger = eparkTriggerFrom({ config, slack });
+const reservationService = createReservationService({ pool, slack, lineClient, eparkTrigger });
 // スタッフが公式LINE から入れる予約。読み取った内容は下書きに置き、押されたときだけ本予約にする
 // 営業時間を渡すのは、「2時」のように午前・午後が書かれていない時刻を決めるため
 const entryParser = createReservationEntryParser({ apiKey: config.anthropicApiKey, store });

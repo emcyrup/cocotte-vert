@@ -111,7 +111,8 @@
       <!-- ② 日時とコース -->
       <h2>ご予約の内容</h2>
       <label for="datetime">日時</label>
-      <input type="datetime-local" id="datetime" />
+      <!-- お客様のフォームと同じ30分刻み。min は置かないので区切りは 00 分から数える -->
+      <input type="datetime-local" id="datetime" step="1800" />
 
       <label for="menu">コース</label>
       <select id="menu"></select>

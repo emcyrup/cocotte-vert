@@ -25,6 +25,16 @@ function jstNowPlusHours(hours) {
   return jst.toISOString().slice(0, 16);
 }
 
+// datetime-local の step は **min を起点に**数える。min が 13:47 のままだと
+// 選べる時刻が 13:47 / 14:17 … と半端になるので、30分の区切りまで繰り上げる
+function roundUpToHalfHour(datetimeLocal) {
+  const half = 30 * 60000;
+  // 文字列を UTC として読み、UTC として書き戻す。壁時計の足し算をしたいだけなので、
+  // 端末の時差を挟まないほうが日またぎも素直に出る
+  const at = Date.parse(`${datetimeLocal}:00Z`);
+  return new Date(Math.ceil(at / half) * half).toISOString().slice(0, 16);
+}
+
 const ERROR_MESSAGES = {
   not_registered: 'お客様情報が未登録のため受け付けられませんでした。登録後にお試しください。',
   past_datetime: '過去の日時は選べません。',
@@ -81,7 +91,7 @@ async function main() {
 
   // 当日直前の駆け込み予約を避け、最短でも翌日以降を初期値にする
   const datetime = document.getElementById('datetime');
-  datetime.min = jstNowPlusHours(1);
+  datetime.min = roundUpToHalfHour(jstNowPlusHours(1));
   datetime.value = `${jstNowPlusHours(24).slice(0, 10)}T10:00`;
 
   document.getElementById('greeting').textContent = `（${options.customerName}様）`;

@@ -21,7 +21,8 @@
 | PostgreSQL のデータベース名 | **完了**（`cocotte-vert`。ハイフン入りなので接続文字列では引用が要る） |
 | `.env` の作成 | **完了**。`/health` が `{"ok":true,"sendMode":"dry_run"}` を返す |
 | **GCP からのデータ移行** | **未。ここが最後のボトルネック**。`message_logs` を必ず含めること（含めないと過去分が再送される） |
-| EPARK 即時反映の設定（`EPARK_TRIGGER` / `GITHUB_REPO` / `GITHUB_ACTIONS_TOKEN`） | 未。AWS の `/health` は `eparkTrigger:"off"`。**移行当日に GCP から外して AWS へ入れる**（両方 on にしない） |
+| EPARK 即時反映の設定（`EPARK_TRIGGER` / `GITHUB_REPO` / `GITHUB_ACTIONS_TOKEN`） | **完了**。AWS の `/health` も `eparkTrigger:"on"`。GCP と両方 on だが**害は無い**（下記） |
+| **GitHub Secret `ADMIN_BASE_URL` を AWS へ向ける** | 未。**EPARK 反映の向き先はここ1箇所で決まる**。移行当日にここを切り替える |
 | LINE の Webhook / LIFF の向き先変更 | 未。**移行当日まで変えない**（変えた時点で本番が AWS を向く） |
 | `SEND_MODE` を live へ | 未。当面 `dry_run` のまま |
 | GCP の停止 | 未。上が全部済んでから |
@@ -33,6 +34,15 @@
 
 **GCP と AWS の両方を `live` にしないこと。** 別々のデータベースを見るため `dedupe_key` が
 効かず、同じお客様へ二重に届く。
+
+**EPARK 反映は事情が違う（`EPARK_TRIGGER` は両方 on でよい）。** `SEND_MODE` と混同しないこと。
+アプリがするのは「GitHub Actions を起こす」ことだけで、**予約データも live 判定も渡さない**。
+実際に消化する一覧は Secret の **`ADMIN_BASE_URL` が指す1つのアプリからしか取らない**ので、
+どちらが起こしても触るのは同じ1系統。余分に起きたぶんは `対象 0` で即終わる
+（同時実行はワークフローの `concurrency` が直列化する）。
+
+裏を返すと、**`ADMIN_BASE_URL` が指していないほうのアプリの予約は EPARK に反映されない。**
+移行当日に切り替えるべきはここで、`EPARK_TRIGGER` ではない。
 
 ---
 

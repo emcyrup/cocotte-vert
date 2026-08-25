@@ -180,11 +180,48 @@ export function createBrowserDriver({
    * 見つからないものを閉じている扱いにすると、失敗を成功と誤読して消し込んでしまう。
    */
   async function cellClosed(vars) {
+    const state = await cellState(vars);
+    if (state === null) {
+      throw new Error(`枠の状態を読めません（${vars.date} ${vars.time} line=${vars.line}）`);
+    }
+    return state === 'closed';
+  }
+
+  /** 'closed' | 'open' | null（その時刻に枠が無い） */
+  async function cellState(vars) {
     const closed = await page.locator(cellSelector('closed', vars)).count();
     const open = await page.locator(cellSelector('open', vars)).count();
-    if (closed > 0 && open === 0) return true;
-    if (open > 0 && closed === 0) return false;
-    throw new Error(`枠の状態を読めません（${vars.date} ${vars.time} line=${vars.line}）`);
+    if (closed > 0 && open === 0) return 'closed';
+    if (open > 0 && closed === 0) return 'open';
+    return null;
+  }
+
+  /**
+   * その枠のうち、**EPARK に実在する時刻だけ**を返す。
+   *
+   * 予約は営業時間の終わりをはみ出す。実物のトリミングは 17:00 が最後の枠なのに
+   * 17:00-18:30 の予約が来て、18:00 を触りにいって毎回失敗していた。
+   * はみ出したぶんは相手に枠が無いだけなので、そこは飛ばして残りを進める。
+   *
+   * ただし**1つも読めないなら飛ばさない**。設定が実物と合っていない・日付が違う、
+   * という壊れ方と区別が付かなくなり、何もしていないのに済みにしてしまうため。
+   */
+  async function existingTimes(slot, line) {
+    if (slot.cells.length === 0) return [];
+    await gotoDay(slot);
+    const found = [];
+    const missing = [];
+    for (const time of slot.cells) {
+      const state = await cellState(varsFor(slot, time, line));
+      (state === null ? missing : found).push(time);
+    }
+    if (found.length === 0) {
+      throw new Error(`枠の状態を読めません（${slot.date} ${slot.cells[0]} line=${line}）`);
+    }
+    for (const time of missing) {
+      console.warn(`[epark] EPARK に枠がありません。飛ばしました（${slot.date} ${time} line=${line}）`);
+    }
+    return found;
   }
 
   /**
@@ -343,7 +380,7 @@ export function createBrowserDriver({
   async function closeSlot(slot, fields = null) {
     const line = lineOf(slot);
     const closed = [];
-    for (const time of slot.cells) {
+    for (const time of await existingTimes(slot, line)) {
       const vars = varsFor(slot, time, line);
       await gotoDay(slot);
       if (await cellClosed(vars)) continue;
@@ -388,7 +425,7 @@ export function createBrowserDriver({
     // 「まだ自分の枠か」を古い画面で判断しない。ここが取り消しの唯一の歯止めなので、
     // 直前に読んだ画面を使い回さず必ず読み直す（2枠目以降は書き込みのたびに捨てられる）
     await gotoDay(slot, { force: true });
-    for (const time of slot.cells) {
+    for (const time of await existingTimes(slot, line)) {
       const vars = varsFor(slot, time, line);
       await gotoDay(slot);
       if (!(await cellClosed(vars))) continue;
@@ -418,7 +455,7 @@ export function createBrowserDriver({
   async function isSlotClosed(slot) {
     const line = lineOf(slot);
     await gotoDay(slot, { force: true });
-    for (const time of slot.cells) {
+    for (const time of await existingTimes(slot, line)) {
       if (!(await cellClosed(varsFor(slot, time, line)))) return false;
     }
     return true;

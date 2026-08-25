@@ -165,6 +165,41 @@ test('枠そのものが無い時刻は、閉じているとみなさず例外�
   });
 });
 
+// 実物で踏んだ。トリミングの枠は 17:00 が最後なのに 17:00-18:30 の予約が来て、
+// 18:00 を触りにいって**毎回失敗し続けていた**（予約が入るたびに失敗が増える）。
+test('営業時間をはみ出した枠は飛ばして、残りを進める', { skip }, async () => {
+  const fake = await startFakeEpark();          // 枠があるのは 10:00〜17:00
+  const warnings = [];
+  const warn = console.warn;
+  console.warn = (...a) => warnings.push(a.join(' '));
+  let closed;
+  try {
+    await withDriver(fake, async (driver) => {
+      ({ closed } = await driver.closeSlot(at(17, 90)));   // 17:00-18:30 → 17:00 と 18:00
+    });
+  } finally {
+    console.warn = warn;
+  }
+  assert.deepEqual(closed.map((c) => c.time), ['17:00'], '在る枠だけ閉じる');
+  assert.equal(fake.stateOf('20260901', '1700', '1'), 'tentative');
+  assert.match(warnings.join('\n'), /EPARK に枠がありません.*18:00/, '飛ばしたことは残す');
+});
+
+test('はみ出した枠は、開け直すときも飛ばす', { skip }, async () => {
+  const fake = await startFakeEpark();
+  fake.setTentative('20260901', '1700', '1');
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    await withDriver(fake, async (driver) => {
+      await driver.openSlot({ ...at(17, 90), cells: ['17:00', '18:00'] });
+    });
+  } finally {
+    console.warn = warn;
+  }
+  assert.equal(fake.stateOf('20260901', '1700', '1'), null, '在る枠は開く');
+});
+
 test('閉じた枠だけを返す（すでに閉じていた枠は自分のものにしない）', { skip }, async () => {
   // スタッフが手で止めていた枠を、あとで取消のときに勝手に開けてしまわないため
   const fake = await startFakeEpark();

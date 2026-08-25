@@ -276,7 +276,11 @@ test('閉じるときは、誰のご予約かを駆動部へ渡す', async () =>
     toBlock: [row({ phone_norm: '09012345678', pet_name: 'ポチ' })],
   });
   await f.sync.run();
-  assert.equal(f.details[0], 'LINE予約 / 田中花子 様 / ポチちゃん / 090-1234-5678 / カット / res=1');
+  assert.deepEqual(f.details[0], {
+    details: 'LINE予約 / 田中花子 様 / ポチちゃん / 090-1234-5678 / カット / res=1',
+    // 受付表の一覧に出るのはこの3つ。かな・カード番号はこちらが持っていない
+    lastName: '田中花子', firstName: '', phone: '09012345678',
+  });
 });
 
 test('EPARK_DETAILS=off なら、これまでどおり無名の仮受付にする', async () => {
@@ -357,4 +361,40 @@ test('開ける枠が1つも残らなければ、EPARK を触らずに済みに�
   assert.equal(summary.failed, 0);
   assert.deepEqual(f.calls.filter((c) => c[0] === 'openSlot'), [], '画面には触らない');
   assert.deepEqual(f.done, [{ id: 1, done: true }]);
+});
+
+// ---- 自分が入れた枠の見分け方（受付番号） ----
+
+test('記録は古い形（時刻だけ）も新しい形（受付番号つき）も読める', () => {
+  const older = slotOf(row({ status: 'cancelled', duration_minutes: 120, external_blocked_cells: ['10:00', '11:00'] }),
+    { action: 'release' });
+  assert.deepEqual(older.cells, ['10:00', '11:00']);
+  assert.deepEqual(older.cellIds, {}, '番号が無ければ従来どおり仮受付の印で守る');
+
+  const newer = slotOf(row({
+    status: 'cancelled', duration_minutes: 120,
+    external_blocked_cells: [{ time: '10:00', id: '10456' }, { time: '11:00', id: '10457' }],
+  }), { action: 'release' });
+  assert.deepEqual(newer.cells, ['10:00', '11:00']);
+  assert.deepEqual(newer.cellIds, { '10:00': '10456', '11:00': '10457' });
+});
+
+test('受付番号が控えられていない枠も混ざれる', () => {
+  const slot = slotOf(row({
+    status: 'cancelled', duration_minutes: 120,
+    external_blocked_cells: [{ time: '10:00', id: '10456' }, '11:00'],
+  }), { action: 'release' });
+  assert.deepEqual(slot.cells, ['10:00', '11:00']);
+  assert.deepEqual(slot.cellIds, { '10:00': '10456' });
+});
+
+test('閉じたときの受付番号がそのまま記録へ渡る', async () => {
+  const f = makeFakes({
+    toBlock: [row({ duration_minutes: 60 })],
+    driver: {
+      async closeSlot(s) { return { closed: s.cells.map((t, i) => ({ time: t, id: `104${i}` })) }; },
+    },
+  });
+  await f.sync.run();
+  assert.deepEqual(f.done, [{ id: 1, done: true, cells: [{ time: '10:00', id: '1040' }] }]);
 });

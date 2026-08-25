@@ -16,8 +16,14 @@
     "<label><input type=\"checkbox\"><span class=\"box\"></span></label> の作りで、",
     "input が CSS で隠されているため（直接押すと時間切れになる。実物で確認）。",
     "",
-    "register = 空き枠から「顧客検索及び新規受付登録」を開き、院内メモに",
+    "cell.appointId = その枠が持つ EPARK の受付番号。**お名前を入れた枠は仮受付の印が",
+    "付かなくなる**ため（実物で確認）、自分が入れた枠かどうかはこの番号で見分ける。",
+    "番号は1件ごとに違うので、スタッフが手作業で入れた仮受付とも区別できる。",
+    "",
+    "register = 空き枠から「顧客検索及び新規受付登録」を開き、顧客情報の欄と院内メモに",
     "お名前・電話番号・コースを書いてから「仮受付」を押す手順。",
+    "  * 顧客情報の欄（姓・名・電話番号）に入れると、受付表の一覧にそのまま名前が出る。",
+    "    かな・カード番号はこちらが持っていないので空欄のまま",
     "  * 顧客検索（電話番号での突合）と顧客登録は**しない**。同姓同名で別の方に",
     "    紐づけると相手の台帳が壊れて戻せないため。メモに書くだけにする",
     "  * 押すのは「受付」(#OP0062UD01) ではなく「仮受付」(#OP0062UD02)。",
@@ -71,7 +77,8 @@
     "checkbox": "label:has(input[name=\"appoint\"][value=\"{timeCompact}_{line}\"])",
     "closed": ".reserveFrame{timeCompact}_{line}",
     "open": ".emptyFrame{timeCompact}_{line}",
-    "ours": ".reserveFrame{timeCompact}_{line} li.tentative-reservation"
+    "ours": ".reserveFrame{timeCompact}_{line} li.tentative-reservation",
+    "appointId": ".reserveFrame{timeCompact}_{line} input[name=\"multiSchedulerHidAppointId\"]"
   },
 
   "close": [
@@ -95,6 +102,9 @@
       "#hidSearchCustomerAndRegisterAppointLineId[value=\"{line}\"], [name=\"hidSearchCustomerAndRegisterAppointLineId\"][value=\"{line}\"]"
     ],
     "steps": [
+      { "fill": "#searchCustomerAndRegisterAppointTxtLastName", "value": "{lastName}" },
+      { "fill": "#searchCustomerAndRegisterAppointTxtFirstName", "value": "{firstName}" },
+      { "fill": "#searchCustomerAndRegisterAppointTxtTel", "value": "{phone}" },
       { "fill": "#txtMemoNow", "value": "{details}" },
       { "click": "#OP0062UD02" },
       { "waitFor": "{closed}" }

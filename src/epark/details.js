@@ -2,15 +2,20 @@
 //
 // これまでは枠を押さえるだけの無名の仮受付だったので、EPARK の受付表を見ても
 // 誰の予約か分からず、結局こちらの画面と突き合わせる手間が残っていた。
-// 空き枠から開く「顧客検索及び新規受付登録」の院内メモにこの1行を入れる。
+// 空き枠から開く「顧客検索及び新規受付登録」に、次の2つを入れる。
+//
+//   * 顧客情報の欄（姓・名・電話番号） … **受付表の一覧にそのまま出る**
+//   * 院内メモ                         … 開いたときに見える1行。ペット名・コース・予約番号も入る
 //
 // **EPARK 側の顧客台帳は検索も選択も新規登録もしない。** 同姓同名や複数ヒットで
-// 別のお客様に紐づけると、相手の台帳が壊れて元に戻せない。メモに書くだけなら
-// 間違っていても消せる。「受付」ではなく「仮受付」のままにするのも同じ理由で、
-// 仮受付の印（li.tentative-reservation）が付いているうちは、取消のときに
-// 「自分が入れたものだけ」を見分けて開け直せる。
+// 別のお客様に紐づけると、相手の台帳が壊れて元に戻せない。打ち込むだけなら消せる。
+// 押すのも「受付」ではなく「仮受付」のまま（正式な受付にすると取り消せなくなる）。
 //
-// ここが返す文字列には氏名・電話番号が入る。**ログにも Slack にも出さない。**
+// なお、顧客情報を入れた枠は**仮受付の印（li.tentative-reservation）が付かなくなる**
+// （実物で確認）。そのため「自分が入れた枠か」の見分けは印ではなく EPARK の受付番号で行う。
+// 詳しくは `browserDriver.js` の cellIsOurs を参照。
+//
+// ここが返す値には氏名・電話番号が入る。**ログにも Slack にも出さない。**
 
 // EPARK のメモ欄に収まる長さ。溢れると相手側で切られ方が読めない
 const MAX_LENGTH = 200;
@@ -25,6 +30,40 @@ function prettyPhone(raw) {
     return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
   }
   return digits;
+}
+
+/**
+ * こちらは氏名を1つの欄で持っているが、EPARK は姓と名が別の欄。
+ * 最初の空白で割る。空白が無ければ全部を姓に入れる（日本語の姓名は姓が先のため、
+ * 名を空にするほうが取り違えにくい）。
+ * @returns {{lastName: string, firstName: string}}
+ */
+export function nameParts(row) {
+  const name = String(row?.customer_name ?? '').trim();
+  if (!name) return { lastName: '', firstName: '' };
+  // \s は全角スペース（U+3000）も含む
+  const split = name.match(/^(\S+)\s+(.+)$/);
+  return split
+    ? { lastName: split[1], firstName: split[2].trim() }
+    : { lastName: name, firstName: '' };
+}
+
+/**
+ * 登録画面に打ち込む値をまとめて作る。
+ * 何も入れるものが無ければ null（＝これまでどおりの無名の仮受付にする）。
+ * @returns {{details:string, lastName:string, firstName:string, phone:string}|null}
+ */
+export function registerFields(row) {
+  const details = detailsText(row);
+  if (!details) return null;
+  const { lastName, firstName } = nameParts(row);
+  return {
+    details,
+    lastName,
+    firstName,
+    // EPARK の指定どおりハイフン無しの半角数字（画面にもそう書いてある）
+    phone: String(row.phone_norm ?? '').replace(/[^0-9]/g, ''),
+  };
 }
 
 /**

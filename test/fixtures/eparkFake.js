@@ -10,7 +10,9 @@
 //   * 閉じる＝チェック→「仮受付」、開ける＝チェック→「キャンセル」
 //   * チェックボックスは CSS で隠され、見た目は <span class="box">（label を押す）
 //   * 日付の移動は URL ではなく JavaScript（multiSchedulerCalendar）
-//   * 空き枠の「受付」から顧客検索及び新規受付登録が開き、院内メモを添えて仮受付にできる
+//   * 枠は EPARK の受付番号（multiSchedulerHidAppointId）を持つ。1件ごとに違う
+//   * **お名前を入れた枠には仮受付の印が付かない**（実物どおり）。見分けは受付番号で行う
+//   * 空き枠の「受付」から顧客検索及び新規受付登録が開き、お名前と院内メモを添えて仮受付にできる
 //     （「受付」ボタンは顧客を選ぶまで disabled、「仮受付」は押せる）
 //
 // わざと本物のご予約も1件置いてある。開け直しでそれに触らないことを確かめるため。
@@ -35,9 +37,26 @@ export async function startFakeEpark({
 } = {}) {
   // 埋まっている枠 → 'tentative'（自分が入れた仮受付） か 'booked'（本物のご予約）
   const filled = new Map();
-  // 仮受付に添えられた院内メモ。お名前が実際に相手側へ届いたかを試す
+  // 仮受付に添えられた院内メモ・お名前。実際に相手側へ届いたかを試す
   const memos = new Map();
+  const names = new Map();
+  // 枠ごとの EPARK 受付番号。実物と同じく1件ごとに増える
+  const appointIds = new Map();
+  let nextAppointId = 10000;
   let session = false;
+
+  /** 枠を埋める。実物と同じく、埋めるたびに新しい受付番号が振られる */
+  function fillCell(date, time, line, state) {
+    filled.set(key(date, time, line), state);
+    appointIds.set(key(date, time, line), String((nextAppointId += 1)));
+  }
+
+  function clearCell(date, time, line) {
+    filled.delete(key(date, time, line));
+    memos.delete(key(date, time, line));
+    names.delete(key(date, time, line));
+    appointIds.delete(key(date, time, line));
+  }
 
   function schedulePage(date) {
     const rows = TIMES.map((t) => {
@@ -56,11 +75,15 @@ export async function startFakeEpark({
               </li></ul>
             </div></div>`;
         }
-        const mark = state === 'tentative'
-          ? '<li class="tentative-reservation"><span class="name">仮受付</span></li>'
-          : '<li class="client-name"><span class="name">ご予約</span></li>';
+        // 実物どおり、**お名前が入っている枠には仮受付の印が付かない**。
+        // 印だけを頼りにすると自分の枠を見失うので、受付番号で見分けられるかを試す
+        const named = names.get(key(date, t, line));
+        const mark = state !== 'tentative' || named
+          ? `<li class="client-name"><span class="name">${named || 'ご予約'}</span></li>`
+          : '<li class="tentative-reservation"><span class="name">仮受付</span></li>';
         return `${checkbox}<div class="timetable-column line${line} active">
           <div class="reserve-content reserveFrame${t}_${line}">
+            <input type="hidden" name="multiSchedulerHidAppointId" value="${appointIds.get(key(date, t, line)) ?? ''}">
             <ul class="info-list">${mark}</ul>
           </div></div>`;
       }).join('');
@@ -150,6 +173,9 @@ export async function startFakeEpark({
             <input type="hidden" name="date" value="${date}">
             <input type="hidden" name="to" value="tentative">
             <input type="hidden" name="cells" value="${time}_${line}">
+            <input id="searchCustomerAndRegisterAppointTxtLastName" name="lastName">
+            <input id="searchCustomerAndRegisterAppointTxtFirstName" name="firstName">
+            <input id="searchCustomerAndRegisterAppointTxtTel" name="tel">
             <textarea id="txtMemoNow" name="memo"></textarea>
             <textarea id="txtMemoNotice" name="notice"></textarea>
             <!-- 顧客を選ぶまで「受付」は押せない。「仮受付」は押せる（実物どおり） -->
@@ -164,15 +190,17 @@ export async function startFakeEpark({
       const date = url.searchParams.get('date');
       const to = url.searchParams.get('to');
       const memo = url.searchParams.get('memo');
+      const fullName = [url.searchParams.get('lastName'), url.searchParams.get('firstName')]
+        .filter(Boolean).join(' ');
       for (const cell of (url.searchParams.get('cells') || '').split(',').filter(Boolean)) {
         if (silentFail) continue;   // 押しても何も起きない画面
         const [time, line] = cell.split('_');
         if (to === 'tentative') {
-          filled.set(key(date, time, line), 'tentative');
+          fillCell(date, time, line, 'tentative');
           if (memo) memos.set(key(date, time, line), memo);
+          if (fullName) names.set(key(date, time, line), fullName);
         } else {
-          filled.delete(key(date, time, line));
-          memos.delete(key(date, time, line));
+          clearCell(date, time, line);
         }
       }
       res.writeHead(302, { Location: `/schedule?date=${date}` });
@@ -191,8 +219,12 @@ export async function startFakeEpark({
     filled,
     stateOf: (date, time, line) => filled.get(key(date, time, line)) ?? null,
     memoOf: (date, time, line) => memos.get(key(date, time, line)) ?? null,
-    setTentative: (date, time, line) => filled.set(key(date, time, line), 'tentative'),
-    setBooked: (date, time, line) => filled.set(key(date, time, line), 'booked'),
+    nameOf: (date, time, line) => names.get(key(date, time, line)) ?? null,
+    appointIdOf: (date, time, line) => appointIds.get(key(date, time, line)) ?? null,
+    setTentative: (date, time, line) => fillCell(date, time, line, 'tentative'),
+    setBooked: (date, time, line) => fillCell(date, time, line, 'booked'),
+    /** 枠の中身を別のものに差し替える（受付が消されて別の受付が入った状況を作る） */
+    replaceWith: (date, time, line, state) => { clearCell(date, time, line); fillCell(date, time, line, state); },
     stop: () => new Promise((r) => server.close(r)),
     /** この作り物に合わせた画面設定。実物ではここだけが変わる */
     profile: {
@@ -218,6 +250,7 @@ export async function startFakeEpark({
         closed: '.reserveFrame{timeCompact}_{line}',
         open: '.emptyFrame{timeCompact}_{line}',
         ours: '.reserveFrame{timeCompact}_{line} li.tentative-reservation',
+        appointId: '.reserveFrame{timeCompact}_{line} input[name="multiSchedulerHidAppointId"]',
       },
       close: [
         { click: '{checkbox}' },
@@ -238,6 +271,9 @@ export async function startFakeEpark({
           '#hidSearchCustomerAndRegisterAppointLineId[value="{line}"]',
         ],
         steps: [
+          { fill: '#searchCustomerAndRegisterAppointTxtLastName', value: '{lastName}' },
+          { fill: '#searchCustomerAndRegisterAppointTxtFirstName', value: '{firstName}' },
+          { fill: '#searchCustomerAndRegisterAppointTxtTel', value: '{phone}' },
           { fill: '#txtMemoNow', value: '{details}' },
           { click: '#OP0062UD02' },
           { waitFor: '{closed}' },

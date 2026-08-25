@@ -21,18 +21,26 @@
 //   {checkbox}     cell.checkbox を展開したセレクタ（手順の中で使える）
 //   {closed} {open}  cell.closed / cell.open を展開したセレクタ。
 //                  「押したあと、その枠が実際に変わるまで待つ」ために手順の waitFor で使う
-//   {details}      院内メモに入れる「誰のご予約か」（register.steps の value でのみ使う）
+//
+// register.steps の value でのみ使える（お客様の情報。セレクタには使わせない）:
+//   {details}      院内メモに入れる1行
+//   {lastName} {firstName}  お名前（姓・名）
+//   {phone}        電話番号（ハイフン無しの半角数字）
 
 const ACTIONS = ['click', 'fill', 'select', 'waitFor'];
 const REQUIRED = ['loginUrl', 'login', 'day', 'lines', 'cell', 'close', 'open'];
 const CELL_KEYS = ['checkbox', 'closed', 'open', 'ours'];
+// 枠の受付番号。任意だが、これが無いと「お名前を載せた枠」を自分のものと
+// 見分けられない（お名前を入れると仮受付の印が消えるため）
+const OPTIONAL_CELL_KEYS = ['appointId'];
 // 登録画面を開いて確かめるまでの部分。ここにお客様の情報を差し込ませない
 const REGISTER_SELECTOR_KEYS = ['open', 'ready'];
+const CUSTOMER_TOKENS = ['{details}', '{lastName}', '{firstName}', '{phone}'];
 
 /** 差し込み。埋め込みは1か所にまとめ、駆動部で書式を散らさない */
 export function fill(template, vars) {
   return String(template).replace(
-    /\{(base|date|dateCompact|time|timeCompact|line|checkbox|closed|open|details)\}/g,
+    /\{(base|date|dateCompact|time|timeCompact|line|checkbox|closed|open|details|lastName|firstName|phone)\}/g,
     (whole, key) => (vars[key] == null ? whole : vars[key])
   );
 }
@@ -97,8 +105,11 @@ export function validateProfile(profile) {
     if (line.id == null || line.id === '') return { ok: false, error: `lines[${i}].id がありません` };
   }
 
-  for (const key of CELL_KEYS) {
-    if (!profile.cell[key]) return { ok: false, error: `cell.${key} がありません` };
+  for (const key of [...CELL_KEYS, ...OPTIONAL_CELL_KEYS]) {
+    if (!profile.cell[key]) {
+      if (OPTIONAL_CELL_KEYS.includes(key)) continue;
+      return { ok: false, error: `cell.${key} がありません` };
+    }
     // 時刻とラインが入らないセレクタは、その日の枠を丸ごと掴んでしまう
     if (!String(profile.cell[key]).includes('{timeCompact}')) {
       return { ok: false, error: `cell.${key} に {timeCompact} が入っていません` };
@@ -126,15 +137,16 @@ export function validateProfile(profile) {
       }
     }
     // 開くところまでは、お客様の情報を混ぜない（セレクタに氏名が入ると壊れる）
+    const hasCustomerToken = (value) => CUSTOMER_TOKENS.some((t) => String(value).includes(t));
     for (const key of REGISTER_SELECTOR_KEYS) {
-      if (String(register[key]).includes('{details}')) {
-        return { ok: false, error: `register.${key} に {details} は使えません` };
+      if (hasCustomerToken(register[key])) {
+        return { ok: false, error: `register.${key} にお客様の情報は差し込めません` };
       }
     }
     if (register.verify != null) {
       if (!Array.isArray(register.verify)) return { ok: false, error: 'register.verify は配列です' };
       for (const [i, sel] of register.verify.entries()) {
-        if (!sel || String(sel).includes('{details}')) {
+        if (!sel || hasCustomerToken(sel)) {
           return { ok: false, error: `register.verify[${i}] が不正です` };
         }
       }

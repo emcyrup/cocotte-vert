@@ -78,7 +78,11 @@ try {
     const found = rows.filter((r) => r.state !== 'none').length;
     console.log(`${date}  ${line._name ?? `line=${line.id}`}（line=${line.id}） 枠 ${found}/${rows.length}`);
     for (const r of rows) {
-      const mark = r.state === 'closed' ? (r.ours ? '  ← 仮受付の印あり' : '  ← 仮受付の印なし（ご予約？）') : '';
+      // 受付番号を出す。お名前を載せた枠には仮受付の印が付かないので、
+      // 「自分が入れた枠か」はこの番号で突き合わせる（記録は external_blocked_cells）
+      const mark = r.state === 'closed'
+        ? `  ← ${r.ours ? '仮受付の印あり' : '仮受付の印なし'}${r.id ? ` 受付番号=${r.id}` : ''}`
+        : '';
       console.log(`  ${r.time}  ${LABEL[r.state]}${mark}`);
     }
     if (found === 0) broken += 1;

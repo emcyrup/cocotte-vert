@@ -3,7 +3,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { detailsText } from '../src/epark/details.js';
+import { detailsText, nameParts, registerFields } from '../src/epark/details.js';
 
 const row = {
   id: 12,
@@ -42,4 +42,33 @@ test('メモ欄に収まる長さで切る', () => {
   assert.ok(long.length <= 200, `長すぎる: ${long.length}`);
   // 切られても、誰の予約かは先頭に残る
   assert.match(long, /^LINE予約 \/ 山田 花子 様/);
+});
+
+// ---- 顧客情報の欄に入れる値 ----
+
+test('氏名は最初の空白で姓と名に割る', () => {
+  assert.deepEqual(nameParts({ customer_name: '山田 花子' }), { lastName: '山田', firstName: '花子' });
+  assert.deepEqual(nameParts({ customer_name: '山田　花子' }), { lastName: '山田', firstName: '花子' },
+    '全角スペースでも割る');
+  assert.deepEqual(nameParts({ customer_name: '佐藤 花子 様' }), { lastName: '佐藤', firstName: '花子 様' },
+    '2つ目以降の空白は名のまま残す');
+});
+
+test('空白の無い氏名は、全部を姓に入れる（名は空）', () => {
+  assert.deepEqual(nameParts({ customer_name: '田中花子' }), { lastName: '田中花子', firstName: '' });
+  assert.deepEqual(nameParts({}), { lastName: '', firstName: '' });
+});
+
+test('登録画面に打ち込む値をまとめて作る', () => {
+  assert.deepEqual(registerFields(row), {
+    details: 'LINE予約 / 山田 花子 様 / ポチちゃん / 090-1234-5678 / カットコース / res=12',
+    lastName: '山田',
+    firstName: '花子',
+    // EPARK の指定どおりハイフン無しの半角数字
+    phone: '09012345678',
+  });
+});
+
+test('載せる中身が無ければ null（無名の仮受付に戻す）', () => {
+  assert.equal(registerFields({}), null);
 });

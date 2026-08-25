@@ -83,6 +83,24 @@ function occupiedByOthers(row, slotMinutes, lineOf) {
 }
 
 /**
+ * 自分が閉じた枠の記録を読む。
+ *
+ * 記録の形は2つある。顧客情報を入れると仮受付の印が消えるため、印の代わりに
+ * EPARK の受付番号で見分けるようにした。それ以前に閉じた枠は時刻しか残っていない。
+ *   古い形: ["10:00", "11:00"]
+ *   新しい形: [{ "time": "10:00", "id": "10456" }]
+ *
+ * @returns {Array<{time:string,id:string|null}>|null} 記録が無ければ null
+ */
+export function recordedCells(value) {
+  if (!Array.isArray(value)) return null;
+  return value
+    .map((cell) => (typeof cell === 'string' ? { time: cell, id: null } : cell))
+    .filter((cell) => cell && typeof cell.time === 'string')
+    .map((cell) => ({ time: cell.time, id: cell.id == null ? null : String(cell.id) }));
+}
+
+/**
  * 一覧の1行から、駆動部へ渡す枠を作る。
  *
  * `action` で `cells`（駆動部が触る枠）が変わる。
@@ -92,10 +110,14 @@ function occupiedByOthers(row, slotMinutes, lineOf) {
  *             記録が無いときは全部を候補にし、仮受付の印で守る。
  *             どちらの場合も、他の確定予約が使っている枠は外す
  *
+ * `cellIds` は「その枠に入れた EPARK の受付番号」。開け直すときに、この番号と
+ * 一致する枠だけを取り消す（`browserDriver.js` の cellIsOurs）。
+ *
  * @param {object} opts
  * @param {(menu:string)=>(string|null)} [opts.lineOf] コース名から EPARK のラインを引く
  * @returns {{reservationId:number, date:string, dateCompact:string, startTime:string,
- *            endTime:string, minutes:number, menu:string, cells:string[]}}
+ *            endTime:string, minutes:number, menu:string, cells:string[],
+ *            cellIds:Record<string,string>}}
  */
 export function slotOf(row, { slotMinutes = 60, action = 'close', lineOf = null } = {}) {
   const minutes = Number(row.duration_minutes) > 0
@@ -104,14 +126,19 @@ export function slotOf(row, { slotMinutes = 60, action = 'close', lineOf = null 
   const { date, time } = jstFields(new Date(row.reserved_at));
   const endMinutes = Math.min(toMinutes(time) + minutes, 24 * 60 - 1);
   const covered = cellTimes(time, minutes, slotMinutes);
-  const recorded = Array.isArray(row.external_blocked_cells) ? row.external_blocked_cells : null;
 
   let cells = covered;
+  let cellIds = {};
   if (action === 'release') {
+    const recorded = recordedCells(row.external_blocked_cells);
     // 記録された枠のうち、いまの予約時間に収まるものだけを使う（時間が動いた場合の保険）
-    if (recorded) cells = recorded.filter((t) => covered.includes(t));
+    const list = recorded
+      ? recorded.filter((cell) => covered.includes(cell.time))
+      : covered.map((t) => ({ time: t, id: null }));
     const taken = occupiedByOthers(row, slotMinutes, lineOf);
-    cells = cells.filter((t) => !taken.has(t));
+    const kept = list.filter((cell) => !taken.has(cell.time));
+    cells = kept.map((cell) => cell.time);
+    cellIds = Object.fromEntries(kept.filter((cell) => cell.id).map((cell) => [cell.time, cell.id]));
   }
 
   return {
@@ -123,6 +150,7 @@ export function slotOf(row, { slotMinutes = 60, action = 'close', lineOf = null 
     minutes,
     menu: row.menu ?? '',
     cells,
+    cellIds,
   };
 }
 

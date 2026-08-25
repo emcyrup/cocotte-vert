@@ -141,8 +141,32 @@ export function createBrowserDriver({
     throw new Error(`枠の状態を読めません（${vars.date} ${vars.time} line=${vars.line}）`);
   }
 
-  /** その枠を埋めているのが「自分が入れた仮受付」か。本物のご予約なら false */
-  async function cellIsOurs(vars) {
+  /**
+   * その枠が持っている EPARK の受付番号。読めなければ null。
+   * 閉じたあとに控えておき、開け直すときの本人確認に使う
+   */
+  async function cellAppointId(vars) {
+    if (!profile.cell.appointId) return null;
+    const field = page.locator(cellSelector('appointId', vars)).first();
+    if ((await field.count()) === 0) return null;
+    return (await field.getAttribute('value')) || null;
+  }
+
+  /**
+   * その枠を埋めているのが「自分が入れたもの」か。本物のご予約なら false。
+   *
+   * 控えた受付番号があればそれで照合する。**顧客情報（お名前）を入れた枠は
+   * 仮受付の印が付かなくなる**ため（実物で確認）、印より受付番号を優先する。
+   * 番号は1件ごとに違うので、スタッフが手作業で入れた仮受付とも区別できる。
+   *
+   * 番号を控えていない枠（この仕組みより前に閉じたもの）は、従来どおり
+   * 仮受付の印で見分ける。
+   */
+  async function cellIsOurs(vars, expectedId = null) {
+    if (expectedId && profile.cell.appointId) {
+      const actual = await cellAppointId(vars);
+      return actual != null && String(actual) === String(expectedId);
+    }
     return (await page.locator(cellSelector('ours', vars)).count()) > 0;
   }
 
@@ -197,14 +221,15 @@ export function createBrowserDriver({
   }
 
   /**
-   * 空き枠から「顧客検索及び新規受付登録」を開き、院内メモにお名前を入れて仮受付にする。
+   * 空き枠から「顧客検索及び新規受付登録」を開き、お名前・電話番号・院内メモを
+   * 入れて仮受付にする。
    *
-   * 相手の顧客台帳は検索も選択もしない（`epark/details.js` 参照）。押すのは「仮受付」で、
-   * 仮受付の印が付いたままになる。これが無いと取消のとき自分の分を見分けられない。
+   * 相手の顧客台帳は検索も選択もしない（`epark/details.js` 参照）。押すのは
+   * 「受付」ではなく「仮受付」。正式な受付にすると取り消せなくなる。
    *
    * @returns {Promise<boolean>} 押せたら true。躓いたら false（呼び側が無名の仮受付に落とす）
    */
-  async function registerCell(vars, details) {
+  async function registerCell(vars, fields) {
     const { register } = profile;
     try {
       await page.locator(fill(register.open, vars)).first().click({ timeout: stepTimeout });
@@ -219,7 +244,7 @@ export function createBrowserDriver({
       return false;
     }
     try {
-      await runSteps(register.steps, { ...vars, details });
+      await runSteps(register.steps, { ...vars, ...fields });
       return true;
     } catch {
       // 例外の文面に氏名・電話番号が混じらないよう、中身は持ち出さない。
@@ -230,16 +255,18 @@ export function createBrowserDriver({
 
   /**
    * またがる枠を順に閉じる。すでに閉じている枠は飛ばす。
-   * **自分が実際に閉じた枠を返す。** スタッフが手作業で止めていた枠を、
-   * あとで取消のときに勝手に開けてしまわないため。
+   *
+   * **自分が実際に閉じた枠を、EPARK の受付番号つきで返す。** スタッフが手作業で
+   * 止めていた枠をあとで勝手に開けないため、そして開け直すときに「その枠がまだ
+   * 自分のものか」を1件単位で確かめるため。
    *
    * @param {object} slot
-   * @param {string|null} details 院内メモに載せる「誰のご予約か」。
-   *   登録画面は1枠ずつしか開けないので、**最初の1枠にだけ**入れる。
-   *   残りの枠はこれまでどおり無名の仮受付で押さえる
-   * @returns {Promise<{closed: string[]}>}
+   * @param {{details:string,lastName:string,firstName:string,phone:string}|null} fields
+   *   登録画面に打ち込む「誰のご予約か」。登録画面は1枠ずつしか開けないので、
+   *   **最初の1枠にだけ**入れる。残りの枠は無名の仮受付で押さえる
+   * @returns {Promise<{closed: Array<{time:string,id:string|null}>}>}
    */
-  async function closeSlot(slot, details = null) {
+  async function closeSlot(slot, fields = null) {
     const line = lineOf(slot);
     const closed = [];
     for (const time of slot.cells) {
@@ -247,15 +274,15 @@ export function createBrowserDriver({
       await gotoDay(slot);
       if (await cellClosed(vars)) continue;
 
-      if (details && profile.register && closed.length === 0) {
-        await registerCell(vars, details);
+      if (fields && profile.register && closed.length === 0) {
+        await registerCell(vars, fields);
         // 登録画面を開いたまま／閉じたままの画面を使い回さない。必ず受付表に戻る。
         // **押せたかどうかは読み直しでしか分からない。** 実物では仮受付が入ったのに、
         // 入ったことを待ち構える手順のほうが時間切れになることがあった。
         // この枠は直前に「開」だと確かめてあるので、閉じていれば自分が閉じたもの
         await gotoDay(slot, { force: true });
         if (await cellClosed(vars)) {
-          closed.push(time);
+          closed.push({ time, id: await cellAppointId(vars) });
           continue;
         }
         // 何も入らなかった。無名の仮受付に落として枠だけ押さえる
@@ -269,7 +296,7 @@ export function createBrowserDriver({
       // チェックリストに「もう閉じている枠」が並び続ける
       await gotoDay(slot, { force: true });
       if (await cellClosed(vars)) {
-        closed.push(time);
+        closed.push({ time, id: await cellAppointId(vars) });
         continue;
       }
       throw new Error(`枠を閉じられませんでした（${slot.date} ${time}）${failed ? `: ${failed}` : ''}`);
@@ -279,16 +306,21 @@ export function createBrowserDriver({
 
   /**
    * またがる枠を開け直す。
-   * **自分が入れた仮受付だけ**を戻す。本物のご予約が入っている枠には手を出さない
+   * **自分が入れたものだけ**を戻す。本物のご予約が入っている枠には手を出さない
    * （こちらの取消と入れ違いで、EPARK からご予約が入っていることがある）。
    */
   async function openSlot(slot) {
     const line = lineOf(slot);
+    // 「まだ自分の枠か」を古い画面で判断しない。ここが取り消しの唯一の歯止めなので、
+    // 直前に読んだ画面を使い回さず必ず読み直す（2枠目以降は書き込みのたびに捨てられる）
+    await gotoDay(slot, { force: true });
     for (const time of slot.cells) {
       const vars = varsFor(slot, time, line);
       await gotoDay(slot);
       if (!(await cellClosed(vars))) continue;
-      if (!(await cellIsOurs(vars))) {
+      // 閉じたときに控えた受付番号と照合する。番号が違えば、こちらの受付は
+      // 消されていて別の受付が入っている＝触ってはいけない枠
+      if (!(await cellIsOurs(vars, slot.cellIds?.[time]))) {
         throw new Error(`ご予約が入っている枠のため開けません（${slot.date} ${time}）`);
       }
       // 閉じるときと同じく、開いたことも読み直して確かめる（手順が転んでも読み直す）
@@ -330,6 +362,8 @@ export function createBrowserDriver({
         time,
         state,
         ours: state === 'closed' ? await cellIsOurs(vars) : false,
+        // 受付番号。お名前を載せた枠は仮受付の印が消えるので、点検ではこちらを見る
+        id: state === 'closed' ? await cellAppointId(vars) : null,
       });
     }
     return rows;

@@ -17,7 +17,7 @@
 
 import { isValidDriver } from './driver.js';
 import { slotOf, slotLabel } from './slot.js';
-import { detailsText } from './details.js';
+import { registerFields } from './details.js';
 import { lineFor } from './profile.js';
 
 const EMPTY = { total: 0, done: 0, dryRun: 0, failed: 0, errors: [] };
@@ -83,10 +83,10 @@ export function createEparkSync({ externalBlocks, driver, slack, config }) {
 
           let touched = null;
           if (action === 'close') {
-            // EPARK の受付表に「誰のご予約か」を出す。作った文字列は氏名・電話番号を
+            // EPARK の受付表に「誰のご予約か」を出す。作った値は氏名・電話番号を
             // 含むので、ログにも Slack にも載せない（渡すのは駆動部にだけ）
-            const details = withDetails ? detailsText(row) : null;
-            ({ closed: touched } = await driver.closeSlot(slot, details));
+            const fields = withDetails ? registerFields(row) : null;
+            ({ closed: touched } = await driver.closeSlot(slot, fields));
           } else await driver.openSlot(slot);
 
           // ここが要。書けたと信じずに読み直す

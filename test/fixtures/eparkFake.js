@@ -40,10 +40,12 @@ const OK_BUTTON =
  *   実物は 'modal'（画面の中に描かれた小窓）。ブラウザの確認画面ではないので、
  *   自動操作の「確認画面に答える」仕掛けでは越えられず、OK を押しに行くしかない。
  *   'native' はブラウザの確認画面（既定で「いいえ」が答えられてしまう側）
+ * @param {boolean} p.stayAfterRegister 登録しても受付表へ戻らない（実物の作り）。
+ *   枠は埋まっているのに、その画面では枠のセレクタが見えない
  */
 export async function startFakeEpark({
   user = 'shop', password = 'pw', silentFail = false, mismatchModal = false,
-  confirmOnCancel = false,
+  confirmOnCancel = false, stayAfterRegister = false,
 } = {}) {
   // 埋まっている枠 → 'tentative'（自分が入れた仮受付） か 'booked'（本物のご予約）
   const filled = new Map();
@@ -249,6 +251,12 @@ export async function startFakeEpark({
           clearCell(date, time, line);
         }
       }
+      // 実物の登録画面は押しても受付表へ戻らない。**枠は埋まっているのに、その場では
+      // 枠のセレクタが見えない**という形。ここを写しておかないと、受付表へ戻る前提の
+      // 手順が試験では通ってしまう
+      if (stayAfterRegister && to === 'tentative' && url.searchParams.has('memo')) {
+        return send('<!doctype html><meta charset="utf-8"><p>登録しました</p>');
+      }
       res.writeHead(302, { Location: `/schedule?date=${date}` });
       return res.end();
     }
@@ -320,8 +328,9 @@ export async function startFakeEpark({
         steps: [
           // お客様の欄は埋めない。埋めると「仮受付」ではなくなる（実物で確認）
           { fill: '#txtMemoNow', value: '{details}' },
+          // 押したあと受付表の枠を待たない。実物は登録画面に留まるので必ず時間切れになる。
+          // 入ったかどうかは呼び出し側が受付表を開き直して読む
           { click: '#OP0062UD02' },
-          { waitFor: '{closed}' },
         ],
       },
     },

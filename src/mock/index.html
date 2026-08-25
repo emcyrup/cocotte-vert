@@ -3907,7 +3907,9 @@ async function rvAct(r, status, demoMsg, confirmMsg){
       method: 'PATCH', body: JSON.stringify({ status }),
     });
     showToast(notifiedCustomer ? '更新し、飼い主様へLINEで通知しました' : '更新しました');
-    await rvReload();
+    // カレンダーも読み直す。取消・無断キャンセルは帯を出さない決まりなので、
+    // 一覧だけ直すと**消したはずの帯がカレンダーに残る**（画面を切り替えても読み直さないため）
+    await refreshCalAndList();
   } catch (err) {
     showToast('エラー: ' + err.message);
   }
@@ -4096,7 +4098,8 @@ document.getElementById('nr-submit').addEventListener('click', async () => {
         }),
       });
       showToast(name + 'の予約を登録しました（スタッフ入力のため承認は不要です）');
-      await rvReload();
+      // 入れた予約はカレンダーにも帯として出る。一覧だけだと出てこない
+      await refreshCalAndList();
     } catch (err) { showToast('登録に失敗しました: ' + err.message); }
     return;
   }
@@ -4756,7 +4759,8 @@ function imBind(){
           ? '<p class="hint">失敗: ' + r.failures.map(f => esc(f.external_id) + '（' + esc(f.error) + '）').join('、') + '</p>'
           : '');
       showToast('予約を取り込みました（新規 ' + s.created + '件・更新 ' + s.updated + '件）');
-      await rvReload();
+      // 取り込んだ予約もカレンダーに出る（表示している範囲のぶんだけ読み直す）
+      await refreshCalAndList();
     } catch (err) { imResult.innerHTML = '<p class="hint">取り込めませんでした: ' + esc(err.message) + '</p>'; }
   });
 }

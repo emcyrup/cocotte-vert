@@ -24,6 +24,8 @@
     "お名前・電話番号・コースを書いてから「仮受付」を押す手順。",
     "  * 顧客情報の欄（姓・名・電話番号）に入れると、受付表の一覧にそのまま名前が出る。",
     "    かな・カード番号はこちらが持っていないので空欄のまま",
+    "  * 顧客情報の3欄は optional。入らなくても院内メモまでは進む（名前が出ないだけで",
+    "    枠は押さえられる）。飛ばしたときはログに残るので、あとから直せる",
     "  * 顧客検索（電話番号での突合）と顧客登録は**しない**。同姓同名で別の方に",
     "    紐づけると相手の台帳が壊れて戻せないため。メモに書くだけにする",
     "  * 押すのは「受付」(#OP0062UD01) ではなく「仮受付」(#OP0062UD02)。",
@@ -102,9 +104,9 @@
       "#hidSearchCustomerAndRegisterAppointLineId[value=\"{line}\"], [name=\"hidSearchCustomerAndRegisterAppointLineId\"][value=\"{line}\"]"
     ],
     "steps": [
-      { "fill": "#searchCustomerAndRegisterAppointTxtLastName", "value": "{lastName}" },
-      { "fill": "#searchCustomerAndRegisterAppointTxtFirstName", "value": "{firstName}" },
-      { "fill": "#searchCustomerAndRegisterAppointTxtTel", "value": "{phone}" },
+      { "fill": "#searchCustomerAndRegisterAppointTxtLastName", "value": "{lastName}", "optional": true },
+      { "fill": "#searchCustomerAndRegisterAppointTxtFirstName", "value": "{firstName}", "optional": true },
+      { "fill": "#searchCustomerAndRegisterAppointTxtTel", "value": "{phone}", "optional": true },
       { "fill": "#txtMemoNow", "value": "{details}" },
       { "click": "#OP0062UD02" },
       { "waitFor": "{closed}" }

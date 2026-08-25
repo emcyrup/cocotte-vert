@@ -271,9 +271,9 @@ export async function startFakeEpark({
           '#hidSearchCustomerAndRegisterAppointLineId[value="{line}"]',
         ],
         steps: [
-          { fill: '#searchCustomerAndRegisterAppointTxtLastName', value: '{lastName}' },
-          { fill: '#searchCustomerAndRegisterAppointTxtFirstName', value: '{firstName}' },
-          { fill: '#searchCustomerAndRegisterAppointTxtTel', value: '{phone}' },
+          { fill: '#searchCustomerAndRegisterAppointTxtLastName', value: '{lastName}', optional: true },
+          { fill: '#searchCustomerAndRegisterAppointTxtFirstName', value: '{firstName}', optional: true },
+          { fill: '#searchCustomerAndRegisterAppointTxtTel', value: '{phone}', optional: true },
           { fill: '#txtMemoNow', value: '{details}' },
           { click: '#OP0062UD02' },
           { waitFor: '{closed}' },

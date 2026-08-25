@@ -12,7 +12,10 @@ const MAX_PENDING_REQUESTS = 3;
 // これより先の日時は受け付けない
 const MAX_DAYS_AHEAD = 180;
 
-export function createReservationService({ pool, slack, lineClient = null }) {
+export function createReservationService({ pool, slack, lineClient = null, eparkTrigger = null }) {
+  // EPARK の作業（枠を閉じる／開け直す）が生まれたら、その場で反映を走らせる。
+  // 待たない・失敗しても投げない。取りこぼしは30分ごとの定期実行が拾う
+  const nudgeEpark = (reason) => { try { eparkTrigger?.(reason); } catch { /* 予約は止めない */ } };
   async function findOrCreateStaff(client, staffName) {
     if (!staffName) return null;
     const { rows } = await client.query(
@@ -167,6 +170,7 @@ export function createReservationService({ pool, slack, lineClient = null }) {
       menu,
       staffName,
     });
+    nudgeEpark('予約の登録');
     return { ok: true, reservationId: rows[0].id };
   }
 
@@ -206,6 +210,9 @@ export function createReservationService({ pool, slack, lineClient = null }) {
     if (rows.length === 0) return { ok: false, error: 'not_found' };
     // 顧客は内部 id でのみ参照する（氏名はログに残さない）
     console.log(`[reservation] 修正 res=${id}`);
+    // 日時が動いていなければ未反映へは戻らないが、判断は SQL 側なので毎回起こす。
+    // 空振りしても一覧が空なら EPARK は見に行かない
+    nudgeEpark('予約の修正');
     return { ok: true, reservation: rows[0] };
   }
 
@@ -355,6 +362,9 @@ export function createReservationService({ pool, slack, lineClient = null }) {
     } finally {
       client.release();
     }
+
+    // 確定で枠を閉じる、取消で開け直す。どちらも EPARK の作業になる
+    if (status === 'confirmed' || status === 'cancelled') nudgeEpark(`予約を${status === 'confirmed' ? '確定' : '取消'}`);
 
     // 顧客が送ったリクエストへの回答は、確定・見送りとも本人に伝える
     if (wasRequested && (status === 'confirmed' || status === 'cancelled')) {

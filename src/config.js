@@ -123,6 +123,24 @@ export function loadConfig(env = process.env) {
   // off にすると、これまでどおり無名の仮受付で枠だけ押さえる
   const eparkDetails = (env.EPARK_DETAILS || 'on') !== 'off';
 
+  // 予約が入ったその場で EPARK 反映を走らせる。本番サーバーにブラウザを置けないため、
+  // ここでできるのは GitHub Actions を起こすことだけ（実際の操作は向こうで動く）。
+  // 3つ揃って初めて有効。1つでも欠けたまま有効にすると、起こせないことに気付けない
+  const eparkTriggerOn = (env.EPARK_TRIGGER || 'off') === 'on';
+  if (eparkTriggerOn && !(env.GITHUB_REPO && env.GITHUB_ACTIONS_TOKEN)) {
+    throw new Error('EPARK_TRIGGER=on には GITHUB_REPO / GITHUB_ACTIONS_TOKEN が必要です');
+  }
+  if (eparkTriggerOn && !/^[\w.-]+\/[\w.-]+$/.test(env.GITHUB_REPO)) {
+    throw new Error(`GITHUB_REPO は "owner/repo" の形で書いてください: "${env.GITHUB_REPO}"`);
+  }
+  const eparkTrigger = {
+    enabled: eparkTriggerOn,
+    repo: env.GITHUB_REPO || null,
+    token: env.GITHUB_ACTIONS_TOKEN || null,
+    workflow: env.EPARK_TRIGGER_WORKFLOW || 'epark-sync.yml',
+    ref: env.EPARK_TRIGGER_REF || 'main',
+  };
+
   // 配信の起点となる日数。店舗によって「何日前に確認するか」が変わるため設定にする。
   // ジョブの SQL にはパラメータとして渡す（値を文字列で埋め込まない）
   const days = (key, fallback) => {
@@ -224,6 +242,9 @@ export function loadConfig(env = process.env) {
       browserPath: env.EPARK_BROWSER_PATH || null,
       // 仮受付にお名前を添えるか。添えるときだけ、氏名・電話番号が自動化まで渡る
       details: eparkDetails,
+      // 予約が入ったその場で反映を走らせる（GitHub Actions を起こすだけ）。
+      // live かどうかは向こうの設定が持つので、ここは「起こすか否か」しか決めない
+      trigger: eparkTrigger,
     },
     // Instagram は投稿画像を公開 URL から取得するため、外から見える自分の URL が要る
     publicBaseUrl: env.PUBLIC_BASE_URL || (env.DOMAIN ? `https://${env.DOMAIN}` : null),

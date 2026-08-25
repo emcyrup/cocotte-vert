@@ -18,20 +18,32 @@
 # 必要な Variables:
 #   EPARK_SYNC_ENABLED = true   これが無いうちは定期実行も手動実行も動かない
 #   EPARK_SYNC_MODE             既定 dry_run。実際に書き換えるときだけ live にする
+#
+# アプリからの即時起動: 予約が入った・変わった・取り消されたときに、アプリが
+# workflow_dispatch でこれを起こす（mode は渡さないので EPARK_SYNC_MODE に従う）。
+# 起こせなくても定期実行が拾うため、反映が遅れるだけで止まりはしない。
 name: epark-sync
 
 on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'dry_run（読むだけ）/ live（実際に閉じる）'
+        description: '設定どおり（Variable の EPARK_SYNC_MODE）/ dry_run / live'
         required: true
-        default: dry_run
+        default: settings
         type: choice
-        options: [dry_run, live]
+        options: [settings, dry_run, live]
   schedule:
-    # 30分ごと。EPARK の予約は承認制なので、多少の遅れは事故にならない
+    # 30分ごと。即時反映（アプリから起こす）を取りこぼしたときの受け皿。
+    # EPARK の予約は承認制なので、多少の遅れは事故にならない
     - cron: '5,35 * * * *'
+
+# 同じ受付表を2つのブラウザで同時に触らせない。予約が続けて入ると起動も続くため、
+# 走っているものは最後まで通し、待ちは1つだけ残す（一覧は毎回まるごと消化するので、
+# 待ちが1つあれば取りこぼさない）
+concurrency:
+  group: epark-sync
+  cancel-in-progress: false
 
 jobs:
   sync:
@@ -55,7 +67,8 @@ jobs:
       - name: 枠を反映する
         env:
           # 手動実行では選んだモード、定期実行では Variable（既定は読むだけ）
-          EPARK_MODE: ${{ inputs.mode || vars.EPARK_SYNC_MODE || 'dry_run' }}
+          # 手で選んだときはその値。'settings'（既定）とアプリからの起動は Variable に従う
+          EPARK_MODE: ${{ (inputs.mode != '' && inputs.mode != 'settings' && inputs.mode) || vars.EPARK_SYNC_MODE || 'dry_run' }}
           # 仮受付にお名前を載せるか。既定は on（off にすると無名の仮受付に戻る）
           EPARK_DETAILS: ${{ vars.EPARK_DETAILS || 'on' }}
           EPARK_BASE_URL: ${{ secrets.EPARK_BASE_URL }}

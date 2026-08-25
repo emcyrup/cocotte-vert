@@ -106,8 +106,7 @@
     ],
     "steps": [
       { "fill": "#txtMemoNow", "value": "{details}" },
-      { "click": "#OP0062UD02" },
-      { "waitFor": "{closed}" }
+      { "click": "#OP0062UD02" }
     ]
   }
 }

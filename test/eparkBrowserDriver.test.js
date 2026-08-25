@@ -316,6 +316,26 @@ test('院内メモを載せた枠は、控えた受付番号で開け直せる',
   });
 });
 
+// 実物は登録しても受付表へ戻らない。戻る前提で「枠が閉じるまで待つ」を手順に置くと、
+// 入っているのに毎回15秒待って紛らわしい警告が出ていた（実物で踏んだ）
+test('登録しても受付表へ戻らない画面でも、待たず・警告を出さずに済ませる', { skip }, async () => {
+  const fake = await startFakeEpark({ stayAfterRegister: true });
+  const warnings = [];
+  const warn = console.warn;
+  console.warn = (...args) => warnings.push(args.join(' '));
+  let closed;
+  try {
+    await withDriver(fake, async (driver) => {
+      ({ closed } = await driver.closeSlot(at(11), FIELDS));
+    });
+  } finally {
+    console.warn = warn;
+  }
+  assert.equal(fake.memoOf('20260901', '1100', '1'), DETAILS, '院内メモは入る');
+  assert.equal(closed.length, 1, '閉じた枠として数える');
+  assert.deepEqual(warnings, [], '警告は出さない');
+});
+
 // 実物で踏んだ決まり。お客様の欄を埋めると「仮受付」ではなくなり、押せないまま
 // 何も入らずに終わる。**設定でお客様の欄を埋めないこと**が、この動きを守っている
 test('お客様の欄を埋めると仮受付が無効になる（だから埋めない）', { skip }, async () => {

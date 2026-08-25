@@ -315,11 +315,16 @@ export function createBrowserDriver({
 
     try {
       await runSteps(register.steps, { ...vars, ...fields });
-      return true;
     } catch (err) {
       // runSteps は手順の番号とセレクタだけを載せる（打ち込んだ中身は載せない）
       return gaveUp(err.message);
     }
+    // 押した直後に受付表へ移ると、送信の途中で打ち切ってしまうことがある。
+    // 画面が落ち着くまでだけ待つ。**何が出るかは相手しだいなので決め打ちしない**
+    // （登録画面のままかもしれず、受付表の枠を待つと必ず時間切れになる）。
+    // 入ったかどうかは、呼び出し側が受付表を開き直して読むので、ここでは判断しない
+    await page.waitForLoadState('load', { timeout: stepTimeout }).catch(() => {});
+    return true;
   }
 
   /**

@@ -80,7 +80,14 @@ const app = express();
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 
 app.get('/health', (_req, res) =>
-  res.json({ ok: true, sendMode: config.sendMode, version: pkg.version })
+  // eparkTrigger を出すのは、設定が効いているかを外から確かめられるようにするため。
+  // 秘密は含まない（on / off だけ）
+  res.json({
+    ok: true,
+    sendMode: config.sendMode,
+    eparkTrigger: config.epark.trigger.enabled ? 'on' : 'off',
+    version: pkg.version,
+  })
 );
 
 // 署名検証には生ボディが必要なため、express.json() を webhook より前に適用しない
@@ -434,4 +441,9 @@ app.listen(config.port, () => {
   if (config.sendMode === 'live') {
     console.log('[boot] ⚠️  本番送信モードで起動しています');
   }
+  // 即時反映は**黙って off になっていても外から分からない**（実物でこれに詰まった）。
+  // 起動時に必ず言い、off の理由も添える
+  console.log(config.epark.trigger.enabled
+    ? `[boot] EPARK 即時反映=on（${config.epark.trigger.repo} の ${config.epark.trigger.workflow} を起こします）`
+    : '[boot] EPARK 即時反映=off（EPARK_TRIGGER=on と GITHUB_REPO / GITHUB_ACTIONS_TOKEN が要ります）');
 });

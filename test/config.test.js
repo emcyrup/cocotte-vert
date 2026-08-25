@@ -132,6 +132,24 @@ test('即時反映は既定で無効。有効にするなら宛先とトーク�
   assert.equal(on.ref, 'main');
 });
 
+// 実物でこれに詰まった。書き方が少し違うだけで**黙って off に落ち**、
+// 外から確かめる手立ても無かった
+test('EPARK_TRIGGER の書き方の揺れを許し、読めない値は断る', () => {
+  const withKeys = (v) => loadConfig({
+    ...baseEnv, EPARK_TRIGGER: v, GITHUB_REPO: 'owner/repo', GITHUB_ACTIONS_TOKEN: 't',
+  }).epark.trigger.enabled;
+
+  for (const v of ['on', 'ON', ' On ', 'true', '1', 'yes']) {
+    assert.equal(withKeys(v), true, `${JSON.stringify(v)} は有効として読む`);
+  }
+  for (const v of ['off', 'OFF', 'false', '0', 'no', '']) {
+    assert.equal(withKeys(v), false, `${JSON.stringify(v)} は無効として読む`);
+  }
+  // どちらとも読めない値を黙って off にすると、動かない理由に気付けない
+  assert.throws(() => withKeys('onn'), /EPARK_TRIGGER/);
+  assert.throws(() => withKeys('有効'), /EPARK_TRIGGER/);
+});
+
 test('仮受付にお名前を載せるのが既定。EPARK_DETAILS=off で無名に戻せる', () => {
   assert.equal(loadConfig({ ...baseEnv }).epark.details, true);
   assert.equal(loadConfig({ ...baseEnv, EPARK_DETAILS: 'off' }).epark.details, false);

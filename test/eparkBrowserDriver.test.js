@@ -480,3 +480,36 @@ test('登録画面で転んだ場所をログに残す（中身は出さない�
   assert.match(line, /#nowhere-memo/, 'セレクタは出す');
   assert.doesNotMatch(line, /山田 花子|090-1234-5678/, '打ち込む中身は出さない');
 });
+
+// 実物で「登録ボタンが押せない」に当たった。「押せません」だけでは、設定が違うのか
+// 隠れているのか無効なのかが分からず直せない。書き分けられることを確かめる
+test('押せなかった押しどころの状態を書き分ける', { skip }, async () => {
+  const cases = [
+    ['#nowhere', /画面にありません/],
+    // 実物の hidden。「あるのに押せない」＝見えている別の要素を押すべき合図
+    ['#hidSearchCustomerAndRegisterAppointLineId', /隠れています/],
+    // 実物どおり、顧客を選ぶまで「受付」は無効。手前の入力が足りない合図
+    ['#OP0062UD01', /無効/],
+  ];
+  for (const [selector, expected] of cases) {
+    const fake = await startFakeEpark();
+    const register = {
+      ...fake.profile.register,
+      steps: [{ fill: '#txtMemoNow', value: '{details}' }, { click: selector }],
+    };
+    const warnings = [];
+    const warn = console.warn;
+    console.warn = (...args) => warnings.push(args.join(' '));
+    try {
+      await withDriver(fake, async (driver) => {
+        await driver.closeSlot(at(11), FIELDS);   // 無名の仮受付に落ちる
+      }, { register });
+    } finally {
+      console.warn = warn;
+    }
+    const line = warnings.find((w) => w.includes('登録画面を使えませんでした'));
+    assert.ok(line, `${selector}: どこで転んだかを残す`);
+    assert.match(line, expected, `${selector}: 状態を書き分ける`);
+    assert.doesNotMatch(line, /山田 花子|090-1234-5678/, `${selector}: 中身は出さない`);
+  }
+});

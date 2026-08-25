@@ -102,6 +102,27 @@ export function createBrowserDriver({
   }
 
   /**
+   * 押せなかった押しどころが、どういう状態だったか。
+   *
+   * 「押せません」だけでは直しようがない。**画面に無い**なら設定が実物と違い、
+   * **隠れている**なら見えている別の要素を押すべきで（チェックボックスで実際に踏んだ）、
+   * **無効**なら手前の入力が足りていない。直し方がまるで違うので書き分ける。
+   *
+   * 状態しか見ない。要素の文言や値には、お客様の情報が入りうるため読まない。
+   */
+  async function clickBlockedBy(locator) {
+    try {
+      if ((await locator.count()) === 0) return '画面にありません';
+      if (!(await locator.isVisible())) return '画面にはありますが隠れています';
+      if (!(await locator.isEnabled())) return '押せない状態です（無効）';
+      return '見えていて押せる状態なのに反応しません（何かが重なっている可能性）';
+    } catch {
+      // 状態を読むついでで転んでも、本来の失敗を握り潰さない
+      return null;
+    }
+  }
+
+  /**
    * 設定に書かれた手順を順に実行する。
    *
    * どこで転んだのかが分からないと直しようがないので、**手順の番号とセレクタを
@@ -134,7 +155,11 @@ export function createBrowserDriver({
         } catch (err) {
           // 値を運ぶ手順は、相手の例外文に打ち込んだ中身が混じりうる。理由は伏せる
           const why = step.fill || step.select ? '打ち込めません' : briefly(err);
-          const where = `手順${i + 1}（${selector}）: ${why}`;
+          // 待ち時間切れは「押せなかった」としか言わない。無いのか・隠れているのか・
+          // 無効なのかで直し方がまるで違うので、押す手順のときだけ状態を添える。
+          // 見るのは状態だけで、要素の中身（お名前が入りうる）は読まない
+          const state = step.click ? await clickBlockedBy(target(step.click)) : null;
+          const where = `手順${i + 1}（${selector}）: ${why}${state ? ` — ${state}` : ''}`;
           if (step.optional) {
             console.warn(`[epark] 飛ばしました ${where}`);
             continue;

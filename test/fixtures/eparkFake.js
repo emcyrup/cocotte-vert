@@ -24,6 +24,11 @@ const LINES = ['1', '2'];
 
 const key = (date, time, line) => `${date} ${time} ${line}`;
 
+// 確認の小窓の「OK」。実物の作り（button / input / a）が分からないので広めに取り、
+// :visible で出ている小窓のものだけに絞る。config/epark-profile.example.json と同じ
+const OK_BUTTON =
+  'button:visible:text-is("OK"), input[type="button"][value="OK"]:visible, a:visible:text-is("OK")';
+
 /**
  * @param {object} p
  * @param {boolean} p.silentFail 押しても何も起きない画面を作る。
@@ -31,9 +36,14 @@ const key = (date, time, line) => `${date} ${time} ${line}`;
  *   気付けるかを試す（自動化で一番怖い壊れ方）
  * @param {boolean} p.mismatchModal 受付登録の画面が、開いた枠とは別の時刻を名乗る。
  *   取り違えたまま押すと、まったく違う時間にご予約を入れてしまう
+ * @param {false|'modal'|'native'} p.confirmOnCancel キャンセルを押すと確認が出る。
+ *   実物は 'modal'（画面の中に描かれた小窓）。ブラウザの確認画面ではないので、
+ *   自動操作の「確認画面に答える」仕掛けでは越えられず、OK を押しに行くしかない。
+ *   'native' はブラウザの確認画面（既定で「いいえ」が答えられてしまう側）
  */
 export async function startFakeEpark({
   user = 'shop', password = 'pw', silentFail = false, mismatchModal = false,
+  confirmOnCancel = false,
 } = {}) {
   // 埋まっている枠 → 'tentative'（自分が入れた仮受付） か 'booked'（本物のご予約）
   const filled = new Map();
@@ -96,6 +106,7 @@ export async function startFakeEpark({
            input を直接押そうとすると時間切れになる（実物で踏んだ壊れ方） */
         input[name="appoint"] { position: absolute; opacity: 0; width: 0; height: 0; }
         .box { display: inline-block; width: 16px; height: 16px; border: 1px solid #999; }
+        .hidden { display: none; }
       </style>
       <input type="hidden" id="multiSchedulerHidAppointDate" value="${date}">
       <div id="timetable">${rows}</div>
@@ -103,14 +114,38 @@ export async function startFakeEpark({
         <div class="link tentative-reservation"><a href="javascript:void(0)" onclick="return apply('tentative')">仮受付</a></div>
         <div class="link cancel"><a href="javascript:void(0)" onclick="return apply('cancel')">キャンセル</a></div>
       </div>
+      <!-- 実物と同じく、確認はブラウザのものではなく画面の中に描かれる小窓 -->
+      <div id="confirm-dialog" class="hidden">
+        <div class="title">確認</div>
+        <p>受付をキャンセルします。よろしいですか？</p>
+        <button type="button" onclick="answer(true)">OK</button>
+        <button type="button" onclick="answer(false)">キャンセル</button>
+      </div>
       <script>
         // 実物と同じく、日付の移動は JavaScript の呼び出しでしかできない
         function multiSchedulerCalendar(d) { location.href = '/schedule?date=' + d; }
+        var pending = null;
+        function answer(yes) {
+          document.getElementById('confirm-dialog').className = 'hidden';
+          var go = pending; pending = null;
+          if (yes && go) go();
+        }
         function apply(what) {
           var picked = [].slice.call(document.querySelectorAll('input[name=appoint]:checked'))
             .map(function (el) { return el.value; });
           if (!picked.length) return false;
-          location.href = '/apply?date=${date}&to=' + what + '&cells=' + picked.join(',');
+          var go = function () {
+            location.href = '/apply?date=${date}&to=' + what + '&cells=' + picked.join(',');
+          };
+          var confirmMode = ${JSON.stringify(confirmOnCancel || false)};
+          if (what === 'cancel' && confirmMode === 'native') {
+            if (!confirm('受付をキャンセルします。よろしいですか？')) return false;
+          } else if (what === 'cancel' && confirmMode === 'modal') {
+            pending = go;
+            document.getElementById('confirm-dialog').className = '';
+            return false;
+          }
+          go();
           return false;
         }
       </script>`;
@@ -260,6 +295,7 @@ export async function startFakeEpark({
       open: [
         { click: '{checkbox}' },
         { click: '#multiple-select-panel .cancel a' },
+        { click: OK_BUTTON },
         { waitFor: '{open}' },
       ],
       register: {

@@ -203,7 +203,9 @@ test('開けたつもりで開いていなければ、済みにしない', { ski
   const fake = await startFakeEpark({ silentFail: true });
   fake.setTentative('20260901', '1100', '1');
   await withDriver(fake, async (driver) => {
-    await assert.rejects(() => driver.openSlot(at(11)), /枠を開けられませんでした/);
+    // 受付番号が変わっていない＝押しても何も起きていない、と言い当てられること
+    await assert.rejects(() => driver.openSlot(at(11)),
+      /枠を開けられませんでした.*押しても何も起きていません/s);
     assert.equal(fake.stateOf('20260901', '1100', '1'), 'tentative');
   });
 });
@@ -329,6 +331,70 @@ test('控えた受付番号と違う枠には手を出さない', { skip }, asyn
     );
     assert.equal(fake.stateOf('20260901', '1100', '1'), 'tentative', '他人の枠は残る');
   });
+});
+
+// 実物の確認は画面の中に描かれた小窓（ブラウザの確認画面ではない）。
+// 「確認画面に答える」仕掛けでは越えられないので、OK を押しに行けることを確かめる
+test('キャンセルの確認（画面の中の小窓）の OK を押す', { skip }, async () => {
+  const fake = await startFakeEpark({ confirmOnCancel: 'modal' });
+  await withDriver(fake, async (driver) => {
+    const slot = at(11);
+    const { closed } = await driver.closeSlot(slot, FIELDS);
+
+    await driver.openSlot({ ...slot, cellIds: { '11:00': closed[0].id } });
+    assert.equal(fake.stateOf('20260901', '1100', '1'), null, '確認を越えて枠が空く');
+  });
+});
+
+test('小窓の OK を押せなければ、開いたことにしない', { skip }, async () => {
+  const fake = await startFakeEpark({ confirmOnCancel: 'modal' });
+  await withDriver(fake, async (driver) => {
+    const slot = at(11);
+    const { closed } = await driver.closeSlot(slot, FIELDS);
+
+    // 実物の小窓の作りが変わって OK を押せなくなった状況
+    await assert.rejects(
+      () => driver.openSlot({ ...slot, cellIds: { '11:00': closed[0].id } }),
+      /枠を開けられませんでした.*押しても何も起きていません/s
+    );
+    assert.equal(fake.stateOf('20260901', '1100', '1'), 'tentative', '枠は閉じたまま');
+  }, { open: [
+    { click: '{checkbox}' },
+    { click: '#multiple-select-panel .cancel a' },
+    { click: '#nowhere' },
+    { waitFor: '{open}' },
+  ] });
+});
+
+// ブラウザの確認画面が出る作りに変わっても越えられるようにしてある（保険）
+test('ブラウザの確認画面が出ても「はい」で答える', { skip }, async () => {
+  const fake = await startFakeEpark({ confirmOnCancel: 'native' });
+  await withDriver(fake, async (driver) => {
+    const slot = at(11);
+    const { closed } = await driver.closeSlot(slot, FIELDS);
+    await driver.openSlot({ ...slot, cellIds: { '11:00': closed[0].id } });
+    assert.equal(fake.stateOf('20260901', '1100', '1'), null);
+  });
+});
+
+test('確認画面の文面はログに出さない（種類だけ）', { skip }, async () => {
+  const fake = await startFakeEpark({ confirmOnCancel: 'native' });
+  const lines = [];
+  const log = console.log;
+  console.log = (...args) => { lines.push(args.join(' ')); };
+  try {
+    await withDriver(fake, async (driver) => {
+      const slot = at(11);
+      const { closed } = await driver.closeSlot(slot, FIELDS);
+      await driver.openSlot({ ...slot, cellIds: { '11:00': closed[0].id } });
+    });
+  } finally {
+    console.log = log;
+  }
+  const said = lines.filter((l) => l.includes('確認画面'));
+  assert.equal(said.length, 1, '確認画面に答えたことは残す');
+  assert.match(said[0], /confirm/);
+  assert.ok(!said.some((l) => l.includes('キャンセルします')), '文面は残さない');
 });
 
 test('受付番号を控えていない枠は、これまでどおり仮受付の印で見分ける', { skip }, async () => {

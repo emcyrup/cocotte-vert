@@ -200,6 +200,15 @@ export function createBrowserDriver({
     });
     page = await browser.newPage();
     page.setDefaultTimeout(stepTimeout);
+    // 押したあとに確認画面が出る操作がある（キャンセルなど）。Playwright は既定で
+    // 「いいえ」を答えるため、押しても何も起きないまま待ち続けることになる。
+    // こちらが起こした操作の確認なので受け入れる。効いたかどうかは、どのみち
+    // 画面を読み直して確かめるので、ここで受け入れても勝手に進む心配はない。
+    // 文面には氏名が混じりうるので、種類だけを残す
+    page.on('dialog', (dialog) => {
+      console.log(`[epark] 確認画面に「はい」で答えました（${dialog.type()}）`);
+      dialog.accept().catch(() => {});
+    });
 
     await page.goto(profile.loginUrl, { waitUntil: 'domcontentloaded', timeout: navTimeout });
     const loginUrl = page.url();
@@ -358,11 +367,20 @@ export function createBrowserDriver({
       if (!(await cellIsOurs(vars, slot.cellIds?.[time]))) {
         throw new Error(`ご予約が入っている枠のため開けません（${slot.date} ${time}）`);
       }
+      const before = await cellAppointId(vars);
       // 閉じるときと同じく、開いたことも読み直して確かめる（手順が転んでも読み直す）
       const failed = await runSteps(profile.open, vars).then(() => null, briefly);
       await gotoDay(slot, { force: true });
       if (!(await cellClosed(vars))) continue;
-      throw new Error(`枠を開けられませんでした（${slot.date} ${time}）${failed ? `: ${failed}` : ''}`);
+      // 受付番号が変わっていなければ、押したつもりで何も起きていない。
+      // 確認画面を閉じられていない・押す場所が違う、を切り分けるための手がかり
+      const after = await cellAppointId(vars);
+      const hint = before != null && after != null && String(before) === String(after)
+        ? '（受付はそのままです。押しても何も起きていません）'
+        : '';
+      throw new Error(
+        `枠を開けられませんでした（${slot.date} ${time}）${hint}${failed ? `: ${failed}` : ''}`
+      );
     }
   }
 

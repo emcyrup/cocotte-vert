@@ -92,6 +92,7 @@
   "open": [
     { "click": "{checkbox}" },
     { "click": "#multiple-select-panel .link.cancel a" },
+    { "click": "button:visible:text-is(\"OK\"), input[type=\"button\"][value=\"OK\"]:visible, a:visible:text-is(\"OK\")" },
     { "waitFor": "{open}" }
   ],
 

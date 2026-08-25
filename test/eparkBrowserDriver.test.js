@@ -171,7 +171,8 @@ test('閉じた枠だけを返す（すでに閉じていた枠は自分のも�
   fake.setTentative('20260901', '1100', '1');
   await withDriver(fake, async (driver) => {
     const { closed } = await driver.closeSlot(at(11, 120));
-    assert.deepEqual(closed, ['12:00'], '自分が閉じたのは12:00だけ');
+    assert.deepEqual(closed.map((c) => c.time), ['12:00'], '自分が閉じたのは12:00だけ');
+    assert.equal(closed[0].id, fake.appointIdOf('20260901', '1200', '1'), '受付番号も控える');
   });
 });
 
@@ -243,12 +244,13 @@ test('パスワードは例外の文言に出さない', { skip }, async () => {
 // ---- 仮受付にお名前を載せる（顧客検索及び新規受付登録） ----
 
 const DETAILS = 'LINE予約 / 山田 花子 様 / ポチちゃん / 090-1234-5678 / カット / res=1';
+const FIELDS = { details: DETAILS, lastName: '山田', firstName: '花子', phone: '09012345678' };
 
 test('お名前を渡すと、登録画面の院内メモに入れて仮受付にする', { skip }, async () => {
   const fake = await startFakeEpark();
   await withDriver(fake, async (driver) => {
     const slot = at(11);
-    assert.deepEqual(await driver.closeSlot(slot, DETAILS), { closed: ['11:00'] });
+    assert.deepEqual(await driver.closeSlot(slot, FIELDS), { closed: [{ time: '11:00', id: fake.appointIdOf('20260901','1100','1') }] });
     assert.equal(fake.stateOf('20260901', '1100', '1'), 'tentative');
     assert.equal(fake.memoOf('20260901', '1100', '1'), DETAILS);
   });
@@ -258,7 +260,7 @@ test('またがる枠は先頭だけお名前付き。残りは無名で押さ�
   const fake = await startFakeEpark();
   await withDriver(fake, async (driver) => {
     const slot = at(11, 90);
-    assert.deepEqual(await driver.closeSlot(slot, DETAILS), { closed: ['11:00', '12:00'] });
+    assert.deepEqual(await driver.closeSlot(slot, FIELDS), { closed: ['11:00','12:00'].map((t) => ({ time: t, id: fake.appointIdOf('20260901', t.replace(':',''), '1') })) });
     assert.equal(fake.memoOf('20260901', '1100', '1'), DETAILS);
     // 登録画面は1枠ずつしか開けない。2枠目は従来どおりの一括仮受付
     assert.equal(fake.memoOf('20260901', '1200', '1'), null);
@@ -269,7 +271,7 @@ test('またがる枠は先頭だけお名前付き。残りは無名で押さ�
 test('お名前を渡さなければ、これまでどおり無名の仮受付になる', { skip }, async () => {
   const fake = await startFakeEpark();
   await withDriver(fake, async (driver) => {
-    assert.deepEqual(await driver.closeSlot(at(11)), { closed: ['11:00'] });
+    assert.deepEqual(await driver.closeSlot(at(11)), { closed: [{ time: '11:00', id: fake.appointIdOf('20260901','1100','1') }] });
     assert.equal(fake.memoOf('20260901', '1100', '1'), null);
   });
 });
@@ -278,7 +280,7 @@ test('別の枠の登録画面が開いたら、そこには書き込まず従�
   // 開いた登録画面が、頼んだ枠とは別の時刻を名乗る
   const fake = await startFakeEpark({ mismatchModal: true });
   await withDriver(fake, async (driver) => {
-    assert.deepEqual(await driver.closeSlot(at(12), DETAILS), { closed: ['12:00'] });
+    assert.deepEqual(await driver.closeSlot(at(12), FIELDS), { closed: [{ time: '12:00', id: fake.appointIdOf('20260901','1200','1') }] });
     // 押す前に気付いて引き返す。お名前は載らないが、頼まれた枠は押さえる
     assert.equal(fake.stateOf('20260901', '1200', '1'), 'tentative');
     assert.equal(fake.memoOf('20260901', '1200', '1'), null);
@@ -291,27 +293,58 @@ test('登録画面が開かなくても、枠だけは押さえる', { skip }, a
   const fake = await startFakeEpark();
   const register = { ...fake.profile.register, open: '.emptyFrame{timeCompact}_{line} .nowhere a' };
   await withDriver(fake, async (driver) => {
-    assert.deepEqual(await driver.closeSlot(at(11), DETAILS), { closed: ['11:00'] });
+    assert.deepEqual(await driver.closeSlot(at(11), FIELDS), { closed: [{ time: '11:00', id: fake.appointIdOf('20260901','1100','1') }] });
     assert.equal(fake.stateOf('20260901', '1100', '1'), 'tentative');
   }, { register });
 });
 
-test('登録画面を使っても、開け直せるのは自分が入れた分だけ', { skip }, async () => {
+test('お名前を載せた枠は、控えた受付番号で開け直せる', { skip }, async () => {
   const fake = await startFakeEpark();
   await withDriver(fake, async (driver) => {
     const slot = at(11);
-    await driver.closeSlot(slot, DETAILS);
-    // 仮受付の印が残っているので、取消のときに自分の分だと分かる
-    await driver.openSlot(slot);
+    const { closed } = await driver.closeSlot(slot, FIELDS);
+
+    // 実物どおり、お名前が入ると仮受付の印は消える。それでも開け直せることが要
+    assert.equal(fake.nameOf('20260901', '1100', '1'), '山田 花子', '受付表の一覧に名前が出る');
+    assert.deepEqual(await driver.readDay({ date: '2026-09-01', lineId: '1', times: ['11:00'] }),
+      [{ time: '11:00', state: 'closed', ours: false, id: closed[0].id }],
+      '仮受付の印は無いが、受付番号は読める');
+
+    await driver.openSlot({ ...slot, cellIds: { '11:00': closed[0].id } });
     assert.equal(fake.stateOf('20260901', '1100', '1'), null);
-    assert.equal(fake.memoOf('20260901', '1100', '1'), null);
+  });
+});
+
+test('控えた受付番号と違う枠には手を出さない', { skip }, async () => {
+  const fake = await startFakeEpark();
+  await withDriver(fake, async (driver) => {
+    const slot = at(11);
+    const { closed } = await driver.closeSlot(slot, FIELDS);
+    // こちらの受付が消され、別の受付が入った状況（番号が変わる）
+    fake.replaceWith('20260901', '1100', '1', 'tentative');
+
+    await assert.rejects(
+      () => driver.openSlot({ ...slot, cellIds: { '11:00': closed[0].id } }),
+      /ご予約が入っている枠のため開けません/
+    );
+    assert.equal(fake.stateOf('20260901', '1100', '1'), 'tentative', '他人の枠は残る');
+  });
+});
+
+test('受付番号を控えていない枠は、これまでどおり仮受付の印で見分ける', { skip }, async () => {
+  const fake = await startFakeEpark();
+  await withDriver(fake, async (driver) => {
+    const slot = at(11);
+    await driver.closeSlot(slot);          // 無名なので仮受付の印が付く
+    await driver.openSlot(slot);           // cellIds なし
+    assert.equal(fake.stateOf('20260901', '1100', '1'), null);
   });
 });
 
 test('お名前は例外の文言に出さない', { skip }, async () => {
   const fake = await startFakeEpark({ silentFail: true });
   await withDriver(fake, async (driver) => {
-    const err = await driver.closeSlot(at(11), DETAILS).then(() => null, (e) => e);
+    const err = await driver.closeSlot(at(11), FIELDS).then(() => null, (e) => e);
     assert.ok(err);
     assert.doesNotMatch(err.stack || err.message, /山田 花子|090-1234-5678|ポチ/);
   });
@@ -321,7 +354,7 @@ test('隠れているチェックボックスでも押せる（label を押す�
   const fake = await startFakeEpark();
   await withDriver(fake, async (driver) => {
     // 実物の input は CSS で隠れている。直接押すと時間切れになるので label を押す
-    assert.deepEqual(await driver.closeSlot(at(13)), { closed: ['13:00'] });
+    assert.deepEqual(await driver.closeSlot(at(13)), { closed: [{ time: '13:00', id: fake.appointIdOf('20260901','1300','1') }] });
     assert.equal(fake.stateOf('20260901', '1300', '1'), 'tentative');
   });
 });
@@ -335,7 +368,7 @@ test('押した手順が転んでも、実際に閉じていれば済みにす�
     { waitFor: '.never-appears' },
   ];
   await withDriver(fake, async (driver) => {
-    assert.deepEqual(await driver.closeSlot(at(13)), { closed: ['13:00'] });
+    assert.deepEqual(await driver.closeSlot(at(13)), { closed: [{ time: '13:00', id: fake.appointIdOf('20260901','1300','1') }] });
     assert.equal(fake.stateOf('20260901', '1300', '1'), 'tentative');
   }, { close });
 });

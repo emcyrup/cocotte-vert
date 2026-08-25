@@ -185,7 +185,7 @@ test('どの枠から開くか決まらない設定は断る（別の時間に�
 test('開くところにお客様の情報は混ぜさせない（セレクタが壊れる）', () => {
   for (const key of ['open', 'ready']) {
     const register = { ...goodRegister(), [key]: `#x{details}{timeCompact}{line}` };
-    assert.match(validateProfile({ ...good(), register }).error, /\{details\} は使えません/);
+    assert.match(validateProfile({ ...good(), register }).error, /お客様の情報は差し込めません/);
   }
   const register = { ...goodRegister(), verify: ['#hid{details}'] };
   assert.match(validateProfile({ ...good(), register }).error, /register\.verify\[0\]/);

@@ -83,7 +83,9 @@ test('走っている間に呼ばれた分は、終わってから1回だけま�
 test('起こせなければ Slack に出す（定期実行が拾うことも伝える）', async () => {
   const fetchFn = fakeFetch(() => ({ ok: false, status: 403 }));
   const sent = [];
-  const slack = { send: async (t) => { sent.push(t); } };
+  // **本物の通知部と同じ形（notify）で試す。** send を持つ偽物で試していたせいで、
+  // 名前違いに気付けず実物で落ちた
+  const slack = { notify: async (t) => { sent.push(t); } };
   const warn = console.warn;
   console.warn = () => {};
   try {
@@ -132,4 +134,48 @@ test('eparkTriggerFrom は設定が揃っていなければ null', () => {
   assert.equal(eparkTriggerFrom({ config: { epark: { trigger: { enabled: false } } } }), null);
   assert.equal(eparkTriggerFrom({ config: {} }), null);
   assert.equal(typeof eparkTriggerFrom({ config: { epark: { trigger: CONFIG } } }), 'function');
+});
+
+// 実物で踏んだ壊れ方。通知部の関数名を取り違えていて、失敗を伝えるはずの行が
+// 例外を投げ、**誰も待っていない約束の中から外へ出ていた**（Node は既定で落ちる）。
+test('通知部の形が違っても、外へ例外を出さない', async () => {
+  const fetchFn = fakeFetch(() => ({ ok: false, status: 403 }));
+  const rejections = [];
+  const onUnhandled = (err) => rejections.push(err);
+  process.on('unhandledRejection', onUnhandled);
+  const warn = console.warn;
+  const lines = [];
+  console.warn = (...a) => lines.push(a.join(' '));
+  try {
+    // notify も send も持たない通知部
+    createEparkTrigger({ config: CONFIG, slack: {}, fetchFn })('予約の登録');
+    await settle();
+    await settle();
+    await settle();
+  } finally {
+    console.warn = warn;
+    process.off('unhandledRejection', onUnhandled);
+  }
+  assert.deepEqual(rejections, [], '外へ出さない（プロセスを落とさない）');
+  assert.match(lines.join('\n'), /走らせられませんでした/, 'ログには残す');
+});
+
+test('通知そのものが落ちても、外へ例外を出さない', async () => {
+  const fetchFn = fakeFetch(() => ({ ok: false, status: 403 }));
+  const rejections = [];
+  const onUnhandled = (err) => rejections.push(err);
+  process.on('unhandledRejection', onUnhandled);
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    const slack = { notify: async () => { throw new Error('Slack が落ちています'); } };
+    createEparkTrigger({ config: CONFIG, slack, fetchFn })('予約の登録');
+    await settle();
+    await settle();
+    await settle();
+  } finally {
+    console.warn = warn;
+    process.off('unhandledRejection', onUnhandled);
+  }
+  assert.deepEqual(rejections, []);
 });

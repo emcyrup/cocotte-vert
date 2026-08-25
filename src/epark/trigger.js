@@ -27,6 +27,16 @@ export function createEparkTrigger({ config, slack = null, fetchFn = fetch }) {
   let running = null;
   let queued = false;
 
+  // 通知部は notify を持つ（send ではない）。**ここを間違えて、失敗を伝えるはずの行が
+  // 逆に例外を投げ、誰も待っていない約束の中で外へ出た**（実物で踏んだ）。
+  // 名前を決め打ちせず、無ければ黙って諦める。知らせられないことより、
+  // 知らせようとして落ちるほうが悪い
+  const tell = async (text) => {
+    const to = slack?.notify ?? slack?.send;
+    if (typeof to !== 'function') return;
+    await to.call(slack, text);
+  };
+
   async function dispatch() {
     const res = await fetchFn(`${API}/repos/${repo}/actions/workflows/${workflow}/dispatches`, {
       method: 'POST',
@@ -58,14 +68,15 @@ export function createEparkTrigger({ config, slack = null, fetchFn = fetch }) {
     }
     running = dispatch()
       .then(() => { console.log(`[epark] 反映を走らせました（${reason}）`); })
-      .catch(async (err) => {
+      .catch((err) => {
         console.warn(`[epark] 反映を走らせられませんでした（${reason}）: ${err.message}`);
         // 気付けないまま遅れるのを避ける。定期実行が拾うので、止まりはしない
-        await slack?.send(
+        return tell(
           `:warning: EPARK の即時反映を起動できませんでした（${reason}）\n`
           + `${err.message}\n定期実行（30分ごと）が拾うため、反映は遅れますが止まりません`
-        ).catch(() => {});
+        );
       })
+      .catch(() => {})   // ここから先へは何も出さない（誰も待っていない約束なので）
       .finally(() => {
         running = null;
         if (queued) { queued = false; trigger(`${reason}のあと`); }

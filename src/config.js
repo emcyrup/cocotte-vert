@@ -126,7 +126,15 @@ export function loadConfig(env = process.env) {
   // 予約が入ったその場で EPARK 反映を走らせる。本番サーバーにブラウザを置けないため、
   // ここでできるのは GitHub Actions を起こすことだけ（実際の操作は向こうで動く）。
   // 3つ揃って初めて有効。1つでも欠けたまま有効にすると、起こせないことに気付けない
-  const eparkTriggerOn = (env.EPARK_TRIGGER || 'off') === 'on';
+  // 書き方の揺れで**黙って off に落ちる**のが一番たちが悪い（実物でこれに詰まった）。
+  // 大文字・前後の空白は許し、どちらとも読めない値は起動時に断る
+  const triggerRaw = String(env.EPARK_TRIGGER ?? '').trim().toLowerCase();
+  const ON = ['on', 'true', '1', 'yes'];
+  const OFF = ['', 'off', 'false', '0', 'no'];
+  if (!ON.includes(triggerRaw) && !OFF.includes(triggerRaw)) {
+    throw new Error(`EPARK_TRIGGER が不正です: "${env.EPARK_TRIGGER}"（on | off）`);
+  }
+  const eparkTriggerOn = ON.includes(triggerRaw);
   if (eparkTriggerOn && !(env.GITHUB_REPO && env.GITHUB_ACTIONS_TOKEN)) {
     throw new Error('EPARK_TRIGGER=on には GITHUB_REPO / GITHUB_ACTIONS_TOKEN が必要です');
   }

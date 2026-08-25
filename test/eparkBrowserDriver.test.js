@@ -300,21 +300,50 @@ test('登録画面が開かなくても、枠だけは押さえる', { skip }, a
   }, { register });
 });
 
-test('お名前を載せた枠は、控えた受付番号で開け直せる', { skip }, async () => {
+test('院内メモを載せた枠は、控えた受付番号で開け直せる', { skip }, async () => {
   const fake = await startFakeEpark();
   await withDriver(fake, async (driver) => {
     const slot = at(11);
     const { closed } = await driver.closeSlot(slot, FIELDS);
 
-    // 実物どおり、お名前が入ると仮受付の印は消える。それでも開け直せることが要
-    assert.equal(fake.nameOf('20260901', '1100', '1'), '山田 花子', '受付表の一覧に名前が出る');
+    assert.equal(fake.memoOf('20260901', '1100', '1'), DETAILS);
     assert.deepEqual(await driver.readDay({ date: '2026-09-01', lineId: '1', times: ['11:00'] }),
-      [{ time: '11:00', state: 'closed', ours: false, id: closed[0].id }],
-      '仮受付の印は無いが、受付番号は読める');
+      [{ time: '11:00', state: 'closed', ours: true, id: closed[0].id }],
+      '印でも受付番号でも見分けられる');
 
     await driver.openSlot({ ...slot, cellIds: { '11:00': closed[0].id } });
     assert.equal(fake.stateOf('20260901', '1100', '1'), null);
   });
+});
+
+// 実物で踏んだ決まり。お客様の欄を埋めると「仮受付」ではなくなり、押せないまま
+// 何も入らずに終わる。**設定でお客様の欄を埋めないこと**が、この動きを守っている
+test('お客様の欄を埋めると仮受付が無効になる（だから埋めない）', { skip }, async () => {
+  const fake = await startFakeEpark();
+  const register = {
+    ...fake.profile.register,
+    steps: [
+      { fill: '#searchCustomerAndRegisterAppointTxtLastName', value: '{lastName}' },
+      { fill: '#txtMemoNow', value: '{details}' },
+      { click: '#OP0062UD02' },
+      { waitFor: '{closed}' },
+    ],
+  };
+  const warnings = [];
+  const warn = console.warn;
+  console.warn = (...args) => warnings.push(args.join(' '));
+  try {
+    await withDriver(fake, async (driver) => {
+      await driver.closeSlot(at(11), FIELDS);   // 無名の仮受付に落ちる
+    }, { register });
+  } finally {
+    console.warn = warn;
+  }
+  const line = warnings.find((w) => w.includes('登録画面を使えませんでした'));
+  assert.ok(line, `理由を残す: ${warnings.join(' / ')}`);
+  assert.match(line, /無効/, '押せない理由まで言い当てる');
+  assert.equal(fake.memoOf('20260901', '1100', '1'), null, 'メモごと捨てられる');
+  assert.equal(fake.stateOf('20260901', '1100', '1'), 'tentative', '枠だけは押さえる');
 });
 
 test('控えた受付番号と違う枠には手を出さない', { skip }, async () => {
@@ -439,13 +468,13 @@ test('押した手順が転んでも、実際に閉じていれば済みにす�
   }, { close });
 });
 
-test('顧客情報の欄が入らなくても、院内メモまでは進む', { skip }, async () => {
+test('任意の欄が入らなくても、院内メモまでは進む', { skip }, async () => {
   const fake = await startFakeEpark();
-  // 実物の画面が変わってお名前の欄が見つからない状況
+  // 実物の画面が変わって、任意で埋めている欄が見つからない状況
   const register = {
     ...fake.profile.register,
     steps: [
-      { fill: '#nowhere-lastname', value: '{lastName}', optional: true },
+      { fill: '#nowhere-notice', value: '{details}', optional: true },
       { fill: '#txtMemoNow', value: '{details}' },
       { click: '#OP0062UD02' },
       { waitFor: '{closed}' },
@@ -454,7 +483,7 @@ test('顧客情報の欄が入らなくても、院内メモまでは進む', { 
   await withDriver(fake, async (driver) => {
     const { closed } = await driver.closeSlot(at(11), FIELDS);
     assert.equal(closed.length, 1);
-    assert.equal(fake.memoOf('20260901', '1100', '1'), DETAILS, '名前は入らないがメモは入る');
+    assert.equal(fake.memoOf('20260901', '1100', '1'), DETAILS, '任意の欄は飛ばしてメモは入る');
     assert.equal(fake.nameOf('20260901', '1100', '1'), null);
   }, { register });
 });

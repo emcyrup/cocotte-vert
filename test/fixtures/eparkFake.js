@@ -208,17 +208,28 @@ export async function startFakeEpark({
             <input type="hidden" name="date" value="${date}">
             <input type="hidden" name="to" value="tentative">
             <input type="hidden" name="cells" value="${time}_${line}">
-            <input id="searchCustomerAndRegisterAppointTxtLastName" name="lastName">
-            <input id="searchCustomerAndRegisterAppointTxtFirstName" name="firstName">
-            <input id="searchCustomerAndRegisterAppointTxtTel" name="tel">
+            <input id="searchCustomerAndRegisterAppointTxtLastName" name="lastName" oninput="grade()">
+            <input id="searchCustomerAndRegisterAppointTxtFirstName" name="firstName" oninput="grade()">
+            <input id="searchCustomerAndRegisterAppointTxtTel" name="tel" oninput="grade()">
             <textarea id="txtMemoNow" name="memo"></textarea>
             <textarea id="txtMemoNotice" name="notice"></textarea>
-            <!-- 顧客を選ぶまで「受付」は押せない。「仮受付」は押せる（実物どおり） -->
+            <!-- 顧客を選ぶまで「受付」は押せない（実物どおり） -->
             <input type="button" id="OP0062UD01" value="受付" disabled>
             <input type="button" id="OP0062UD02" value="仮受付"
                    onclick="document.getElementById('regForm').submit();">
           </form>
-        </div>`);
+        </div>
+        <script>
+          // 実物で分かった決まり: **お客様の欄を埋めると「仮受付」ではなくなる**。
+          // 埋めたまま押そうとしても無効のままで、名前も院内メモも入らずに終わる。
+          // 院内メモだけなら仮受付のまま（#88 の頃はこれで動いていた）
+          function grade() {
+            var filled = ['LastName', 'FirstName', 'Tel'].some(function (k) {
+              return document.getElementById('searchCustomerAndRegisterAppointTxt' + k).value !== '';
+            });
+            document.getElementById('OP0062UD02').disabled = filled;
+          }
+        </script>`);
     }
 
     if (url.pathname === '/apply') {
@@ -307,9 +318,7 @@ export async function startFakeEpark({
           '#hidSearchCustomerAndRegisterAppointLineId[value="{line}"]',
         ],
         steps: [
-          { fill: '#searchCustomerAndRegisterAppointTxtLastName', value: '{lastName}', optional: true },
-          { fill: '#searchCustomerAndRegisterAppointTxtFirstName', value: '{firstName}', optional: true },
-          { fill: '#searchCustomerAndRegisterAppointTxtTel', value: '{phone}', optional: true },
+          // お客様の欄は埋めない。埋めると「仮受付」ではなくなる（実物で確認）
           { fill: '#txtMemoNow', value: '{details}' },
           { click: '#OP0062UD02' },
           { waitFor: '{closed}' },

@@ -156,6 +156,15 @@ function jstNow() {
   return new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 16);
 }
 
+// HH:MM を30分の区切りまで繰り上げる。日欄は30分刻みなので、半端な値を初期値に
+// 入れると開いた瞬間から「不正な値」になってしまう
+function toHalfHour(time) {
+  const [h, m] = String(time).split(':').map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return '10:00';
+  const at = Math.min(Math.ceil((h * 60 + m) / 30) * 30, 23 * 60 + 30);
+  return `${String(Math.floor(at / 60)).padStart(2, '0')}:${String(at % 60).padStart(2, '0')}`;
+}
+
 async function submit() {
   const button = $('submit');
   const datetime = $('datetime').value;
@@ -292,8 +301,9 @@ async function main() {
   // 開いた本人が担当になることが多いので、連携済みならそこを初期値にする
   if (options.me) $('staff').value = String(options.me.id);
 
-  // お電話で受けたその場で入れる使い方が多い。今日の開店時刻を初期値にしておく
-  $('datetime').value = `${jstNow().slice(0, 10)}T${options.openTime || '10:00'}`;
+  // お電話で受けたその場で入れる使い方が多い。今日の開店時刻を初期値にしておく。
+  // 欄は30分刻みなので、開店時刻が半端でも区切りまで繰り上げて入れる（開店前を出さない）
+  $('datetime').value = `${jstNow().slice(0, 10)}T${toHalfHour(options.openTime || '10:00')}`;
 
   hide('loading');
   show('form');

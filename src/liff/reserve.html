@@ -59,7 +59,8 @@
       <select id="menu" required></select>
 
       <label class="required" for="datetime">ご希望日時</label>
-      <input type="datetime-local" id="datetime" required />
+      <!-- 30分刻み。step は min を起点に数えるので、min 側も区切りに丸めてある -->
+      <input type="datetime-local" id="datetime" step="1800" required />
 
       <label for="staff">ご指名（任意）</label>
       <select id="staff"><option value="">指名なし</option></select>

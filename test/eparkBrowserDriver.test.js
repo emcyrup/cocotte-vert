@@ -183,6 +183,9 @@ test('営業時間をはみ出した枠は飛ばして、残りを進める', { 
   assert.deepEqual(closed.map((c) => c.time), ['17:00'], '在る枠だけ閉じる');
   assert.equal(fake.stateOf('20260901', '1700', '1'), 'tentative');
   assert.match(warnings.join('\n'), /EPARK に枠がありません.*18:00/, '飛ばしたことは残す');
+  // ラインは中身ではなく番号を出す（[object Object] では追えない。実物で出した）
+  assert.match(warnings.join('\n'), /line=1/);
+  assert.doesNotMatch(warnings.join('\n'), /\[object Object\]/);
 });
 
 test('はみ出した枠は、開け直すときも飛ばす', { skip }, async () => {

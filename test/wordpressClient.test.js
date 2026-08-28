@@ -83,6 +83,40 @@ test('HTML として解釈される文字を打ち消す', () => {
   assert.match(html, /&amp;/);
 });
 
+test('写真ゼロなら段落だけの記事になる', () => {
+  assert.equal(buildContent('本日は休業します', []), '<p>本日は休業します</p>');
+});
+
+test('裸の URL をリンクにする（WordPress は本文中の URL を自動ではリンクにしない）', () => {
+  assert.equal(
+    buildContent('詳しくは https://example.com/news をご覧ください', []),
+    '<p>詳しくは <a href="https://example.com/news">https://example.com/news</a> をご覧ください</p>'
+  );
+});
+
+test('URL の直後の句読点はリンクに含めない', () => {
+  const html = buildContent('https://example.com/a です。', []);
+  assert.match(html, /href="https:\/\/example\.com\/a"/);
+  assert.match(html, /<\/a> です。<\/p>/);
+
+  // 英文の文末ピリオドも URL の一部にしない
+  assert.match(buildContent('see https://example.com.', []), /href="https:\/\/example\.com"/);
+});
+
+test('クエリ文字列を持つ URL でも壊れない', () => {
+  const html = buildContent('https://example.com/p?a=1&b=2', []);
+  // & はエスケープ後 &amp; になるが、href の中では &amp; が正しい書き方
+  assert.equal(html, '<p><a href="https://example.com/p?a=1&amp;b=2">https://example.com/p?a=1&amp;b=2</a></p>');
+});
+
+test('URL に見せかけた HTML は、リンクにも href にも取り込まない', () => {
+  const html = buildContent('https://example.com/"><script>alert(1)</script>', []);
+  // href は引用符の手前で切れる。属性から抜け出す足がかりを残さない
+  assert.match(html, /^<p><a href="https:\/\/example\.com\/">/);
+  assert.doesNotMatch(html, /<script>/);
+  assert.match(html, /&lt;script&gt;/);
+});
+
 // ---- 投稿 ----
 
 test('dry_run では何も送らない', async () => {

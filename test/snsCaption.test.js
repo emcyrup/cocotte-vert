@@ -89,13 +89,54 @@ test('API キー未設定（writer なし）なら 503', async () => {
   });
 });
 
-test('写真なし・枚数超過は 400', async () => {
+test('写真が要る投稿先で写真なし・枚数超過は 400', async () => {
   const { writer, calls } = fakeWriter();
   await withRouter({ writer }, async (base) => {
     assert.equal((await (await post(base, { files: [] })).json()).error, 'no_photos');
     const many = Array.from({ length: 21 }, () => FILE_A);
     assert.equal((await (await post(base, { files: many })).json()).error, 'too_many_photos');
     assert.equal(calls.length, 0);
+  });
+});
+
+test('写真が要らない投稿先は、要点だけで下書きできる', async () => {
+  const { writer, calls } = fakeWriter({ caption: '記事の下書き' });
+  await withRouter({ writer }, async (base) => {
+    const res = await post(base, {
+      files: [], platform: 'wordpress', hint: 'お盆休み 8/13-16 https://example.com/news',
+    });
+    assert.equal(res.status, 200);
+    assert.equal((await res.json()).caption, '記事の下書き');
+
+    assert.deepEqual(calls[0].images, []);
+    assert.equal(calls[0].hint, 'お盆休み 8/13-16 https://example.com/news');
+  });
+});
+
+test('写真も要点も無ければ、写真が要らない投稿先でも書けない', async () => {
+  const { writer, calls } = fakeWriter();
+  await withRouter({ writer }, async (base) => {
+    for (const hint of [undefined, '', '   ']) {
+      const res = await post(base, { files: [], platform: 'wordpress', hint });
+      assert.equal(res.status, 400);
+      assert.equal((await res.json()).error, 'no_notes');
+    }
+    // Instagram は写真が要るので、要点があっても写真なしでは書かない
+    const ig = await post(base, { files: [], platform: 'instagram', hint: 'お知らせ' });
+    assert.equal((await ig.json()).error, 'no_photos');
+    assert.equal(calls.length, 0);
+  });
+});
+
+test('要点は 1000 文字まで', async () => {
+  const { writer, calls } = fakeWriter();
+  await withRouter({ writer }, async (base) => {
+    const ok = await post(base, { files: [], platform: 'wordpress', hint: 'あ'.repeat(1000) });
+    assert.equal(ok.status, 200);
+
+    const ng = await post(base, { files: [], platform: 'wordpress', hint: 'あ'.repeat(1001) });
+    assert.equal((await ng.json()).error, 'invalid_hint');
+    assert.equal(calls.length, 1);
   });
 });
 
@@ -119,7 +160,7 @@ test('不正なプラットフォーム・長すぎる補足は 400', async () =
       'invalid_platform'
     );
     assert.equal(
-      (await (await post(base, { files: [FILE_A], hint: 'あ'.repeat(201) })).json()).error,
+      (await (await post(base, { files: [FILE_A], hint: 'あ'.repeat(1001) })).json()).error,
       'invalid_hint'
     );
   });

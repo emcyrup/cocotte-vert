@@ -48,6 +48,15 @@ export const labelOf = (key) => PLATFORMS[key]?.label ?? key;
 export const maxCaptionOf = (key) => PLATFORMS[key]?.maxCaption ?? 2200;
 
 /**
+ * 写真が要るか。知らない投稿先は「要る」に倒す（写真なしを黙って通すより安全）。
+ *
+ * この表に書いてあるのに実際は見ていない、という状態を作らないこと。
+ * 一度そうなっていて、WordPress は photoRequired: false なのに投稿 API も配信も
+ * 写真ゼロを弾いていた（宣言だけあって効いていなかった）。
+ */
+export const photoRequiredFor = (key) => PLATFORMS[key]?.photoRequired ?? true;
+
+/**
  * 写真を投稿単位に割る。
  * split が false の投稿先は上限までで打ち切る（連投にしないため）。
  */

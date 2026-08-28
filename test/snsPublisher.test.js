@@ -167,3 +167,36 @@ test('スレッズ投稿の失敗通知にはスレッズと出る', async () =>
   await publisher.publishOne(5);
   assert.match(f.notifications[0], /スレッズ 投稿に失敗/);
 });
+
+// ---- 写真なしの投稿（WordPress など photoRequired: false の投稿先）----
+
+test('写真が要らない投稿先は、写真ゼロでも本文だけで公開する', async () => {
+  const f = makeFakes({
+    post: { id: 6, caption: '夏の営業について\n8/13〜16はお休みします', platform: 'wordpress' },
+    photos: [],
+  });
+  const wordpress = {
+    publishPost: async (args) => { f.published.push({ ...args, via: 'wordpress' }); return { status: 'published', mediaId: 'w-1' }; },
+  };
+  const publisher = createSnsPublisher({ ...f, clients: { ...f.clients, wordpress } });
+
+  const result = await publisher.publishOne(6);
+  assert.equal(result.ok, true);
+  assert.equal(result.status, 'published');
+  assert.deepEqual(f.published[0].imageUrls, []);
+  assert.match(f.published[0].caption, /8\/13〜16/);
+  // 「写真がありません」で落とさない
+  assert.equal(f.queries.some((q) => /SET status = 'failed'/.test(q.sql)), false);
+});
+
+test('写真が要る投稿先で写真ゼロなら、これまでどおり失敗として残す', async () => {
+  const f = makeFakes({ post: { id: 7, caption: 'c', platform: 'instagram' }, photos: [] });
+  const publisher = createSnsPublisher(f);
+
+  const result = await publisher.publishOne(7);
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'no_photos');
+  assert.equal(f.published.length, 0);
+  const failed = f.queries.find((q) => /SET status = 'failed'/.test(q.sql));
+  assert.match(failed.params[1], /写真がありません/);
+});

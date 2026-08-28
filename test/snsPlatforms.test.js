@@ -7,6 +7,7 @@ import {
   isPlatform,
   labelOf,
   maxCaptionOf,
+  photoRequiredFor,
   splitForPlatform,
 } from '../src/sns/platforms.js';
 import { createSnsRouter } from '../src/http/snsRoutes.js';
@@ -127,4 +128,14 @@ test('文字数・枚数の上限も画面へ渡す', async () => {
     assert.equal(by.instagram.photoRequired, true);
     assert.equal(by.wordpress.photoRequired, false);
   });
+});
+
+test('photoRequiredFor は表のとおり返し、知らない投稿先は「要る」に倒す', () => {
+  assert.equal(photoRequiredFor('instagram'), true);
+  assert.equal(photoRequiredFor('threads'), true);
+  assert.equal(photoRequiredFor('wordpress'), false);
+  assert.equal(photoRequiredFor('x'), false);
+  // 知らない投稿先で写真なしを黙って通さない
+  assert.equal(photoRequiredFor('mixi'), true);
+  assert.equal(photoRequiredFor(undefined), true);
 });

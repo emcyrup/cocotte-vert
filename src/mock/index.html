@@ -1182,12 +1182,15 @@ tr.await td{background:var(--warn-soft)}
           <p style="font-size:12px;color:var(--muted);margin:0 0 10px">
             出したい先にチェックを入れてください。<b>本文もタイミングも投稿先ごとに別々</b>に決められます。</p>
           <div class="frow" style="margin-bottom:10px">
-            <input type="text" id="cap-hint" placeholder="ひとこと補足（任意。例：今日は保育コースの遠足）" maxlength="200">
+            <textarea id="cap-hint" rows="2" maxlength="1000"
+              placeholder="補足・記事にしたい内容（任意。例：今日は保育コースの遠足／詳しくは https://example.com/news ）"></textarea>
           </div>
           <div id="pflist"></div>
           <button class="btn block" id="sns-send" type="button" style="margin-top:12px">選択した投稿先へ送る</button>
           <p style="font-size:12px;color:var(--muted);margin:8px 0 0">
-            「自動で書く」は写真を見て下書きを作ります。<b>必ず読んでから送ってください。</b></p>
+            「自動で書く」は写真を見て下書きを作ります。<b>必ず読んでから送ってください。</b><br>
+            WordPress は<b>写真なしでも投稿できます</b>。そのときは、この欄に書いた内容だけをもとに書きます
+            （書いていないことは足しません）。URL を書けば記事内でリンクになります。</p>
         </div>
       </div>
       <div class="card">
@@ -3568,6 +3571,7 @@ function renderPlatforms(){
     at?.addEventListener('change', () => { st.when = at.value || null; });
     el.querySelector('.pf-cap')?.addEventListener('click', (e) => generateCaption({
       platform: p.key, items: pfFiles(p.key), target: text, btn: e.currentTarget,
+      photoRequired: p.photoRequired,
       after: () => { st.caption = text.value; paint(); },
     }));
 
@@ -3660,18 +3664,27 @@ function clearThreadsPick(){
 }
 
 // ---- キャプションの自動生成 ----
-// 写真を見て下書きを作るだけ。投稿は従来どおりスタッフが別に押す
+// 写真を見て下書きを作るだけ。投稿は従来どおりスタッフが別に押す。
+// 写真が要らない投稿先（WordPress など）は、下の「補足」に書いた要点だけでも書ける
 const CAPTION_ERRORS = {
   no_api_key: 'キャプションの自動生成が設定されていません（店長に連絡してください）',
   no_photos: '先に写真を追加してください',
-  refused: '写真の内容から文章を作れませんでした。別の写真でお試しください',
+  no_notes: '写真がないときは、下の「補足」に記事にしたい内容を書いてください',
+  no_images: '書く材料がありません。写真を追加するか、「補足」に内容を書いてください',
+  invalid_hint: '「補足」が長すぎます（1000文字まで）',
+  refused: '内容から文章を作れませんでした。書き方を変えてお試しください',
   too_long: '文章が長くなりすぎました。もう一度お試しください',
   api_error: '文章の作成に失敗しました。少し待ってからお試しください',
   bad_response: 'うまく書けませんでした。もう一度お試しください',
   photo_missing: '写真が見つかりません。追加し直してください',
 };
-async function generateCaption({ platform, items, target, btn, after = null }){
-  if (!items.length) { showToast('先に写真を追加してください（「チェックした分」なら写真にチェックを）'); return; }
+async function generateCaption({ platform, items, target, btn, photoRequired = true, after = null }){
+  const notes = document.getElementById('cap-hint').value.trim();
+  if (!items.length) {
+    if (photoRequired) { showToast('先に写真を追加してください（「チェックした分」なら写真にチェックを）'); return; }
+    // 写真なしで書けるが、そのときは補足が唯一の材料になる
+    if (!notes) { showToast('写真がないときは、下の「補足」に記事にしたい内容を書いてください'); return; }
+  }
   if (!snsLive) { showToast('モックのため自動生成はされません'); return; }
   const label = btn.innerHTML;
   btn.disabled = true;
@@ -3683,7 +3696,7 @@ async function generateCaption({ platform, items, target, btn, after = null }){
       body: JSON.stringify({
         platform,
         files: items.map((i) => i.file),
-        hint: document.getElementById('cap-hint').value.trim(),
+        hint: notes,
       }),
     });
     const body = await res.json().catch(() => ({}));

@@ -5,7 +5,7 @@
 //
 // 投稿先ごとの違い（枚数の上限・分割するか）は src/sns/platforms.js に寄せてある。
 // 投稿先を増やすときは、この関数に if を足すのではなく clients に1つ足す。
-import { labelOf, splitForPlatform } from '../sns/platforms.js';
+import { labelOf, splitForPlatform, photoRequiredFor } from '../sns/platforms.js';
 
 export function createSnsPublisher({ pool, clients = {}, slack, config }) {
   function photoUrl(file) {
@@ -24,11 +24,15 @@ export function createSnsPublisher({ pool, clients = {}, slack, config }) {
     if (claimed.length === 0) return { ok: false, error: 'not_publishable' };
     const post = claimed[0];
 
+    const platform = post.platform || 'instagram';
+
     const { rows: photos } = await pool.query(
       `SELECT file FROM sns_photos WHERE post_id = $1 ORDER BY sort_order, id`,
       [postId]
     );
-    if (photos.length === 0) {
+    // 写真が要る投稿先で写真が無いのは、消されたか登録が途中で落ちたということ。
+    // WordPress のように要らない先は、本文だけで記事にする
+    if (photos.length === 0 && photoRequiredFor(platform)) {
       await pool.query(`UPDATE sns_posts SET status = 'failed', error = $2 WHERE id = $1`, [
         postId,
         '写真がありません',
@@ -36,7 +40,6 @@ export function createSnsPublisher({ pool, clients = {}, slack, config }) {
       return { ok: false, error: 'no_photos' };
     }
 
-    const platform = post.platform || 'instagram';
     const client = clients[platform] ?? null;
     if (!client) {
       await pool.query(`UPDATE sns_posts SET status = 'failed', error = $2 WHERE id = $1`, [

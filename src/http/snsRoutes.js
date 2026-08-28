@@ -6,10 +6,15 @@ import { randomBytes } from 'node:crypto';
 import { writeFile, unlink, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import express from 'express';
-import { PLATFORM_KEYS, PLATFORMS, isPlatform, maxCaptionOf } from '../sns/platforms.js';
+import {
+  PLATFORM_KEYS, PLATFORMS, isPlatform, maxCaptionOf, photoRequiredFor,
+} from '../sns/platforms.js';
 
 const MAX_PHOTOS = 20; // 10枚×2投稿ぶんまで
 const PHOTO_NAME = /^[0-9a-f]{24}\.jpg$/;
+// スタッフが書く要点の上限。写真なしの下書きではこれが唯一の材料になるので、
+// 写真ありの「ひとこと補足」より広く取る
+const MAX_HINT = 1000;
 
 export function createSnsRouter({
   pool, publisher, dataDir, captionWriter = null, storeName = '当店', clients = {},
@@ -77,12 +82,18 @@ export function createSnsRouter({
   router.post('/caption', async (req, res, next) => {
     try {
       if (!captionWriter) return res.status(503).json({ error: 'no_api_key' });
-      const { files, platform = 'instagram', hint = '' } = req.body ?? {};
+      const { files = [], platform = 'instagram', hint = '' } = req.body ?? {};
       if (!isPlatform(platform)) return res.status(400).json({ error: 'invalid_platform' });
-      if (!Array.isArray(files) || files.length === 0) return res.status(400).json({ error: 'no_photos' });
+      if (!Array.isArray(files)) return res.status(400).json({ error: 'invalid_file' });
       if (files.length > MAX_PHOTOS) return res.status(400).json({ error: 'too_many_photos' });
       if (!files.every((f) => PHOTO_NAME.test(f))) return res.status(400).json({ error: 'invalid_file' });
-      if (typeof hint !== 'string' || hint.length > 200) return res.status(400).json({ error: 'invalid_hint' });
+      if (typeof hint !== 'string' || hint.length > MAX_HINT) return res.status(400).json({ error: 'invalid_hint' });
+      // 写真が要る投稿先はこれまでどおり写真から書く。要らない投稿先（WordPress など）は
+      // 写真ゼロを許すが、そのときは要点が唯一の材料なので空では書かせない
+      if (files.length === 0) {
+        if (photoRequiredFor(platform)) return res.status(400).json({ error: 'no_photos' });
+        if (!hint.trim()) return res.status(400).json({ error: 'no_notes' });
+      }
 
       const images = [];
       for (const file of files) {
@@ -107,10 +118,14 @@ export function createSnsRouter({
   // ---- 投稿の作成（即時 or 予約）----
   router.post('/posts', async (req, res, next) => {
     try {
-      const { caption = '', files, scheduledAt = null, platform = 'instagram' } = req.body ?? {};
+      const { caption = '', files = [], scheduledAt = null, platform = 'instagram' } = req.body ?? {};
       if (!isPlatform(platform)) return res.status(400).json({ error: 'invalid_platform' });
-      if (!Array.isArray(files) || files.length === 0) {
-        return res.status(400).json({ error: 'no_photos' });
+      if (!Array.isArray(files)) return res.status(400).json({ error: 'invalid_file' });
+      // 写真なしを許すのは photoRequired: false の投稿先だけ。そのぶん本文は空にできない
+      // （写真も本文も無い投稿ができてしまう）
+      if (files.length === 0) {
+        if (photoRequiredFor(platform)) return res.status(400).json({ error: 'no_photos' });
+        if (!String(caption).trim()) return res.status(400).json({ error: 'invalid_caption' });
       }
       if (files.length > MAX_PHOTOS) return res.status(400).json({ error: 'too_many_photos' });
       if (typeof caption !== 'string' || caption.length > maxCaptionOf(platform)) {

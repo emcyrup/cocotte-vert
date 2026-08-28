@@ -1,6 +1,10 @@
 // SNS 投稿キャプションの下書き生成（Claude）。
 //
-// 写真そのものを見せて書かせる。文章だけを生成する用途なので、分類器（classifyFollowup）と違って
+// 写真そのものを見せて書かせる。写真が無いときは、スタッフが書いた要点だけを材料にする
+// （WordPress のように写真なしで投稿できる先向け）。どちらの場合も**材料に無いことは書かせない**
+// のが肝で、そこだけプロンプトを差し替えている。
+//
+// 文章だけを生成する用途なので、分類器（classifyFollowup）と違って
 // 失敗を握り潰さずそのまま投げる ── スタッフが画面で押した操作の結果なので、
 // 黙って空文字が返るより「なぜ出せなかったか」を出したほうがよい。
 //
@@ -36,40 +40,65 @@ const OUTPUT_SCHEMA = {
   additionalProperties: false,
 };
 
-function systemPrompt({ storeName, platform }) {
+function systemPrompt({ storeName, platform, fromText = false }) {
   const limit = LIMITS[platform];
-  return [
+  const common = [
     `あなたは「${storeName}」（犬のトリミングサロン・ペットホテル）のSNS担当です。`,
-    `お店が撮った写真から、${LABELS[platform]}の投稿文の下書きを日本語で書いてください。`,
+    fromText
+      ? `スタッフが書いた要点から、${LABELS[platform]}の投稿文の下書きを日本語で書いてください。`
+      : `お店が撮った写真から、${LABELS[platform]}の投稿文の下書きを日本語で書いてください。`,
     '',
     '# 書き方',
     `- 本文は${limit.guide}。飼い主様に語りかける、やわらかい口調で。`,
     '- 絵文字は多くても2〜3個まで。',
     `- ハッシュタグは${limit.tags}。日本語中心で、店名と地域名を必ず1つずつ入れる。#は付けずに単語だけ返す。`,
-    '',
-    '# 守ること',
-    '- 写真から分かることだけを書く。犬種・名前・年齢・飼い主様のことは推測しない。',
-    '- 料金、キャンペーン、予約の空き状況など、確認できない情報を書かない。',
-    '- 写真に人が写っていても、その人について書かない。',
-    '- 写真の内容がはっきりしないときは、無理に説明せず日常のひとこまとして短くまとめる。',
-  ].join('\n');
+  ];
+  // 記事にはタイトルが要る。1行目がそのままタイトルになる（wordpress/client.js の splitCaption）
+  if (platform === 'wordpress') {
+    common.push('- **1行目は記事のタイトル**にする。40文字以内で、内容が分かる短い一文にする。');
+  }
+
+  // 材料が写真か文章かで「作ってはいけないもの」が変わる。ここだけ差し替える
+  const rules = fromText
+    ? [
+        '- **要点に書かれていることだけを書く。** 日付・料金・時間・場所・条件を、',
+        '  書かれていない範囲まで補わない。曖昧なら曖昧なまま書く。',
+        '- 要点に無い出来事・実績・感想を作らない。ふくらませてよいのは言い回しだけ。',
+        '- URL は**一字一句そのままの形で本文に残す**。短縮も言い換えもしない。',
+        '- 要点が短いときは、無理に長くせず短いお知らせとしてまとめる。',
+      ]
+    : [
+        '- 写真から分かることだけを書く。犬種・名前・年齢・飼い主様のことは推測しない。',
+        '- 料金、キャンペーン、予約の空き状況など、確認できない情報を書かない。',
+        '- 写真に人が写っていても、その人について書かない。',
+        '- 写真の内容がはっきりしないときは、無理に説明せず日常のひとこまとして短くまとめる。',
+      ];
+
+  return [...common, '', '# 守ること', ...rules].join('\n');
 }
 
 export function createCaptionWriter({ apiKey, model = 'claude-opus-5', fetchFn = fetch }) {
   /**
-   * @param {{images: {mediaType: string, data: string}[], platform?: 'instagram'|'threads',
+   * 写真か要点(hint)のどちらかが要る。写真ゼロなら要点だけで書く。
+   *
+   * @param {{images?: {mediaType: string, data: string}[], platform?: keyof LIMITS,
    *          storeName?: string, hint?: string}} params
    * @returns {Promise<{caption: string}>}
    */
-  async function write({ images, platform = 'instagram', storeName = '当店', hint = '' }) {
+  async function write({ images = [], platform = 'instagram', storeName = '当店', hint = '' }) {
     if (!apiKey) throw new Error('no_api_key');
-    if (!Array.isArray(images) || images.length === 0) throw new Error('no_images');
+    const photos = Array.isArray(images) ? images : [];
+    const notes = String(hint ?? '').trim();
+    // 写真も要点も無ければ書く材料が無い。API を呼ぶ前に止める
+    if (photos.length === 0 && !notes) throw new Error('no_images');
     const limit = LIMITS[platform];
     if (!limit) throw new Error('invalid_platform');
 
+    const fromText = photos.length === 0;
+
     // 枚数が多いときは等間隔で間引く。最初の数枚だけだと1日の様子が偏るため
-    const step = Math.max(1, Math.ceil(images.length / MAX_IMAGES));
-    const picked = images.filter((_, i) => i % step === 0).slice(0, MAX_IMAGES);
+    const step = Math.max(1, Math.ceil(photos.length / MAX_IMAGES));
+    const picked = photos.filter((_, i) => i % step === 0).slice(0, MAX_IMAGES);
 
     const content = picked.map((img) => ({
       type: 'image',
@@ -77,9 +106,11 @@ export function createCaptionWriter({ apiKey, model = 'claude-opus-5', fetchFn =
     }));
     content.push({
       type: 'text',
-      text: hint
-        ? `この写真の投稿文をお願いします。スタッフからの補足: ${hint}`
-        : 'この写真の投稿文をお願いします。',
+      text: fromText
+        ? `次の要点から投稿文をお願いします。\n\n${notes}`
+        : notes
+          ? `この写真の投稿文をお願いします。スタッフからの補足: ${notes}`
+          : 'この写真の投稿文をお願いします。',
     });
 
     const res = await fetchFn(API_URL, {
@@ -93,7 +124,7 @@ export function createCaptionWriter({ apiKey, model = 'claude-opus-5', fetchFn =
         model,
         // 本文自体は短いが、思考ぶんの余白がないと途中で切れる
         max_tokens: 4096,
-        system: systemPrompt({ storeName, platform }),
+        system: systemPrompt({ storeName, platform, fromText }),
         messages: [{ role: 'user', content }],
         // 短い文章なので深く考えさせる必要はない。費用と待ち時間を抑える
         output_config: { effort: 'low', format: { type: 'json_schema', schema: OUTPUT_SCHEMA } },

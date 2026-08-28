@@ -30,13 +30,40 @@ export function splitCaption(caption) {
   return { title: first, body: body || first };
 }
 
+// 本文中の URL に使える文字（RFC 3986）。日本語の句読点は入らないので、
+// 「https://example.com です。」の「。」まで飲み込むことはない
+const URL_CHARS = "[\\w\\-._~:/?#\\[\\]@!$&'()*+,;=%]";
+const URL_RE = new RegExp(`https?://${URL_CHARS}+`, 'g');
+
+/**
+ * 裸の URL をリンクにする。
+ *
+ * WordPress は**本文中の裸の URL を既定ではリンクにしない**（`make_clickable` は
+ * 本文の既定フィルタに入っていない）。書いたとおりに読めるよう、こちらで `<a>` にしておく。
+ *
+ * **エスケープした後に掛けること。** 先にリンクにすると、作った `<a>` ごとエスケープされて
+ * タグが文字として出る。`&` はこの時点で `&amp;` になっているが、href の中では
+ * `&amp;` が正しい書き方なので直さない。
+ */
+function linkify(escaped) {
+  return escaped.replace(URL_RE, (url) => {
+    // エスケープで生まれた実体参照から先は URL ではない。" < > は生のままでは URL に
+    // 書けない文字なので、ここで切ってよい（`&amp;` はクエリ文字列なので切らない）
+    const cut = url.search(/&(?:quot|lt|gt);/);
+    const upTo = cut === -1 ? url : url.slice(0, cut);
+    // 文末の句読点は URL の一部ではない（「…example.com.」の末尾の . など）
+    const href = upTo.replace(/[.,;:!?]+$/, '');
+    return `<a href="${href}">${href}</a>${url.slice(href.length)}`;
+  });
+}
+
 /** 段落と画像を並べた記事本文（WordPress のブロックエディタでも素直に表示される） */
 export function buildContent(body, mediaUrls) {
   const paragraphs = String(body ?? '')
     .split('\n')
     .map((l) => l.trim())
     .filter(Boolean)
-    .map((l) => `<p>${escapeHtml(l)}</p>`);
+    .map((l) => `<p>${linkify(escapeHtml(l))}</p>`);
   const images = mediaUrls.map(
     (url) => `<figure class="wp-block-image"><img src="${escapeHtml(url)}" alt="" /></figure>`
   );

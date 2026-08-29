@@ -243,3 +243,13 @@ test('接続確認は読み取りだけで、ログイン名を返す', async ()
   assert.deepEqual(await client.whoAmI(), { name: '店長', slug: 'tencho' });
   assert.equal(calls[0].opts.method, 'GET');
 });
+
+test('postMode を画面へ公開する（バッジが実投稿/dry_runを正しく出すため）', () => {
+  // 一度返し忘れていて、live にしても画面のバッジが dry_run のままだった。
+  // 投稿の実体は live で動くのに画面は dry_run と出る、逆向きに危ない壊れ方をする
+  assert.equal(createWordPressClient({ config: config() }).postMode, 'live');
+  assert.equal(
+    createWordPressClient({ config: config({ postMode: 'dry_run' }) }).postMode,
+    'dry_run'
+  );
+});

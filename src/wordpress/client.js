@@ -156,5 +156,7 @@ export function createWordPressClient({ config, fetchFn = fetch }) {
     return { status: 'published', mediaId: String(post.id) };
   }
 
-  return { publishPost, whoAmI, enabled };
+  // postMode を返し忘れると、画面のバッジが設定に関係なく dry_run のままになる
+  // （実際の投稿は live で動くのに、画面は dry_run と出る。逆向きに危ない）
+  return { publishPost, whoAmI, enabled, postMode: wp.postMode };
 }

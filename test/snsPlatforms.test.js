@@ -139,3 +139,26 @@ test('photoRequiredFor は表のとおり返し、知らない投稿先は「要
   assert.equal(photoRequiredFor('mixi'), true);
   assert.equal(photoRequiredFor(undefined), true);
 });
+
+test('DB の CHECK 制約が、表にある投稿先を全部許している', async () => {
+  // 表（platforms.js）に投稿先を足しても、sns_posts の CHECK 制約を更新し忘れると
+  // 挿入が DB で弾かれ、画面には「internal error」しか出ない。WordPress で実際に起きた。
+  // 制約を持つ最新のマイグレーションを読み、表の全キーが入っていることを見る
+  const { readdir, readFile } = await import('node:fs/promises');
+  const dir = new URL('../src/db/migrations/', import.meta.url);
+  const files = (await readdir(dir)).filter((f) => f.endsWith('.sql')).sort();
+
+  let latest = null;
+  for (const f of files) {
+    const sql = await readFile(new URL(f, dir), 'utf8');
+    if (/ADD CONSTRAINT sns_posts_platform_check/.test(sql)) latest = sql;
+  }
+  assert.ok(latest, '制約を張るマイグレーションが見つからない');
+
+  const m = latest.match(/CHECK \(platform IN \(([^)]+)\)\)/);
+  assert.ok(m, '制約の形が変わっている。テストを追随させること');
+  const allowed = m[1].split(',').map((s) => s.trim().replace(/^'|'$/g, ''));
+  for (const key of PLATFORM_KEYS) {
+    assert.ok(allowed.includes(key), `DB の制約に ${key} が無い。マイグレーションを足すこと`);
+  }
+});

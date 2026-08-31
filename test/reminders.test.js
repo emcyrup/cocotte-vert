@@ -235,3 +235,41 @@ test('保存値が壊れていても止めない（10 時として扱う）', as
   const r2 = createReminderSettings({ settings: s2 });
   assert.equal((await r2.getHours()).birthday, 10);
 });
+
+// ---- 文面の上書き ----
+
+test('文面の上書きが無ければ全部 null（既定の文面のまま）', async () => {
+  const { settings } = makeSettings();
+  const reminders = createReminderSettings({ settings });
+  assert.deepEqual(await reminders.getTexts(), {
+    preReminder: null, afterVisit: null, dormant: null, birthday: null,
+  });
+});
+
+test('文面は変えた分だけ保存され、空にすると既定へ戻る', async () => {
+  const { settings, store } = makeSettings();
+  const reminders = createReminderSettings({ settings });
+
+  const after = await reminders.updateTexts({ birthday: ' お誕生日おめでとう！🐶 ' });
+  assert.equal(after.birthday, 'お誕生日おめでとう！🐶', '前後の空白は落とす');
+  assert.equal(after.preReminder, null);
+
+  // 空文字で既定に戻す。保存された JSON からも行が消える
+  const reset = await reminders.updateTexts({ birthday: '' });
+  assert.equal(reset.birthday, null);
+  assert.deepEqual(JSON.parse(store.get('reminder_texts')), {});
+});
+
+test('文面の検証: 長すぎ・未知のキー・文字列以外は保存しない', async () => {
+  const { settings } = makeSettings();
+  const reminders = createReminderSettings({ settings });
+  await assert.rejects(() => reminders.updateTexts({ dormant: 'あ'.repeat(501) }), /500文字まで/);
+  await assert.rejects(() => reminders.updateTexts({ mixi: 'x' }), /未知のリマインド/);
+  await assert.rejects(() => reminders.updateTexts({ dormant: 123 }), /文字列で/);
+});
+
+test('壊れた保存値は既定の文面に倒す（配信は止めない）', async () => {
+  const { settings } = makeSettings({ reminder_texts: '{{{' });
+  const reminders = createReminderSettings({ settings });
+  assert.equal((await reminders.getTexts()).dormant, null);
+});

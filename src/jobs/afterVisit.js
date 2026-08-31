@@ -2,8 +2,10 @@
 // 販促に近いフォローのため、opt_out の顧客は除外する（preReminder と異なる点）。
 import { buildAfterVisitMessage } from '../line/messages/afterVisit.js';
 
-export function createAfterVisitJob({ pool, lineClient, daysAfter = 7 }) {
+export function createAfterVisitJob({ pool, lineClient, daysAfter = 7, texts = null }) {
   return async function run() {
+    // 本文の上書きは1回だけ読む。無ければ既定の文面
+    const bodyText = texts ? (await texts.getTexts()).afterVisit : null;
     // 同一顧客が対象日に複数回来店している場合は最新の1件のみ（DISTINCT ON）
     const { rows } = await pool.query(
       `SELECT DISTINCT ON (c.id)
@@ -29,6 +31,7 @@ export function createAfterVisitJob({ pool, lineClient, daysAfter = 7 }) {
     for (const row of rows) {
       try {
         const message = buildAfterVisitMessage({
+          ...(bodyText ? { bodyText } : {}),
           customerName: row.customer_name,
           reservationId: row.id,
         });

@@ -3,8 +3,10 @@
 import { buildDormantMessage } from '../line/messages/dormant.js';
 import { jstToday } from '../util/jst.js';
 
-export function createDormantJob({ pool, lineClient, dailyLimit = 50, dormantDays = 90 }) {
+export function createDormantJob({ pool, lineClient, dailyLimit = 50, dormantDays = 90, texts = null }) {
   return async function run() {
+    // 本文の上書きは1回だけ読む。無ければ既定の文面
+    const bodyText = texts ? (await texts.getTexts()).dormant : null;
     const today = jstToday();
 
     // `= N日` ではなく `<= N日` にしている理由:
@@ -43,7 +45,7 @@ export function createDormantJob({ pool, lineClient, dailyLimit = 50, dormantDay
 
     for (const row of rows) {
       try {
-        const message = buildDormantMessage({ customerName: row.name });
+        const message = buildDormantMessage({ customerName: row.name, ...(bodyText ? { bodyText } : {}) });
         const result = await lineClient.deliver({
           customerId: row.id,
           lineUserId: row.line_user_id,

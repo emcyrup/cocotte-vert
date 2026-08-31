@@ -385,10 +385,21 @@ button.trow2:focus-visible{outline:2px solid var(--accent); outline-offset:-2px}
 .rem{display:grid; grid-template-columns:1fr; gap:0}
 .rem-hour{border:1px solid var(--line); border-radius:8px; background:var(--surface); color:var(--ink); font:inherit; font-size:12px; padding:5px 6px}
 .crform{display:grid; gap:10px; padding:14px 16px; border-top:1px solid var(--line)}
+/* display:grid が UA の [hidden] を上書きしてフォームが出っぱなしになるのを防ぐ */
+.crform[hidden]{display:none}
 .crform .frow{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
 .crform label{font-size:12px; color:var(--muted)}
 .rem .row{display:grid; grid-template-columns:44px 1fr auto auto; gap:12px; align-items:center; padding:11px 16px; border-bottom:1px solid var(--line)}
 .rem .row:last-child{border-bottom:0}
+.rem .row.note{grid-template-columns:1fr}
+/* 実運用モードの実装済み行は、時刻セレクトと「文面」ボタンが入って6要素になる */
+.rem .row.live{grid-template-columns:44px 1fr auto auto auto auto}
+@media (max-width:640px){
+  .rem .row.live{grid-template-columns:44px 1fr auto auto; row-gap:8px}
+  .rem .row.live .rem-hour{grid-column:2}
+}
+.rem .txted{padding:12px 16px; border-bottom:1px solid var(--line); display:grid; gap:8px}
+.rem .txted .hint{font-size:12px; color:var(--muted)}
 .rid{font-size:11px; font-weight:700; color:var(--accent); background:var(--accent-soft); border-radius:6px; text-align:center; padding:2px 0}
 .rem .nm{font-weight:600}
 .rem .cond{font-size:12px; color:var(--muted)}
@@ -2719,6 +2730,7 @@ function renderRemindLive(){
     + 'お客様ごとに止めるときは、カルテの「飼い主様情報を編集」で配信停止にしてください。';
   // 実装済みの行に配信時刻の選択を差し込む（毎時0分に、選んだ時刻のものだけが動く）
   document.querySelectorAll('#remrows .row[data-job]').forEach(row => {
+    row.classList.add('live');
     const sel = document.createElement('select');
     sel.className = 'rem-hour';
     sel.dataset.job = row.dataset.job;
@@ -2726,6 +2738,12 @@ function renderRemindLive(){
     sel.value = '10';
     sel.addEventListener('change', () => saveRemindHours(sel.dataset.job, Number(sel.value)));
     row.insertBefore(sel, row.querySelector('.src'));
+    const edit = document.createElement('button');
+    edit.type = 'button';
+    edit.className = 'sbtn';
+    edit.textContent = '文面';
+    edit.addEventListener('click', () => toggleTextEditor(row));
+    row.insertBefore(edit, row.querySelector('.src'));
   });
   renderCustomRemCard();
 
@@ -2743,8 +2761,10 @@ function paintRemindRows(){
 
 async function loadRemindLive(){
   try {
-    const { enabled, hours } = await adminApi('/reminders');
+    const { enabled, hours, texts, defaultTexts } = await adminApi('/reminders');
     Object.assign(remindEnabled, enabled);
+    remindTexts = texts || {};
+    remindTextDefaults = defaultTexts || {};
     paintRemindRows();
     document.querySelectorAll('#remrows .rem-hour').forEach(sel => {
       if (hours && hours[sel.dataset.job]) sel.value = String(hours[sel.dataset.job]);
@@ -2753,6 +2773,49 @@ async function loadRemindLive(){
     showToast('リマインド設定を読み込めませんでした: ' + err.message);
   }
   loadCustomRems();
+}
+
+// 行の直下に文面のエディタを出し入れする。宛名（〇〇様）とボタンは固定で、本文だけを書き換える
+let remindTexts = {};        // 上書き（null = 既定のまま）
+let remindTextDefaults = {};
+function toggleTextEditor(row){
+  const open = row.nextElementSibling?.classList?.contains('txted');
+  document.querySelectorAll('#remrows .txted').forEach(e => e.remove());
+  if (open) return;
+  const job = row.dataset.job;
+  const ed = document.createElement('div');
+  ed.className = 'txted';
+  ed.innerHTML =
+    '<div class="hint">お客様に届く本文です。宛名（〇〇様）とボタンは自動で付きます。'
+    + '空行で段落が分かれます。<b>空にして保存すると元の文面に戻ります。</b></div>'
+    + '<textarea rows="5" maxlength="500"></textarea>'
+    + '<div style="display:flex;gap:8px"><button class="sbtn" type="button" data-act="save">保存</button>'
+    + '<button class="sbtn mut" type="button" data-act="reset">元の文面に戻す</button>'
+    + '<button class="sbtn mut" type="button" data-act="close">閉じる</button></div>';
+  const ta = ed.querySelector('textarea');
+  ta.value = remindTexts[job] || remindTextDefaults[job] || '';
+  ed.querySelector('[data-act="close"]').addEventListener('click', () => ed.remove());
+  ed.querySelector('[data-act="reset"]').addEventListener('click', () => saveRemindText(job, '', ed));
+  ed.querySelector('[data-act="save"]').addEventListener('click', () => {
+    // 既定のまま触っていなければ、上書きとして保存しない（既定文の更新に追従できるように）
+    const v = ta.value.trim();
+    saveRemindText(job, v === (remindTextDefaults[job] || '') ? '' : v, ed);
+  });
+  row.after(ed);
+  ta.focus();
+}
+
+async function saveRemindText(job, text, ed){
+  try {
+    const { texts } = await adminApi('/reminders', {
+      method: 'PUT', body: JSON.stringify({ texts: { [job]: text } }),
+    });
+    remindTexts = texts || {};
+    showToast(remindTexts[job] ? '文面を保存しました。テスト送信で実物を確かめられます' : '元の文面に戻しました');
+    ed.remove();
+  } catch (err) {
+    showToast('保存に失敗しました: ' + err.message);
+  }
 }
 
 async function saveRemindHours(job, hour){
@@ -2799,7 +2862,7 @@ function renderCustomRemCard(){
   card.innerHTML =
     '<div class="hd"><h2>追加リマインド</h2>'
     + '<span style="margin-left:auto"><button class="sbtn" id="cr-new" type="button">＋ 追加</button></span></div>'
-    + '<div class="rem" id="crrows"><div class="row"><div class="cond">まだありません。「＋ 追加」から作れます（例：ご来店の30日後にトリミングのご案内）</div></div></div>'
+    + '<div class="rem" id="crrows"><div class="row note"><div class="cond">まだありません。「＋ 追加」から作れます（例：ご来店の30日後にトリミングのご案内）</div></div></div>'
     + '<form class="crform" id="crform" hidden>'
     + '<div class="frow"><label>名前<br><input id="cr-name" maxlength="50" placeholder="例：30日後のご案内"></label>'
     + '<label>タイミング<br><select id="cr-type"><option value="after_visit">来店から◯日後</option><option value="before_reservation">予約の◯日前</option></select></label>'
@@ -2843,7 +2906,7 @@ function renderCustomRems(){
   const box = document.getElementById('crrows');
   if (!box) return;
   if (crRules.length === 0) {
-    box.innerHTML = '<div class="row"><div class="cond">まだありません。「＋ 追加」から作れます（例：ご来店の30日後にトリミングのご案内）</div></div>';
+    box.innerHTML = '<div class="row note"><div class="cond">まだありません。「＋ 追加」から作れます（例：ご来店の30日後にトリミングのご案内）</div></div>';
     return;
   }
   box.innerHTML = '';

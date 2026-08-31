@@ -1,9 +1,15 @@
 // 前々日確認の Flex Message テンプレート。
 import { formatJstDateTime } from '../../util/jst.js';
+import { toParagraphs } from './paragraphs.js';
 
 export const formatReservedAt = formatJstDateTime;
 
-export function buildPreReminderMessage({ customerName, reservedAt, menu, staffName, reservationId }) {
+// 既定の本文。管理画面で書き換えられるが、宛名・予約の詳細・ボタンは構造として固定
+export const DEFAULT_BODY = 'わんちゃんのご予約日が近づいてまいりましたので、ご連絡いたします。';
+
+export function buildPreReminderMessage({
+  customerName, reservedAt, menu, staffName, reservationId, bodyText = DEFAULT_BODY,
+}) {
   const when = formatReservedAt(reservedAt);
   const detailRow = (label, value) => ({
     type: 'box',
@@ -30,12 +36,7 @@ export function buildPreReminderMessage({ customerName, reservedAt, menu, staffN
         spacing: 'md',
         contents: [
           { type: 'text', text: `${customerName}様`, weight: 'bold', size: 'md' },
-          {
-            type: 'text',
-            text: 'わんちゃんのご予約日が近づいてまいりましたので、ご連絡いたします。',
-            size: 'sm',
-            wrap: true,
-          },
+          ...toParagraphs(bodyText),
           { type: 'box', layout: 'vertical', spacing: 'sm', margin: 'md', contents: details },
           { type: 'text', text: 'ご都合はいかがでしょうか？', size: 'sm', margin: 'md' },
         ],

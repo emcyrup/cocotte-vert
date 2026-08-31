@@ -40,16 +40,25 @@ const slackChannel = config.slackWebhookUrl
   : null;
 const settings = createSettings({ pool });
 const slack = createStaffNotifier({ config, slack: slackChannel, lineClient, settings });
-// 管理画面で OFF にしたリマインドは手動実行でも送らない（経路によって挙動が変わらないように）
-const runner = createJobRunner({ slack, settings, reminders: createReminderSettings({ settings }) });
+// 管理画面で OFF にしたリマインドは手動実行でも送らない（経路によって挙動が変わらないように）。
+// 文面の上書きも同じものを見る
+const reminderSettings = createReminderSettings({ settings });
+const runner = createJobRunner({ slack, settings, reminders: reminderSettings });
 
 const jobs = {
-  preReminder: createPreReminderJob({ pool, lineClient, daysBefore: config.preReminderDaysBefore }),
-  afterVisit: createAfterVisitJob({ pool, lineClient, daysAfter: config.afterVisitDaysAfter }),
+  preReminder: createPreReminderJob({
+    pool, lineClient, daysBefore: config.preReminderDaysBefore, texts: reminderSettings,
+  }),
+  afterVisit: createAfterVisitJob({
+    pool, lineClient, daysAfter: config.afterVisitDaysAfter, texts: reminderSettings,
+  }),
   dormant: createDormantJob({
     pool, lineClient, dailyLimit: config.dormantDailyLimit, dormantDays: config.dormantDays,
+    texts: reminderSettings,
   }),
-  birthday: createBirthdayJob({ pool, lineClient, couponUrl: config.birthdayCouponUrl }),
+  birthday: createBirthdayJob({
+    pool, lineClient, couponUrl: config.birthdayCouponUrl, texts: reminderSettings,
+  }),
 };
 
 const summary = await runner.runJob(jobName, jobs[jobName]);

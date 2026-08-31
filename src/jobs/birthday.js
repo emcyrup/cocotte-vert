@@ -3,8 +3,10 @@
 import { buildBirthdayMessage } from '../line/messages/birthday.js';
 import { jstToday, includeLeapDayBirthdays } from '../util/jst.js';
 
-export function createBirthdayJob({ pool, lineClient, couponUrl = null }) {
+export function createBirthdayJob({ pool, lineClient, couponUrl = null, texts = null }) {
   return async function run() {
+    // 本文の上書きは1回だけ読む。無ければ既定の文面
+    const bodyText = texts ? (await texts.getTexts()).birthday : null;
     const today = jstToday();
     const withLeapDay = includeLeapDayBirthdays(today);
 
@@ -31,7 +33,7 @@ export function createBirthdayJob({ pool, lineClient, couponUrl = null }) {
 
     for (const row of rows) {
       try {
-        const message = buildBirthdayMessage({ customerName: row.name, couponUrl });
+        const message = buildBirthdayMessage({ customerName: row.name, couponUrl, ...(bodyText ? { bodyText } : {}) });
         const result = await lineClient.deliver({
           customerId: row.id,
           lineUserId: row.line_user_id,

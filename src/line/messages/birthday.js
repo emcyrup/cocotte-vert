@@ -1,19 +1,20 @@
 // 誕生日祝いの Flex Message テンプレート。
 // クーポンは LINE 公式アカウントのクーポン機能で作成した URL を埋め込む（通数を消費しない）。
 
-export function buildBirthdayMessage({ customerName, couponUrl }) {
+import { toParagraphs } from './paragraphs.js';
+
+// 既定の本文。クーポンの案内文は BIRTHDAY_COUPON_URL の有無に連動するため固定のまま
+export const DEFAULT_BODY =
+  'お誕生日おめでとうございます🎉\nいつもご利用いただきありがとうございます。\n素敵な一年になりますように！';
+
+export function buildBirthdayMessage({ customerName, couponUrl, bodyText = DEFAULT_BODY }) {
   const body = {
     type: 'box',
     layout: 'vertical',
     spacing: 'md',
     contents: [
       { type: 'text', text: `${customerName}様`, weight: 'bold', size: 'md' },
-      {
-        type: 'text',
-        text: 'お誕生日おめでとうございます🎉\nいつもご利用いただきありがとうございます。\n素敵な一年になりますように！',
-        size: 'sm',
-        wrap: true,
-      },
+      ...toParagraphs(bodyText),
     ],
   };
 

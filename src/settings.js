@@ -15,6 +15,8 @@ export const SETTING_KEYS = {
   remindersEnabled: 'reminders_enabled',
   // リマインドごとの配信時刻（JSON、時のみ）。行が無ければ従来どおり全部 10 時
   remindersHours: 'reminders_hours',
+  // リマインド4種の本文の上書き（JSON）。載っていないジョブは既定の文面のまま
+  reminderTexts: 'reminder_texts',
   // 予約CSVの列の対応づけ（JSON）。上流の書式が変わっても画面から直せるよう DB に置く
   importMapping: 'import_mapping',
 };

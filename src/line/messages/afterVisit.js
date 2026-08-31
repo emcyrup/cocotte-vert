@@ -4,7 +4,14 @@
 // 飼い主様ご本人の体調を尋ねているように読めるため、わんちゃんの話だと分かる書き方にする。
 // わんちゃんの名前は入れない（同じお宅で複数頭いる場合に取り違えるため）。
 
-export function buildAfterVisitMessage({ customerName, reservationId }) {
+import { toParagraphs } from './paragraphs.js';
+
+// 既定の本文（空行で段落を分ける）。管理画面で書き換えられる
+export const DEFAULT_BODY =
+  '先日はご来店いただきありがとうございました。\nその後、わんちゃんのご様子はいかがでしょうか？'
+  + '\n\n皮膚のかゆみ、カットの仕上がりなど、気になることがあればこのままメッセージでお知らせください。';
+
+export function buildAfterVisitMessage({ customerName, reservationId, bodyText = DEFAULT_BODY }) {
   return {
     type: 'flex',
     altText: 'ご来店ありがとうございました',
@@ -16,19 +23,7 @@ export function buildAfterVisitMessage({ customerName, reservationId }) {
         spacing: 'md',
         contents: [
           { type: 'text', text: `${customerName}様`, weight: 'bold', size: 'md' },
-          {
-            type: 'text',
-            text: '先日はご来店いただきありがとうございました。\nその後、わんちゃんのご様子はいかがでしょうか？',
-            size: 'sm',
-            wrap: true,
-          },
-          {
-            type: 'text',
-            text: '皮膚のかゆみ、カットの仕上がりなど、気になることがあればこのままメッセージでお知らせください。',
-            size: 'sm',
-            wrap: true,
-            margin: 'md',
-          },
+          ...toParagraphs(bodyText),
         ],
       },
       footer: {

@@ -2,8 +2,10 @@
 // opt_out は除外条件にしない（予約確認は営業ではなく取引に必要な連絡のため）。
 import { buildPreReminderMessage } from '../line/messages/preReminder.js';
 
-export function createPreReminderJob({ pool, lineClient, daysBefore = 2 }) {
+export function createPreReminderJob({ pool, lineClient, daysBefore = 2, texts = null }) {
   return async function run() {
+    // 本文の上書きは1回だけ読む（対象者ごとに読まない）。無ければ既定の文面
+    const bodyText = texts ? (await texts.getTexts()).preReminder : null;
     const { rows } = await pool.query(
       `SELECT r.id, r.reserved_at, r.menu,
               c.id AS customer_id, c.line_user_id, c.name AS customer_name,
@@ -30,6 +32,7 @@ export function createPreReminderJob({ pool, lineClient, daysBefore = 2 }) {
       // 1件のエラーで他の対象者の処理を止めない
       try {
         const message = buildPreReminderMessage({
+          ...(bodyText ? { bodyText } : {}),
           customerName: row.customer_name,
           reservedAt: row.reserved_at,
           menu: row.menu,

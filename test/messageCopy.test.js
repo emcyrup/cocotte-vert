@@ -86,3 +86,31 @@ test('顧客名は文面に差し込まれるが、ログ用の id は混ざら�
     assert.ok(!/customer=/.test(text), `${name} に内部 id が混ざっています`);
   }
 });
+
+// ---- 本文の書き換え（管理画面から）----
+// 宛名・ボタン・予約の詳細は構造として残り、本文だけが置き換わることを見る
+
+const flexTexts = (msg) => JSON.stringify(msg.contents);
+
+test('bodyText を渡すと本文だけが置き換わる', () => {
+  for (const [label, build, fixed] of [
+    ['前々日確認', () => buildPreReminderMessage({ ...args, bodyText: '独自の本文です' }), 'ご都合はいかがでしょうか'],
+    ['来店フォロー', () => buildAfterVisitMessage({ ...args, bodyText: '独自の本文です' }), '元気にしています'],
+    ['休眠フォロー', () => buildDormantMessage({ ...args, bodyText: '独自の本文です' }), '今後この案内が不要な方はこちら'],
+    ['誕生日', () => buildBirthdayMessage({ ...args, bodyText: '独自の本文です' }), 'クーポンを見る'],
+  ]) {
+    const s = flexTexts(build());
+    assert.match(s, /独自の本文です/, label);
+    assert.match(s, /山田様/, `${label}: 宛名は残る`);
+    assert.match(s, new RegExp(fixed), `${label}: 固定部は残る`);
+  }
+});
+
+test('空行で段落が分かれ、2段落目からは間隔が付く', () => {
+  const msg = buildDormantMessage({ ...args, bodyText: '一段落目\n\n二段落目' });
+  const body = msg.contents.body.contents;
+  const paras = body.filter((n) => /段落目/.test(n.text ?? ''));
+  assert.equal(paras.length, 2);
+  assert.equal(paras[0].margin, undefined);
+  assert.equal(paras[1].margin, 'md');
+});

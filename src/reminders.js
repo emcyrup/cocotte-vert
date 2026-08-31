@@ -3,6 +3,10 @@
 // 設定は app_settings に JSON 1行で持つ。行が無い状態＝これまでどおり全部 ON にしてあるので、
 // 既存環境を移行しても挙動は変わらない。
 import { SETTING_KEYS } from './settings.js';
+import { DEFAULT_BODY as PRE_BODY } from './line/messages/preReminder.js';
+import { DEFAULT_BODY as AFTER_BODY } from './line/messages/afterVisit.js';
+import { DEFAULT_BODY as DORMANT_BODY } from './line/messages/dormant.js';
+import { DEFAULT_BODY as BIRTHDAY_BODY } from './line/messages/birthday.js';
 
 // 画面の R番号と日次ジョブ名の対応。画面・API・ジョブで同じ並びを使う
 export const REMINDER_JOBS = [
@@ -24,6 +28,17 @@ export const DEFAULT_SEND_HOUR = 10;
 export function validSendHour(v) {
   return Number.isInteger(v) && v >= SEND_HOUR_MIN && v <= SEND_HOUR_MAX;
 }
+
+// 4種それぞれの既定の本文。コード側が正で、語彙は test/messageCopy.test.js が見張る。
+// 画面はこれを初期値として出し、書き換えたぶんだけが app_settings に載る
+export const DEFAULT_TEXTS = {
+  preReminder: PRE_BODY,
+  afterVisit: AFTER_BODY,
+  dormant: DORMANT_BODY,
+  birthday: BIRTHDAY_BODY,
+};
+
+const MAX_TEXT = 500;
 
 export function createReminderSettings({ settings }) {
   /** 4種すべての ON/OFF を返す（未設定は ON） */
@@ -103,7 +118,53 @@ export function createReminderSettings({ settings }) {
     return next;
   }
 
-  return { getAll, isEnabled, update, getHours, updateHours };
+  /**
+   * 本文の上書きを返す（{ジョブ名: 文字列 or null}。null は既定の文面のまま）。
+   * 読めないときは全部既定に倒す ── 壊れた設定で配信が止まるより、元の文面で送るほうが害が小さい
+   */
+  async function getTexts() {
+    let stored = {};
+    if (settings) {
+      const raw = await settings.get(SETTING_KEYS.reminderTexts).catch(() => null);
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === 'object') stored = parsed;
+        } catch {
+          console.error('[reminders] 文面の設定を読めませんでした。既定の文面で送ります');
+        }
+      }
+    }
+    return Object.fromEntries(
+      KEYS.map((k) => [k, typeof stored[k] === 'string' && stored[k].trim() ? stored[k] : null])
+    );
+  }
+
+  /**
+   * 本文の上書きを更新する。空文字・null を渡すと上書きを消して既定の文面に戻す
+   * （「元に戻す」を消し忘れなく実現するため、リセットも同じ入口にする）
+   */
+  async function updateTexts(patch) {
+    if (!settings) throw new Error('設定を保存できません');
+    const next = { ...(await getTexts()) };
+    for (const [k, v] of Object.entries(patch ?? {})) {
+      if (!KEYS.includes(k)) throw new Error(`未知のリマインドです: ${k}`);
+      if (v === null || String(v).trim() === '') {
+        next[k] = null;
+        continue;
+      }
+      if (typeof v !== 'string') throw new Error(`文面は文字列で指定してください: ${k}`);
+      const text = v.trim();
+      if (text.length > MAX_TEXT) throw new Error(`文面は${MAX_TEXT}文字までです: ${k}`);
+      next[k] = text;
+    }
+    // 既定のままのぶん（null）は保存しない。行を消せば必ず既定に戻る形を保つ
+    const toStore = Object.fromEntries(Object.entries(next).filter(([, v]) => v !== null));
+    await settings.set(SETTING_KEYS.reminderTexts, JSON.stringify(toStore));
+    return next;
+  }
+
+  return { getAll, isEnabled, update, getHours, updateHours, getTexts, updateTexts };
 }
 
 /**

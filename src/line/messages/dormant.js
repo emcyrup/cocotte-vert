@@ -1,7 +1,15 @@
 // 休眠フォローの Flex Message テンプレート。
 // 営業色を抑え、末尾に配信停止導線を必ず入れる（spec 2-3）。
 
-export function buildDormantMessage({ customerName }) {
+import { toParagraphs } from './paragraphs.js';
+
+// 既定の本文。最終来店から日が経った方に送る。売り込みに読まれないよう、
+// 予約を促す言葉は入れず、わんちゃんの近況を尋ねる形にとどめる
+export const DEFAULT_BODY =
+  'ご無沙汰しております。わんちゃんはお変わりありませんか？'
+  + '\n毛のもつれや皮膚のことなど、気になることがあればいつでもお気軽にご相談ください。';
+
+export function buildDormantMessage({ customerName, bodyText = DEFAULT_BODY }) {
   return {
     type: 'flex',
     altText: 'ご無沙汰しております',
@@ -13,14 +21,7 @@ export function buildDormantMessage({ customerName }) {
         spacing: 'md',
         contents: [
           { type: 'text', text: `${customerName}様`, weight: 'bold', size: 'md' },
-          {
-            type: 'text',
-            // 最終来店から日が経った方に送る。売り込みに読まれないよう、
-            // 予約を促す言葉は入れず、わんちゃんの近況を尋ねる形にとどめる
-            text: 'ご無沙汰しております。わんちゃんはお変わりありませんか？\n毛のもつれや皮膚のことなど、気になることがあればいつでもお気軽にご相談ください。',
-            size: 'sm',
-            wrap: true,
-          },
+          ...toParagraphs(bodyText),
         ],
       },
       footer: {

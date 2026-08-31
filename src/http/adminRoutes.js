@@ -10,7 +10,7 @@ import {
   buildConfirmedMessage,
   buildDeclinedMessage,
 } from '../line/messages/reservationStatus.js';
-import { REMINDER_JOBS } from '../reminders.js';
+import { REMINDER_JOBS, DEFAULT_TEXTS } from '../reminders.js';
 
 // テスト送信できるメッセージの一覧。顧客へ送りうるものは全種類ここに載せる。
 // needs は文面を組み立てるのに要る対象（予約 or 顧客）。
@@ -821,6 +821,9 @@ export function createAdminRouter({
         jobs: REMINDER_JOBS,
         enabled: await reminderSettings.getAll(),
         hours: await reminderSettings.getHours(),
+        // texts は上書きだけ（null = 既定のまま）。画面は defaultTexts を初期値に出す
+        texts: await reminderSettings.getTexts(),
+        defaultTexts: DEFAULT_TEXTS,
       });
     } catch (err) {
       next(err);
@@ -830,20 +833,20 @@ export function createAdminRouter({
   router.put('/reminders', async (req, res, next) => {
     try {
       if (!reminderSettings) return res.status(503).json({ error: 'not_configured' });
-      const { enabled, hours } = req.body ?? {};
-      if ((!enabled || typeof enabled !== 'object') && (!hours || typeof hours !== 'object')) {
-        return res.status(400).json({ error: 'invalid_body' });
-      }
-      // 時刻を先に検証する。時刻が不正なのに ON/OFF だけ保存されると、
+      const { enabled, hours, texts } = req.body ?? {};
+      const given = [enabled, hours, texts].some((v) => v && typeof v === 'object');
+      if (!given) return res.status(400).json({ error: 'invalid_body' });
+      // 時刻・文面を先に検証する。不正なのに ON/OFF だけ保存されると、
       // 画面は「保存できなかった」なのに半分だけ反映された状態になる
       const next2 = {};
       if (hours) next2.hours = await reminderSettings.updateHours(hours);
+      if (texts) next2.texts = await reminderSettings.updateTexts(texts);
       if (enabled) next2.enabled = await reminderSettings.update(enabled);
       // 誤って全部止めたときに後から追えるよう、変更はサーバログにも残す
       console.log(`[reminders] 更新 ${JSON.stringify(next2)}`);
       res.json({ ok: true, ...next2 });
     } catch (err) {
-      if (/未知のリマインド|真偽値|配信時刻/.test(err.message)) {
+      if (/未知のリマインド|真偽値|配信時刻|文面/.test(err.message)) {
         return res.status(400).json({ error: err.message });
       }
       next(err);
@@ -947,9 +950,16 @@ export function createAdminRouter({
           menu: r.menu,
           staffName: r.staff_name,
         };
+        // 文面を書き換えてあれば、テスト送信にもそれを使う（実物で確かめるための機能なので）
+        const t = reminderSettings ? await reminderSettings.getTexts() : {};
         const builders = {
-          preReminder: () => buildPreReminderMessage({ ...base, reservationId: r.id }),
-          afterVisit: () => buildAfterVisitMessage({ customerName: r.customer_name, reservationId: r.id }),
+          preReminder: () => buildPreReminderMessage({
+            ...base, reservationId: r.id, ...(t.preReminder ? { bodyText: t.preReminder } : {}),
+          }),
+          afterVisit: () => buildAfterVisitMessage({
+            customerName: r.customer_name, reservationId: r.id,
+            ...(t.afterVisit ? { bodyText: t.afterVisit } : {}),
+          }),
           requestReceived: () => buildRequestReceivedMessage(base),
           confirmed: () => buildConfirmedMessage(base),
           declined: () => buildDeclinedMessage(base),
@@ -961,10 +971,14 @@ export function createAdminRouter({
         const { rows } = await pool.query(`SELECT id, name FROM customers WHERE id = $1`, [id]);
         const c = rows[0];
         if (!c) return res.status(404).json({ error: 'customer_not_found' });
+        const t = reminderSettings ? await reminderSettings.getTexts() : {};
         message =
           type === 'dormant'
-            ? buildDormantMessage({ customerName: c.name })
-            : buildBirthdayMessage({ customerName: c.name, couponUrl: config.birthdayCouponUrl });
+            ? buildDormantMessage({ customerName: c.name, ...(t.dormant ? { bodyText: t.dormant } : {}) })
+            : buildBirthdayMessage({
+                customerName: c.name, couponUrl: config.birthdayCouponUrl,
+                ...(t.birthday ? { bodyText: t.birthday } : {}),
+              });
       }
 
       const result = await lineClient.pushTest([message]);

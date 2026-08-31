@@ -427,12 +427,19 @@ cron.schedule('45 0 * * *', async () => {
 const runner = createJobRunner({ slack, settings, reminders: reminderSettings });
 runner.scheduleHourly(
   {
-    preReminder: createPreReminderJob({ pool, lineClient, daysBefore: config.preReminderDaysBefore }),
-    afterVisit: createAfterVisitJob({ pool, lineClient, daysAfter: config.afterVisitDaysAfter }),
+    preReminder: createPreReminderJob({
+      pool, lineClient, daysBefore: config.preReminderDaysBefore, texts: reminderSettings,
+    }),
+    afterVisit: createAfterVisitJob({
+      pool, lineClient, daysAfter: config.afterVisitDaysAfter, texts: reminderSettings,
+    }),
     dormant: createDormantJob({
       pool, lineClient, dailyLimit: config.dormantDailyLimit, dormantDays: config.dormantDays,
+      texts: reminderSettings,
     }),
-    birthday: createBirthdayJob({ pool, lineClient, couponUrl: config.birthdayCouponUrl }),
+    birthday: createBirthdayJob({
+      pool, lineClient, couponUrl: config.birthdayCouponUrl, texts: reminderSettings,
+    }),
     custom: createCustomRemindersJob({ pool, lineClient }),
   },
   {

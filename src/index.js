@@ -12,6 +12,8 @@ import { createSlackNotifier } from './notify/slack.js';
 import { createStaffNotifier } from './notify/staffNotifier.js';
 import { createSettings } from './settings.js';
 import { createReminderSettings, createCustomerReminders } from './reminders.js';
+import { createCustomReminders } from './customReminders.js';
+import { createCustomRemindersJob } from './jobs/customReminders.js';
 import { createLinkService } from './customers/linkService.js';
 import { createWebhookHandler } from './webhook/handler.js';
 import { createJobRunner } from './jobs/runner.js';
@@ -49,6 +51,7 @@ const lineClient = createLineClient({ config, pool });
 const settings = createSettings({ pool });
 const reminderSettings = createReminderSettings({ settings });
 const customerReminders = createCustomerReminders({ pool });
+const customReminderRules = createCustomReminders({ pool });
 // スタッフ通知は staffNotifier に集約（Slack / LINE グループ / 両方を設定で切替）
 const slackChannel = config.slackWebhookUrl
   ? createSlackNotifier({ webhookUrl: config.slackWebhookUrl })
@@ -291,6 +294,7 @@ app.use(
     shiftService,
     reminderSettings,
     customerReminders,
+    customReminderRules,
     planService,
     externalBlocks,
   })
@@ -418,9 +422,10 @@ cron.schedule('45 0 * * *', async () => {
   }
 }, { timezone: 'Asia/Tokyo' });
 
-// 毎日 10:00 JST の配信ジョブ（Phase 4・5 のジョブもここに追加していく）
+// 配信ジョブ。毎時 0 分（9〜20時 JST）に起き、その時刻に設定されたリマインドだけを動かす。
+// 既定は全部 10 時＝従来と同じ。追加リマインドは、その時刻のルールがあるときだけ動く
 const runner = createJobRunner({ slack, settings, reminders: reminderSettings });
-runner.scheduleDaily(
+runner.scheduleHourly(
   {
     preReminder: createPreReminderJob({ pool, lineClient, daysBefore: config.preReminderDaysBefore }),
     afterVisit: createAfterVisitJob({ pool, lineClient, daysAfter: config.afterVisitDaysAfter }),
@@ -428,8 +433,10 @@ runner.scheduleDaily(
       pool, lineClient, dailyLimit: config.dormantDailyLimit, dormantDays: config.dormantDays,
     }),
     birthday: createBirthdayJob({ pool, lineClient, couponUrl: config.birthdayCouponUrl }),
+    custom: createCustomRemindersJob({ pool, lineClient }),
   },
   {
+    jobDue: { custom: (hour) => customReminderRules.hasRulesAt(hour) },
     lineClient,
     quotaWarnRatio: config.quotaWarnRatio,
     quotaWarnRemaining: config.quotaWarnRemaining,

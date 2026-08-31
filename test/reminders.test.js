@@ -195,3 +195,43 @@ test('OFF にしたあと ON に戻せる', async () => {
   await cr.update(1, { afterVisit: true });
   assert.equal((await cr.get(1)).afterVisit, true);
 });
+
+// ---- 配信時刻 ----
+
+test('時刻の設定が無ければ4種とも 10 時', async () => {
+  const { settings } = makeSettings();
+  const reminders = createReminderSettings({ settings });
+  assert.deepEqual(await reminders.getHours(), {
+    preReminder: 10, afterVisit: 10, dormant: 10, birthday: 10,
+  });
+});
+
+test('時刻は変えた分だけ更新され、他は 10 時のまま', async () => {
+  const { settings } = makeSettings();
+  const reminders = createReminderSettings({ settings });
+  const after = await reminders.updateHours({ birthday: 9, dormant: 14 });
+  assert.equal(after.birthday, 9);
+  assert.equal(after.dormant, 14);
+  assert.equal(after.preReminder, 10);
+  assert.deepEqual(await reminders.getHours(), after, '保存されている');
+});
+
+test('範囲外の時刻は保存しない（深夜・早朝に送らない守り）', async () => {
+  const { settings } = makeSettings();
+  const reminders = createReminderSettings({ settings });
+  for (const bad of [8, 21, 0, 23, 9.5, '10', null]) {
+    await assert.rejects(() => reminders.updateHours({ birthday: bad }), /配信時刻は 9〜20 時/);
+  }
+  await assert.rejects(() => reminders.updateHours({ mixi: 10 }), /未知のリマインド/);
+  assert.equal((await reminders.getHours()).birthday, 10, '何も変わっていない');
+});
+
+test('保存値が壊れていても止めない（10 時として扱う）', async () => {
+  const { settings } = makeSettings({ reminders_hours: '{{{' });
+  const reminders = createReminderSettings({ settings });
+  assert.equal((await reminders.getHours()).preReminder, 10);
+  // 範囲外の値が紛れ込んでいても 10 時に倒す
+  const { settings: s2 } = makeSettings({ reminders_hours: '{"birthday": 3}' });
+  const r2 = createReminderSettings({ settings: s2 });
+  assert.equal((await r2.getHours()).birthday, 10);
+});

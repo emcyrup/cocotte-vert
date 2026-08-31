@@ -449,10 +449,20 @@ button.trow2:focus-visible{outline:2px solid var(--accent); outline-offset:-2px}
 .pf{border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:10px; background:var(--surface)}
 .pf.off{background:var(--surface2); opacity:.72}
 .pf.na{opacity:.55}
+/* AIへ渡す要約の入力欄。ただのテキスト欄だと気付かれず、どこに書けば
+   「自動で書く」に効くのか伝わらなかったので、囲って手順ごと見せる */
+.aihint{border:1.5px solid var(--accent); border-radius:10px; background:var(--accent-soft); padding:12px; display:grid; gap:8px; margin-bottom:12px}
+.aihint-hd{font-size:13px; font-weight:700; color:var(--accent); display:flex; align-items:center; gap:6px}
+.aihint-steps{margin:0; padding-left:18px; font-size:12px; color:var(--ink); display:grid; gap:2px}
+.aihint textarea{background:var(--surface); border-color:var(--accent)}
+.aihint textarea::placeholder{color:var(--muted)}
+.aihint-note{font-size:11px; color:var(--muted); margin:0}
 .pfhd{display:flex; align-items:center; gap:8px; font-size:13px; font-weight:700}
 .pfhd label{display:flex; align-items:center; gap:7px; cursor:pointer}
 .pf.na .pfhd label{cursor:not-allowed}
 .pfhd .sbtn{margin-left:auto}
+/* 「自動で書く」は上の緑の枠とひと目でつながって見えるよう、同じ色にする */
+.pfhd .sbtn.pf-cap{color:var(--accent); border-color:var(--accent); background:var(--accent-soft)}
 .pfbd{margin-top:9px; display:grid; gap:8px}
 .pf.off .pfbd, .pf.na .pfbd{display:none}
 .pfbd textarea{min-height:70px}
@@ -1196,16 +1206,21 @@ tr.await td{background:var(--warn-soft)}
         <div class="bd">
           <p style="font-size:12px;color:var(--muted);margin:0 0 10px">
             出したい先にチェックを入れてください。<b>本文もタイミングも投稿先ごとに別々</b>に決められます。</p>
-          <div class="frow" style="margin-bottom:10px">
-            <textarea id="cap-hint" rows="2" maxlength="1000"
-              placeholder="補足・記事にしたい内容（任意。例：今日は保育コースの遠足／詳しくは https://example.com/news ）"></textarea>
+          <div class="aihint">
+            <div class="aihint-hd">&#10024; AIに文章を作ってもらうには</div>
+            <ol class="aihint-steps">
+              <li><b>下の欄に要点を書く</b>（今日のできごと・お知らせ・URL など）</li>
+              <li>投稿先の「<b>&#10024; 自動で書く</b>」を押す</li>
+              <li>できた下書きを<b>読んで直してから</b>投稿する</li>
+            </ol>
+            <textarea id="cap-hint" rows="3" maxlength="1000"
+              placeholder="例：今日は保育コースの遠足でした／お盆休みのお知らせ 8/13〜16／詳しくは https://example.com/news"></textarea>
+            <p class="aihint-note">
+              写真があるときは写真を見て書きます（この欄は補足）。WordPress は<b>写真なし・この欄だけ</b>でも書けます。
+              ここに書いていないことは文章に足しません。URL は記事の中でリンクになります。</p>
           </div>
           <div id="pflist"></div>
           <button class="btn block" id="sns-send" type="button" style="margin-top:12px">選択した投稿先へ送る</button>
-          <p style="font-size:12px;color:var(--muted);margin:8px 0 0">
-            「自動で書く」は写真を見て下書きを作ります。<b>必ず読んでから送ってください。</b><br>
-            WordPress は<b>写真なしでも投稿できます</b>。そのときは、この欄に書いた内容だけをもとに書きます
-            （書いていないことは足しません）。URL を書けば記事内でリンクになります。</p>
         </div>
       </div>
       <div class="card">
@@ -3887,9 +3902,9 @@ function clearThreadsPick(){
 const CAPTION_ERRORS = {
   no_api_key: 'キャプションの自動生成が設定されていません（店長に連絡してください）',
   no_photos: '先に写真を追加してください',
-  no_notes: '写真がないときは、下の「補足」に記事にしたい内容を書いてください',
-  no_images: '書く材料がありません。写真を追加するか、「補足」に内容を書いてください',
-  invalid_hint: '「補足」が長すぎます（1000文字まで）',
+  no_notes: '写真がないときは、上の緑色の欄に記事にしたい内容を書いてください',
+  no_images: '書く材料がありません。写真を追加するか、上の緑色の欄に内容を書いてください',
+  invalid_hint: '緑色の欄の文章が長すぎます（1000文字まで）',
   refused: '内容から文章を作れませんでした。書き方を変えてお試しください',
   too_long: '文章が長くなりすぎました。もう一度お試しください',
   api_error: '文章の作成に失敗しました。少し待ってからお試しください',
@@ -3901,7 +3916,7 @@ async function generateCaption({ platform, items, target, btn, photoRequired = t
   if (!items.length) {
     if (photoRequired) { showToast('先に写真を追加してください（「チェックした分」なら写真にチェックを）'); return; }
     // 写真なしで書けるが、そのときは補足が唯一の材料になる
-    if (!notes) { showToast('写真がないときは、下の「補足」に記事にしたい内容を書いてください'); return; }
+    if (!notes) { showToast('写真がないときは、上の緑色の欄に記事にしたい内容を書いてください'); return; }
   }
   if (!snsLive) { showToast('モックのため自動生成はされません'); return; }
   const label = btn.innerHTML;

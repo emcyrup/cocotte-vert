@@ -383,6 +383,10 @@ button.trow2:focus-visible{outline:2px solid var(--accent); outline-offset:-2px}
 
 /* ---------- reminders ---------- */
 .rem{display:grid; grid-template-columns:1fr; gap:0}
+.rem-hour{border:1px solid var(--line); border-radius:8px; background:var(--surface); color:var(--ink); font:inherit; font-size:12px; padding:5px 6px}
+.crform{display:grid; gap:10px; padding:14px 16px; border-top:1px solid var(--line)}
+.crform .frow{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
+.crform label{font-size:12px; color:var(--muted)}
 .rem .row{display:grid; grid-template-columns:44px 1fr auto auto; gap:12px; align-items:center; padding:11px 16px; border-bottom:1px solid var(--line)}
 .rem .row:last-child{border-bottom:0}
 .rid{font-size:11px; font-weight:700; color:var(--accent); background:var(--accent-soft); border-radius:6px; text-align:center; padding:2px 0}
@@ -2711,8 +2715,19 @@ function renderRemindLive(){
     row.querySelector('.nm .pill')?.remove();
   });
   document.querySelector('#s-rem .sub').innerHTML =
-    '実装済みの4種はここで止められます（毎朝10:00に自動送信）。'
+    '実装済みの4種はここで止められます。配信時刻もリマインドごとに選べます（9〜20時）。'
     + 'お客様ごとに止めるときは、カルテの「飼い主様情報を編集」で配信停止にしてください。';
+  // 実装済みの行に配信時刻の選択を差し込む（毎時0分に、選んだ時刻のものだけが動く）
+  document.querySelectorAll('#remrows .row[data-job]').forEach(row => {
+    const sel = document.createElement('select');
+    sel.className = 'rem-hour';
+    sel.dataset.job = row.dataset.job;
+    for (let h = 9; h <= 20; h++) sel.add(new Option(h + ':00', h));
+    sel.value = '10';
+    sel.addEventListener('change', () => saveRemindHours(sel.dataset.job, Number(sel.value)));
+    row.insertBefore(sel, row.querySelector('.src'));
+  });
+  renderCustomRemCard();
 
   // 初回フォローの状況は実データを持っていないため、カードごと出さない
   document.getElementById('follow3')?.remove();
@@ -2728,11 +2743,25 @@ function paintRemindRows(){
 
 async function loadRemindLive(){
   try {
-    const { enabled } = await adminApi('/reminders');
+    const { enabled, hours } = await adminApi('/reminders');
     Object.assign(remindEnabled, enabled);
     paintRemindRows();
+    document.querySelectorAll('#remrows .rem-hour').forEach(sel => {
+      if (hours && hours[sel.dataset.job]) sel.value = String(hours[sel.dataset.job]);
+    });
   } catch (err) {
     showToast('リマインド設定を読み込めませんでした: ' + err.message);
+  }
+  loadCustomRems();
+}
+
+async function saveRemindHours(job, hour){
+  try {
+    await adminApi('/reminders', { method: 'PUT', body: JSON.stringify({ hours: { [job]: hour } }) });
+    showToast('配信時刻を ' + hour + ':00 にしました');
+  } catch (err) {
+    showToast('保存に失敗しました: ' + err.message);
+    loadRemindLive();
   }
 }
 
@@ -2752,6 +2781,132 @@ async function saveRemind(patch, label){
     Object.assign(remindEnabled, before);
     paintRemindRows();
     showToast('保存に失敗しました: ' + err.message);
+  }
+}
+
+// ---- 追加リマインド（スタッフが定義する配信ルール）----
+// R1〜R4と違い、条件・文面・時刻をスタッフが決める。画面は実運用モードでだけ出す
+const CR_TYPES = { after_visit: '来店から◯日後', before_reservation: '予約の◯日前' };
+let crRules = [];
+let crEditing = null;   // 編集中のルールid（null なら新規）
+
+function renderCustomRemCard(){
+  const first = document.querySelector('#s-rem .card');
+  if (!first || document.getElementById('customrem')) return;
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.id = 'customrem';
+  card.innerHTML =
+    '<div class="hd"><h2>追加リマインド</h2>'
+    + '<span style="margin-left:auto"><button class="sbtn" id="cr-new" type="button">＋ 追加</button></span></div>'
+    + '<div class="rem" id="crrows"><div class="row"><div class="cond">まだありません。「＋ 追加」から作れます（例：ご来店の30日後にトリミングのご案内）</div></div></div>'
+    + '<form class="crform" id="crform" hidden>'
+    + '<div class="frow"><label>名前<br><input id="cr-name" maxlength="50" placeholder="例：30日後のご案内"></label>'
+    + '<label>タイミング<br><select id="cr-type"><option value="after_visit">来店から◯日後</option><option value="before_reservation">予約の◯日前</option></select></label>'
+    + '<label>日数<br><input id="cr-days" type="number" min="1" max="365" value="30" style="width:80px"></label>'
+    + '<label>配信時刻<br><select id="cr-hour"></select></label></div>'
+    + '<label>文面（{お名前} と書くと飼い主様のお名前に置き換わります）<br>'
+    + '<textarea id="cr-msg" rows="4" maxlength="1000" placeholder="{お名前}\nこんにちは、ここっとベールです🐾\n前回のご来店から1ヶ月がたちました。..."></textarea></label>'
+    + '<div class="frow"><button class="sbtn" id="cr-save" type="button">保存</button>'
+    + '<button class="sbtn mut" id="cr-cancel" type="button">取消</button></div>'
+    + '</form>';
+  first.after(card);
+  const hourSel = card.querySelector('#cr-hour');
+  for (let h = 9; h <= 20; h++) hourSel.add(new Option(h + ':00', h));
+  hourSel.value = '10';
+  card.querySelector('#cr-new').addEventListener('click', () => crOpenForm(null));
+  card.querySelector('#cr-cancel').addEventListener('click', () => crCloseForm());
+  card.querySelector('#cr-save').addEventListener('click', crSave);
+}
+
+function crOpenForm(rule){
+  crEditing = rule ? rule.id : null;
+  document.getElementById('cr-name').value = rule ? rule.name : '';
+  document.getElementById('cr-type').value = rule ? rule.triggerType : 'after_visit';
+  document.getElementById('cr-days').value = rule ? rule.days : 30;
+  document.getElementById('cr-hour').value = String(rule ? rule.sendHour : 10);
+  document.getElementById('cr-msg').value = rule ? rule.message : '';
+  document.getElementById('crform').hidden = false;
+  document.getElementById('cr-name').focus();
+}
+function crCloseForm(){
+  crEditing = null;
+  document.getElementById('crform').hidden = true;
+}
+
+function crCondText(r){
+  const base = r.triggerType === 'after_visit' ? 'ご来店の' + r.days + '日後' : 'ご予約の' + r.days + '日前';
+  return base + '｜' + r.sendHour + ':00 配信';
+}
+
+function renderCustomRems(){
+  const box = document.getElementById('crrows');
+  if (!box) return;
+  if (crRules.length === 0) {
+    box.innerHTML = '<div class="row"><div class="cond">まだありません。「＋ 追加」から作れます（例：ご来店の30日後にトリミングのご案内）</div></div>';
+    return;
+  }
+  box.innerHTML = '';
+  crRules.forEach(r => {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML =
+      '<span class="rid">C' + r.id + '</span>'
+      + '<div><div class="nm"></div><div class="cond"></div></div>'
+      + '<span style="display:flex;gap:6px;align-items:center">'
+      + '<button class="sbtn cr-edit" type="button">編集</button>'
+      + '<button class="sbtn mut cr-del" type="button">削除</button></span>'
+      + '<button class="sw" role="switch" aria-checked="' + r.enabled + '" aria-label="有効"><i></i></button>';
+    // 名前と条件は textContent で入れる（スタッフの入力を HTML として解釈させない）
+    row.querySelector('.nm').textContent = r.name;
+    row.querySelector('.cond').textContent = crCondText(r);
+    row.querySelector('.cr-edit').addEventListener('click', () => crOpenForm(r));
+    row.querySelector('.cr-del').addEventListener('click', async () => {
+      if (!confirm('「' + r.name + '」を削除します。よろしいですか？')) return;
+      try {
+        await adminApi('/custom-reminders/' + r.id, { method: 'DELETE' });
+        showToast('削除しました');
+        loadCustomRems();
+      } catch (err) { showToast('削除に失敗しました: ' + err.message); }
+    });
+    row.querySelector('.sw').addEventListener('click', async (e) => {
+      const on = e.currentTarget.getAttribute('aria-checked') !== 'true';
+      try {
+        await adminApi('/custom-reminders/' + r.id, { method: 'PUT', body: JSON.stringify({ enabled: on }) });
+        e.currentTarget.setAttribute('aria-checked', String(on));
+        showToast('「' + r.name + '」を' + (on ? 'ON' : 'OFF') + 'にしました');
+      } catch (err) { showToast('保存に失敗しました: ' + err.message); }
+    });
+    box.appendChild(row);
+  });
+}
+
+async function loadCustomRems(){
+  if (!document.getElementById('customrem')) return;
+  try {
+    ({ rules: crRules } = await adminApi('/custom-reminders'));
+    renderCustomRems();
+  } catch (err) {
+    showToast('追加リマインドを読み込めませんでした: ' + err.message);
+  }
+}
+
+async function crSave(){
+  const body = {
+    name: document.getElementById('cr-name').value,
+    triggerType: document.getElementById('cr-type').value,
+    days: Number(document.getElementById('cr-days').value),
+    sendHour: Number(document.getElementById('cr-hour').value),
+    message: document.getElementById('cr-msg').value,
+  };
+  try {
+    if (crEditing) await adminApi('/custom-reminders/' + crEditing, { method: 'PUT', body: JSON.stringify(body) });
+    else await adminApi('/custom-reminders', { method: 'POST', body: JSON.stringify(body) });
+    crCloseForm();
+    showToast('保存しました。設定した条件に合う方へ、翌日以降の該当日に自動で送られます');
+    loadCustomRems();
+  } catch (err) {
+    showToast(err.message);   // 検証エラーは日本語の理由がそのまま返る
   }
 }
 

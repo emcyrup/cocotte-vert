@@ -3,14 +3,41 @@
 // ここで捕捉するのはジョブ全体の異常（DB 接続断など）。
 import cron from 'node-cron';
 import { SETTING_KEYS } from '../settings.js';
-import { formatJstDateTime } from '../util/jst.js';
+import { DEFAULT_SEND_HOUR, SEND_HOUR_MIN, SEND_HOUR_MAX } from '../reminders.js';
+import { formatJstDateTime, jstToday } from '../util/jst.js';
 
 const JOB_LABELS = {
   preReminder: '前々日確認',
   afterVisit: '来店フォロー',
   dormant: '休眠フォロー',
   birthday: '誕生日',
+  custom: '追加リマインド',
 };
+
+/** いまの JST の時（0〜23）。サーバーの TZ に依存させない */
+export function jstHour(now = new Date()) {
+  return Number(
+    new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Tokyo', hour: '2-digit', hour12: false })
+      .format(now)
+  );
+}
+
+/**
+ * この時刻に動かすジョブを選ぶ（scheduleHourly の判定部。試験しやすいよう関数に切り出す）。
+ * hours に載っているジョブはその時刻に、載っていないジョブは既定の 10 時に動く。
+ * jobDue に判定関数があるジョブ（追加リマインド）はそちらに聞く。
+ */
+export async function dueJobs(jobs, hour, { hours = {}, jobDue = {} } = {}) {
+  const due = {};
+  for (const [name, jobFn] of Object.entries(jobs)) {
+    if (typeof jobDue[name] === 'function') {
+      if (await jobDue[name](hour)) due[name] = jobFn;
+    } else if ((hours[name] ?? DEFAULT_SEND_HOUR) === hour) {
+      due[name] = jobFn;
+    }
+  }
+  return due;
+}
 
 // まとめ通知の1行。0 の項目は省いて読みやすくする
 export function summaryLine(name, summary) {
@@ -105,7 +132,7 @@ export function createJobRunner({ slack, settings = null, reminders = null }) {
    * スタッフが「配信結果」と聞いたときに応答メッセージ（無料）で返す運用にしている。
    * 保存できなかった場合のみ、結果が消えないよう従来どおり Push する。
    */
-  async function runAll(jobs, { lineClient, quotaWarnRatio, quotaWarnRemaining } = {}) {
+  async function runAll(jobs, { lineClient, quotaWarnRatio, quotaWarnRemaining, append = false } = {}) {
     const lines = [];
     const failures = [];
     for (const [name, jobFn] of Object.entries(jobs)) {
@@ -136,6 +163,14 @@ export function createJobRunner({ slack, settings = null, reminders = null }) {
       return text;
     }
     try {
+      // 時刻を分けて1日に何回か動くようになったので、同じ日の結果は上書きせず後ろへ足す。
+      // 「配信結果」で聞かれたとき、朝の分だけ・昼の分だけにならないようにするため
+      if (append) {
+        const prev = await settings.get(SETTING_KEYS.lastJobSummary).catch(() => null);
+        const today = jstToday();
+        if (prev && prev.startsWith(`[${today}]`)) text = `${prev}\n\n${text}`;
+        text = text.startsWith(`[${today}]`) ? text : `[${today}]\n${text}`;
+      }
       await settings.set(SETTING_KEYS.lastJobSummary, text);
     } catch (err) {
       // 保存に失敗したら結果が確認できなくなるため、このときだけ Push する
@@ -146,12 +181,31 @@ export function createJobRunner({ slack, settings = null, reminders = null }) {
   }
 
   /**
-   * 毎日 10:00 JST に全ジョブを実行する。
-   * 配信時刻は 10:00 JST 固定（深夜・早朝の送信は絶対に行わない）。
+   * 毎時 0 分（9〜20時 JST）に起き、その時刻に設定されたリマインドだけを実行する。
+   * 既定は全ジョブ 10 時＝これまでと同じ動き。cron の範囲がそのまま
+   * 「深夜・早朝の送信は絶対に行わない」の守りになる（設定がどうであれ範囲外では起きない）。
    */
-  function scheduleDaily(jobs, options = {}) {
-    return cron.schedule('0 10 * * *', () => runAll(jobs, options), { timezone: 'Asia/Tokyo' });
+  function scheduleHourly(jobs, { jobDue = {}, ...options } = {}) {
+    const tick = async (now = new Date()) => {
+      const hour = jstHour(now);
+      let hours = {};
+      try {
+        hours = (await reminders?.getHours?.()) ?? {};
+      } catch (err) {
+        // 時刻設定を読めなくても配信は止めない。既定の10時として扱う
+        console.error(`[job] 配信時刻の取得に失敗したため既定で判定します: ${err.message}`);
+      }
+      const due = await dueJobs(jobs, hour, { hours, jobDue });
+      if (Object.keys(due).length === 0) return;
+      await runAll(due, { ...options, append: true });
+    };
+    const task = cron.schedule(
+      `0 ${SEND_HOUR_MIN}-${SEND_HOUR_MAX} * * *`,
+      () => tick(),
+      { timezone: 'Asia/Tokyo' }
+    );
+    return Object.assign(task, { tick });
   }
 
-  return { runJob, runAll, scheduleDaily, checkQuota, quotaWarning };
+  return { runJob, runAll, scheduleHourly, checkQuota, quotaWarning };
 }

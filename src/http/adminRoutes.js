@@ -33,6 +33,7 @@ export function createAdminRouter({
   shiftService = null,
   reminderSettings = null,
   customerReminders = null,
+  customReminderRules = null,
   planService = null,
 }) {
   const router = express.Router();
@@ -816,7 +817,11 @@ export function createAdminRouter({
   router.get('/reminders', async (_req, res, next) => {
     try {
       if (!reminderSettings) return res.status(503).json({ error: 'not_configured' });
-      res.json({ jobs: REMINDER_JOBS, enabled: await reminderSettings.getAll() });
+      res.json({
+        jobs: REMINDER_JOBS,
+        enabled: await reminderSettings.getAll(),
+        hours: await reminderSettings.getHours(),
+      });
     } catch (err) {
       next(err);
     }
@@ -825,18 +830,75 @@ export function createAdminRouter({
   router.put('/reminders', async (req, res, next) => {
     try {
       if (!reminderSettings) return res.status(503).json({ error: 'not_configured' });
-      const { enabled } = req.body ?? {};
-      if (!enabled || typeof enabled !== 'object') {
+      const { enabled, hours } = req.body ?? {};
+      if ((!enabled || typeof enabled !== 'object') && (!hours || typeof hours !== 'object')) {
         return res.status(400).json({ error: 'invalid_body' });
       }
-      const next2 = await reminderSettings.update(enabled);
+      // 時刻を先に検証する。時刻が不正なのに ON/OFF だけ保存されると、
+      // 画面は「保存できなかった」なのに半分だけ反映された状態になる
+      const next2 = {};
+      if (hours) next2.hours = await reminderSettings.updateHours(hours);
+      if (enabled) next2.enabled = await reminderSettings.update(enabled);
       // 誤って全部止めたときに後から追えるよう、変更はサーバログにも残す
       console.log(`[reminders] 更新 ${JSON.stringify(next2)}`);
-      res.json({ ok: true, enabled: next2 });
+      res.json({ ok: true, ...next2 });
     } catch (err) {
-      if (/未知のリマインド|真偽値/.test(err.message)) {
+      if (/未知のリマインド|真偽値|配信時刻/.test(err.message)) {
         return res.status(400).json({ error: err.message });
       }
+      next(err);
+    }
+  });
+
+  // ---- 追加リマインド（スタッフが定義する配信ルール）----
+  router.get('/custom-reminders', async (_req, res, next) => {
+    try {
+      if (!customReminderRules) return res.status(503).json({ error: 'not_configured' });
+      res.json({ rules: await customReminderRules.list() });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.post('/custom-reminders', async (req, res, next) => {
+    try {
+      if (!customReminderRules) return res.status(503).json({ error: 'not_configured' });
+      const rule = await customReminderRules.create(req.body ?? {});
+      // 文面は氏名などを含みうるためログに出さない。何が作られたかは id と条件で追う
+      console.log(`[custom-reminders] 追加 id=${rule.id} ${rule.triggerType}+${rule.days}日 ${rule.sendHour}時`);
+      res.json({ ok: true, rule });
+    } catch (err) {
+      if (err.message === 'not_found') return res.status(404).json({ error: 'not_found' });
+      if (/ください|までです/.test(err.message)) {
+        return res.status(400).json({ error: err.message });
+      }
+      next(err);
+    }
+  });
+
+  router.put('/custom-reminders/:id', async (req, res, next) => {
+    try {
+      if (!customReminderRules) return res.status(503).json({ error: 'not_configured' });
+      const rule = await customReminderRules.update(Number(req.params.id), req.body ?? {});
+      console.log(`[custom-reminders] 更新 id=${rule.id} enabled=${rule.enabled}`);
+      res.json({ ok: true, rule });
+    } catch (err) {
+      if (err.message === 'not_found') return res.status(404).json({ error: 'not_found' });
+      if (/ください|までです/.test(err.message)) {
+        return res.status(400).json({ error: err.message });
+      }
+      next(err);
+    }
+  });
+
+  router.delete('/custom-reminders/:id', async (req, res, next) => {
+    try {
+      if (!customReminderRules) return res.status(503).json({ error: 'not_configured' });
+      await customReminderRules.remove(Number(req.params.id));
+      console.log(`[custom-reminders] 削除 id=${req.params.id}`);
+      res.json({ ok: true });
+    } catch (err) {
+      if (err.message === 'not_found') return res.status(404).json({ error: 'not_found' });
       next(err);
     }
   });

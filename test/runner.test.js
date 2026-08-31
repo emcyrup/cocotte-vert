@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createJobRunner } from '../src/jobs/runner.js';
+import { createJobRunner, dueJobs, jstHour } from '../src/jobs/runner.js';
 
 // 実行結果は Push せず app_settings に保存する運用のため、保存先も差し替えられるようにする
 function makeSettings() {
@@ -203,4 +203,46 @@ test('ジョブ全体の異常終了は notifyError され null が返る', asyn
 
   assert.equal(result, null);
   assert.match(notifications[0], /ERROR:ジョブ異常終了: preReminder:db down/);
+});
+
+// ---- 時刻ごとの実行判定 ----
+
+test('dueJobs: 設定した時刻のジョブだけを選ぶ（未設定は10時）', async () => {
+  const jobs = { preReminder: () => {}, birthday: () => {}, dormant: () => {} };
+  const hours = { birthday: 9 };
+
+  assert.deepEqual(Object.keys(await dueJobs(jobs, 9, { hours })), ['birthday']);
+  assert.deepEqual(Object.keys(await dueJobs(jobs, 10, { hours })), ['preReminder', 'dormant']);
+  assert.deepEqual(Object.keys(await dueJobs(jobs, 12, { hours })), []);
+});
+
+test('dueJobs: 判定関数を持つジョブ（追加リマインド）はそちらに聞く', async () => {
+  const asked = [];
+  const jobs = { custom: () => {}, birthday: () => {} };
+  const jobDue = { custom: async (h) => { asked.push(h); return h === 14; } };
+
+  assert.deepEqual(Object.keys(await dueJobs(jobs, 14, { hours: {}, jobDue })), ['custom']);
+  assert.deepEqual(Object.keys(await dueJobs(jobs, 10, { hours: {}, jobDue })), ['birthday']);
+  assert.deepEqual(asked, [14, 10]);
+});
+
+test('jstHour: サーバーの TZ に依存せず JST の時を返す', () => {
+  // UTC 01:00 = JST 10:00
+  assert.equal(jstHour(new Date('2026-08-30T01:00:00Z')), 10);
+  // UTC 15:00 = JST 翌0:00
+  assert.equal(jstHour(new Date('2026-08-30T15:00:00Z')), 0);
+});
+
+test('runAll(append): 同じ日の結果は上書きせず後ろへ足す', async () => {
+  const { settings, store } = makeSettings();
+  const { slack } = makeSlack();
+  const runner = createJobRunner({ slack, settings });
+  const ok = async () => ({ total: 1, sent: 1, dryRun: 0, skipped: 0, failed: 0, errors: [] });
+
+  await runner.runAll({ birthday: ok }, { append: true });
+  await runner.runAll({ dormant: ok }, { append: true });
+
+  const saved = store.get('last_job_summary');
+  assert.match(saved, /誕生日/);
+  assert.match(saved, /休眠フォロー/, '2回目で1回目が消えていない');
 });

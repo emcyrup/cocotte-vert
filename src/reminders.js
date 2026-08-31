@@ -14,6 +14,17 @@ export const REMINDER_JOBS = [
 
 const KEYS = REMINDER_JOBS.map((j) => j.key);
 
+// 配信時刻に選べる範囲（JST の時）。深夜・早朝に送らない守りはここで効かせる。
+// 既定はこれまでどおり 10 時
+export const SEND_HOUR_MIN = 9;
+export const SEND_HOUR_MAX = 20;
+export const DEFAULT_SEND_HOUR = 10;
+
+/** 9〜20 の整数だけを通す。それ以外は理由付きで弾く */
+export function validSendHour(v) {
+  return Number.isInteger(v) && v >= SEND_HOUR_MIN && v <= SEND_HOUR_MAX;
+}
+
 export function createReminderSettings({ settings }) {
   /** 4種すべての ON/OFF を返す（未設定は ON） */
   async function getAll() {
@@ -57,7 +68,42 @@ export function createReminderSettings({ settings }) {
     return next;
   }
 
-  return { getAll, isEnabled, update };
+  /** 4種すべての配信時刻（JST の時）を返す。未設定・読めないときは従来どおり 10 時 */
+  async function getHours() {
+    let stored = {};
+    if (settings) {
+      const raw = await settings.get(SETTING_KEYS.remindersHours).catch(() => null);
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === 'object') stored = parsed;
+        } catch {
+          // 壊れた値で配信が止まるより、従来の時刻で送るほうが害が小さい
+          console.error('[reminders] 配信時刻を読めませんでした。10時として扱います');
+        }
+      }
+    }
+    return Object.fromEntries(
+      KEYS.map((k) => [k, validSendHour(stored[k]) ? stored[k] : DEFAULT_SEND_HOUR])
+    );
+  }
+
+  /** 変えるぶんだけ受け取り、更新後の全体を返す。範囲外の時刻は保存前に弾く */
+  async function updateHours(patch) {
+    if (!settings) throw new Error('設定を保存できません');
+    const next = { ...(await getHours()) };
+    for (const [k, v] of Object.entries(patch ?? {})) {
+      if (!KEYS.includes(k)) throw new Error(`未知のリマインドです: ${k}`);
+      if (!validSendHour(v)) {
+        throw new Error(`配信時刻は ${SEND_HOUR_MIN}〜${SEND_HOUR_MAX} 時で指定してください: ${k}`);
+      }
+      next[k] = v;
+    }
+    await settings.set(SETTING_KEYS.remindersHours, JSON.stringify(next));
+    return next;
+  }
+
+  return { getAll, isEnabled, update, getHours, updateHours };
 }
 
 /**

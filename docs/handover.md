@@ -27,6 +27,32 @@
 | `SEND_MODE` を live へ | 未。当面 `dry_run` のまま |
 | GCP の停止 | 未。上が全部済んでから |
 
+### GCP との接続を切った（2026-09）
+
+**検証環境の VM を停止した**（課金を止めるため）。止めたまま放置すると、リポジトリ側から
+届かない相手を叩き続けて失敗が溜まるので、**GitHub 側の接続も外してある**。
+
+| 外したもの | 場所 | 何が起きていたか |
+|---|---|---|
+| GCP への自動デプロイ（`deploy` ジョブ） | `.github/workflows/ci.yml` | main へ push するたびに停止中の VM へ SSH して失敗 |
+| EPARK 反映の定期実行（30分ごと） | `.github/workflows/epark-sync.yml` | `ADMIN_BASE_URL` が GCP を指しているため、30分ごとに失敗（2026-09-07 05:51Z の成功を最後に連続失敗） |
+
+**Secrets（`VM_*`）と Variables（`DEPLOY_ENABLED` / `EPARK_SYNC_ENABLED`）は消していない。**
+戻すときは、この2つを git 履歴から復元するだけでよい。
+
+**AWS 移行のときに必ず戻すこと。**
+
+1. Secret **`ADMIN_BASE_URL` を AWS へ向ける**（上の表の未完了項目）
+2. `epark-sync.yml` の `schedule:` のコメントを外す
+   ── **即時起動は取りこぼしうるので、定期実行が無いと反映漏れに気付けない**
+3. GCP へ戻す必要が出たときだけ、`ci.yml` の `deploy` ジョブを git 履歴から復元する
+
+> **EPARK 側の枠に注意。** 自動化が閉じた枠は `external_blocked_cells` に記録され、
+> 予約を取り消したときに開け直す仕組み。**反映を止めている間に取り消された予約があると、
+> その枠は EPARK で閉じたまま残る**（＝その時間のご予約を取り逃がす）。
+> 止めている期間が長くなるなら、EPARK の受付表を一度目で見て、
+> 身に覚えのない仮受付が残っていないか確認するのが安全。
+
 インフラ会社へ依頼すること。
 
 - Nginx の `client_max_body_size` を **8m 以上**に（既定 1MB だと予約CSVの取り込みと写真投稿が 413 で落ちる）
@@ -89,8 +115,8 @@ docker compose exec app node scripts/seed-plans.js   # 保育コース 月4回 /
 
 | ジョブ | 宛先 | Secret |
 |---|---|---|
-| `deploy` | 1店舗目の検証環境（GCP・Docker Compose） | `VM_HOST` / `VM_USER` / `VM_SSH_KEY` |
 | `deploy-prod` | 1店舗目の本番（AWS・Docker なし） | `PROD_VM_HOST` / `PROD_VM_USER` / `PROD_VM_SSH_KEY` |
+| ~~`deploy`~~ | ~~1店舗目の検証環境（GCP）~~ | **外した**（下の「GCP との接続を切った」参照） |
 
 2店舗目を足すときは、**Secret を1組増やしてジョブを1つ足す**だけでよい。
 動かし方（docker / plain）を共通の変数で切り替えないこと。片方に合わせた設定が

@@ -59,7 +59,10 @@ npm test
 ```
 
 `main` への push と全ブランチの push で GitHub Actions がテストを実行し、
-`main` は成功後に SSH で VM へ自動デプロイされる（`.github/workflows/`）。
+`main` は成功後に SSH で本番サーバーへ自動デプロイされる（`.github/workflows/`）。
+
+検証環境（GCP）へのデプロイと EPARK の定期実行は、**VM を停止したため外してある**（2026-09）。
+戻す手順は [docs/handover.md](docs/handover.md) を参照。
 
 ## 予約データの取り込み・管理画面
 

@@ -1,20 +1,21 @@
 # CI/CD: 全ブランチでテスト実行、main へのプッシュでサーバーへ自動デプロイ。
 #
-# 宛先は2つ。**別々の Secret を使う**ので、片方を足すときにもう片方を壊さない。
-# 手順は .github/actions/deploy に1つだけ置き、両方から呼んでいる。
-#
-#   deploy       … 検証環境（GCP・Docker Compose）
-#     Secrets:   VM_HOST（IP またはドメイン） / VM_USER / VM_SSH_KEY（秘密鍵の全文）
-#     Variables: DEPLOY_ENABLED = true
+# 宛先は現在1つ。手順は .github/actions/deploy に置いてあり、宛先を増やすときは
+# **別々の Secret を使う**ジョブを足す（片方を足すときにもう片方を壊さないため）。
 #
 #   deploy-prod  … 本番環境（管理会社の共用サーバー。Docker も sudo も無いので plain 固定）
 #     Secrets:   PROD_VM_HOST / PROD_VM_USER / PROD_VM_SSH_KEY（配布された .pem の全文）
 #     Variables: PROD_DEPLOY_ENABLED = true
 #
+# **検証環境（GCP）へのデプロイは外してある**（2026-09）。VM を停止して課金を止めたため、
+# 残しておくと main へ push するたびに届かない相手へ SSH して失敗し続ける。
+# 戻すときは git 履歴からこのジョブを復元する（Secrets の VM_* は消していない）。
+# 手順は docs/handover.md の「GCP との接続を切った」を参照。
+#
 # 動かし方（docker / plain）は宛先ごとにワークフローへ書いてある。変数では切り替えない。
 # 共通の変数にすると、片方に合わせた設定がもう片方へも効いてしまうため。
 #
-# それぞれ *_DEPLOY_ENABLED を設定するまでスキップされる（テストだけ動く）。
+# *_DEPLOY_ENABLED を設定するまでスキップされる（テストだけ動く）。
 #
 # 任意の Secret:
 #   ANTHROPIC_API_KEY … 登録するとデプロイのたびに両サーバーの .env へ反映する。
@@ -46,28 +47,8 @@ jobs:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
       - run: npm test
 
-  # 検証環境（GCP・Docker Compose）。既存の Secret をそのまま使う
-  deploy:
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.DEPLOY_ENABLED == 'true'
-    needs: test
-    runs-on: ubuntu-latest
-    concurrency: deploy-vm   # 同時デプロイを防ぐ
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/deploy
-        with:
-          host: ${{ secrets.VM_HOST }}
-          user: ${{ secrets.VM_USER }}
-          ssh-key: ${{ secrets.VM_SSH_KEY }}
-          repo-url: ${{ github.server_url }}/${{ github.repository }}.git
-          # 宛先ごとに固定する。共通の変数で切り替えると、片方に合わせた設定が
-          # もう片方へも効いてしまう（検証環境には npm が無く、plain では動かない）
-          style: docker
-          port: '3000'
-          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
-
-  # 本番環境（管理会社の共用サーバー）。検証環境とは別の Secret を使うので、
-  # 既存の VM_* を書き換えずに増やせる
+  # 本番環境（管理会社の共用サーバー）。宛先ごとに別の Secret を使うので、
+  # 宛先を増やしても既存のものを書き換えずに済む
   deploy-prod:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.PROD_DEPLOY_ENABLED == 'true'
     needs: test

@@ -61,6 +61,9 @@ npm test
 `main` への push と全ブランチの push で GitHub Actions がテストを実行し、
 `main` は成功後に SSH で本番サーバーへ自動デプロイされる（`.github/workflows/`）。
 
+> **いまは全環境を停止している**（2026-10）。自動デプロイも外してあり、テストだけが動く。
+> 再開の手順は [docs/handover.md](docs/handover.md) の「全環境を停止した」。
+
 検証環境（GCP）へのデプロイと EPARK の定期実行は、**VM を停止したため外してある**（2026-09）。
 戻す手順は [docs/handover.md](docs/handover.md) を参照。
 

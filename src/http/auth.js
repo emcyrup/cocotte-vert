@@ -1,17 +1,12 @@
 // 管理画面（Basic 認証）と取り込み API（Bearer トークン）の認証ミドルウェア。
 // 資格情報が未設定の環境では該当機能ごと無効化する（誤って無認証公開しない）。
-import { timingSafeEqual } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
 
-// 長さの違いでタイミング差が出ないよう、固定長ハッシュ比較にはしない簡易パディング比較
+// 両方を固定長のハッシュにしてから比べる。そのまま比べると長さが違う時点で
+// 返ってしまい、応答時間の差からパスワードの長さが分かる
 function safeEqual(a, b) {
-  const bufA = Buffer.from(String(a));
-  const bufB = Buffer.from(String(b));
-  if (bufA.length !== bufB.length) {
-    // 長さが違っても必ず比較を1回行い、早期 return の時間差を減らす
-    timingSafeEqual(bufA, bufA);
-    return false;
-  }
-  return timingSafeEqual(bufA, bufB);
+  const digest = (v) => createHash('sha256').update(String(v)).digest();
+  return timingSafeEqual(digest(a), digest(b));
 }
 
 export function basicAuth({ user, password, realm = 'admin' }) {

@@ -74,3 +74,15 @@ test('bearerAuth: 誤ったトークンは 401、未設定は 503', () => {
   const disabled = bearerAuth({ token: null });
   assert.equal(run(disabled, { authorization: 'Bearer tok123' }).res.statusCode, 503);
 });
+
+test('basicAuth: 長さの違うパスワードも、同じ長さの誤りも 401（長さで早く返さない）', () => {
+  const mw = basicAuth({ user: 'admin', password: 'correct-horse' });
+  for (const wrong of ['x', 'correct-hors', 'correct-horsee', 'correct-horse-battery-staple', '']) {
+    const { res, nextCalled } = run(mw, { authorization: creds('admin', wrong) });
+    assert.equal(nextCalled, false, wrong);
+    assert.equal(res.statusCode, 401, wrong);
+  }
+  // パスワードに「:」を含んでも通る（最初の「:」だけで区切る）
+  const colon = basicAuth({ user: 'admin', password: 'a:b:c' });
+  assert.equal(run(colon, { authorization: creds('admin', 'a:b:c') }).nextCalled, true);
+});

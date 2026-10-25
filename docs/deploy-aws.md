@@ -65,6 +65,8 @@ nano .env
 ```
 # 割り当てられたポートを厳守する。0.0.0.0 で待ち受ける（Node の既定）
 PORT=8017
+# 管理会社の Nginx が同じサーバーにあると確認できたら 127.0.0.1 にする（下の注意）
+# HOST=127.0.0.1
 
 # 共通 PostgreSQL。DB 名は発行されたもの
 DATABASE_URL=postgres://<ユーザー>:<パスワード>@127.0.0.1:5432/<DB名>
@@ -226,7 +228,20 @@ GitHub の Settings → Secrets and variables → Actions で:
 | Secret | `PROD_VM_HOST` | 本番サーバーの IP |
 | Secret | `PROD_VM_USER` | 配布された SSH ユーザー名 |
 | Secret | `PROD_VM_SSH_KEY` | 配布された `.pem` の中身（`-----BEGIN`〜`-----END` を含む全文） |
+| Secret | `PROD_VM_KNOWN_HOSTS` | 任意・推奨。本番サーバーのホスト鍵（下記） |
 | Variable | `PROD_DEPLOY_ENABLED` | `true` |
+
+**`PROD_VM_KNOWN_HOSTS`（ホスト鍵の固定）。** 未設定だと、デプロイのたびにその場で見えた鍵を
+そのまま信用する。経路の途中で偽のサーバーにすり替えられても気付けず、デプロイ時に
+標準入力で送る `ANTHROPIC_API_KEY` が相手に渡ってしまう。登録すると、その鍵の相手にしか繋がない。
+
+```bash
+# 信頼できる回線（いつもの PC）から取る。値は伏せ字ではなく出力をそのまま Secret に貼る
+ssh-keyscan -H <本番サーバーの IP>
+```
+
+鍵が変わった（サーバーの作り直しなど）ときはデプロイが止まるので、取り直して登録し直す。
+未設定のうちは Actions のログに警告が出る（デプロイ自体は従来どおり通る）。
 
 待ち受けポートは `.env` の `PORT` を見るので、変数では渡さない。
 

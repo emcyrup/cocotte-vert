@@ -31,6 +31,7 @@ import { createPlanService } from './plans/service.js';
 import { createReservationService } from './reservations/service.js';
 import { createExternalBlocks } from './reservations/externalBlock.js';
 import { basicAuth, bearerAuth } from './http/auth.js';
+import { securityHeaders, rejectCrossSite } from './http/security.js';
 import { createAdminRouter } from './http/adminRoutes.js';
 import { createImportRouter } from './http/importRoutes.js';
 import { createAdminImportRouter, MAX_CSV_BYTES } from './http/adminImportRoutes.js';
@@ -78,6 +79,11 @@ const externalBlocks = createExternalBlocks({ pool });
 const planService = createPlanService({ pool });
 
 const app = express();
+// 使っているフレームワークと版を名乗らない（既知の脆弱性を狙い撃ちされる手がかりになる）
+app.disable('x-powered-by');
+app.use(securityHeaders());
+// 管理 API への書き込みは、管理画面（同じオリジン）か、ブラウザ以外からだけ受け付ける
+app.use('/api/admin', rejectCrossSite());
 
 // デプロイ確認用にバージョンも返す
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
@@ -450,8 +456,8 @@ runner.scheduleHourly(
   }
 );
 
-app.listen(config.port, () => {
-  console.log(`[boot] port=${config.port} SEND_MODE=${config.sendMode}`);
+app.listen(config.port, config.host, () => {
+  console.log(`[boot] port=${config.port}${config.host ? ` host=${config.host}` : ''} SEND_MODE=${config.sendMode}`);
   if (config.sendMode === 'live') {
     console.log('[boot] ⚠️  本番送信モードで起動しています');
   }

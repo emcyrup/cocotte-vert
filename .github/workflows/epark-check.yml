@@ -30,6 +30,12 @@ on:
         required: false
         default: '21:00'
 
+# GITHUB_TOKEN は読み取りだけにする。どのジョブもリポジトリへ書き込まない
+# （デプロイは SSH、EPARK は管理 API で行う）。既定のままだと、依存や Action が
+# 乗っ取られたときに、このトークンでリポジトリを書き換えられてしまう
+permissions:
+  contents: read
+
 jobs:
   check:
     runs-on: ubuntu-latest

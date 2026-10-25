@@ -26,6 +26,11 @@ inputs:
   anthropic-api-key:
     description: 設定されていればサーバーの .env を書き換える。空なら既存の値を残す
     default: ''
+  known-hosts:
+    description: >-
+      サーバーのホスト鍵（ssh-keyscan -H <host> の出力）。設定すると、その鍵の相手にしか
+      接続しない。空ならその場で取得して信用する（従来どおり。経路途中のすり替えに弱い）
+    default: ''
 
 runs:
   using: composite
@@ -39,6 +44,7 @@ runs:
         DEPLOY_STYLE: ${{ inputs.style }}
         DEPLOY_PORT: ${{ inputs.port }}
         ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+        KNOWN_HOSTS: ${{ inputs.known-hosts }}
       run: |
         mkdir -p ~/.ssh
         # CR（Windows 改行）を除去し、末尾に改行を保証する
@@ -49,10 +55,20 @@ runs:
           echo "::error::SSH 鍵が秘密鍵として読めません。秘密鍵の全文を -----BEGIN/END----- 行込みで Secret に登録してください（.pub は公開鍵なので不可）"
           exit 1
         fi
-        ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+        # ホスト鍵を固定しているときは、それ以外の相手には繋がない。
+        # その場で取った鍵をそのまま信用すると、経路の途中で偽のサーバーにすり替えられた
+        # ときに気付けず、下で標準入力に流す ANTHROPIC_API_KEY が相手に渡ってしまう
+        if [ -n "$KNOWN_HOSTS" ]; then
+          printf '%s\n' "$KNOWN_HOSTS" | tr -d '\r' > ~/.ssh/known_hosts
+          SSH_OPTS="-o StrictHostKeyChecking=yes"
+        else
+          echo "::warning::ホスト鍵が固定されていません（*_KNOWN_HOSTS 未設定）。docs/deploy-aws.md の手順で登録してください"
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          SSH_OPTS=""
+        fi
         # 鍵は標準入力で渡す。コマンド引数に入れるとサーバーの ps に見えてしまうため
         printf '%s' "$ANTHROPIC_API_KEY" |
-        ssh -i ~/.ssh/deploy_key "$USER_NAME@$HOST" '
+        ssh -i ~/.ssh/deploy_key $SSH_OPTS "$USER_NAME@$HOST" '
           set -e
           IFS= read -r KEY || true
           # 初回だけ取ってくる。公開リポジトリなのでサーバー側に認証情報は要らない

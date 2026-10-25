@@ -257,5 +257,9 @@ export function loadConfig(env = process.env) {
     // Instagram は投稿画像を公開 URL から取得するため、外から見える自分の URL が要る
     publicBaseUrl: env.PUBLIC_BASE_URL || (env.DOMAIN ? `https://${env.DOMAIN}` : null),
     port: Number(env.PORT || 3000),
+    // 待ち受けるアドレス。未設定なら Node の既定（全インターフェース）＝これまでどおり。
+    // リバースプロキシが同じサーバーにあるなら 127.0.0.1 にすると、平文の HTTP ポートを
+    // 外から直接叩かれなくなる（プロキシを経由しない＝HTTPS を通らない経路を塞ぐ）
+    host: env.HOST?.trim() || undefined,
   };
 }

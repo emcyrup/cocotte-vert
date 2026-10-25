@@ -1469,7 +1469,7 @@ const ownersEl = document.getElementById('owners'), cntEl = document.getElementB
 let inlineRow = null;
 function memberTags(d){
   const t = [];
-  if (d.plan) t.push('<span class="pill acc">' + d.plan.label.replace('スクール ', '') + '</span>');
+  if (d.plan) t.push('<span class="pill acc">' + esc(d.plan.label.replace('スクール ', '')) + '</span>');
   if (d.ticket) t.push('<span class="pill hny">回数券 残' + d.ticket.left + '</span>');
   if (d.patch && d.patch.state[0] !== 'good') t.push('<span class="pill ' + d.patch.state[0] + '">ワクチン</span>');
   if (d.lapsed.length) t.push('<span class="pill crit">失効' + d.lapsed.reduce((a, x) => a + x[3], 0) + '</span>');
@@ -1491,7 +1491,7 @@ function renderOwners(q = ''){
     const name = document.createElement('td');
     name.className = 'cn';
     name.dataset.label = '飼い主様';
-    name.innerHTML = '<span class="cname">' + o.name + ' 様</span>'
+    name.innerHTML = '<span class="cname">' + esc(o.name) + ' 様</span>'
       + (o.optOut ? ' <span class="pill crit">配信停止中</span>' : '');
     const pets = document.createElement('td');
     pets.dataset.label = 'わんちゃん';
@@ -1559,10 +1559,10 @@ function bindSearch(inputId, resId, cntId){
     if (!hits.length) { res.innerHTML = '<p class="none">該当するわんちゃんが見つかりません。</p>'; return; }
     hits.slice(0, 12).forEach(([d, o]) => {
       const b = document.createElement('button'); b.className = 'dogbtn';
-      b.innerHTML = '<span class="dav">' + d.n.charAt(0) + '</span>'
-        + '<span class="dname"><span class="dn">' + d.n + '</span>'
-        + '<span class="db">' + dogSub(d) + '</span>'
-        + '<span class="owner">' + o.name + ' 様</span></span>'
+      b.innerHTML = '<span class="dav">' + esc(d.n.charAt(0)) + '</span>'
+        + '<span class="dname"><span class="dn">' + esc(d.n) + '</span>'
+        + '<span class="db">' + esc(dogSub(d)) + '</span>'
+        + '<span class="owner">' + esc(o.name) + ' 様</span></span>'
         + '<span class="dtags">' + memberTags(d) + '</span>';
       b.addEventListener('click', () => { openCarte(d, o); clear(); });
       res.appendChild(b);
@@ -1607,7 +1607,7 @@ function renderCarteList(q = ''){
     breed.textContent = dogSub(d) || '—';
     const owner = document.createElement('td');
     owner.dataset.label = '飼い主様';
-    owner.innerHTML = o.name + ' 様'
+    owner.innerHTML = esc(o.name) + ' 様'
       + (o.optOut ? ' <span class="pill crit">配信停止中</span>' : '');
     const last = document.createElement('td');
     last.dataset.label = '最終来店';
@@ -1659,7 +1659,7 @@ function remCard(d, o){
       + '<div><div class="nm">' + r.n + (ov ? ' <span class="pill hny">個別設定</span>' : '') + '</div>'
       + '<div class="cond">' + r.c + '</div></div>'
       + '<span class="src ' + (o.line ? 'line' : 'tel') + '">' + (o.line ? 'LINE' : '未連携') + '</span>'
-      + '<button class="sw crem" data-member="' + d.n + '" data-id="' + r.id + '" role="switch" aria-checked="' + on + '" aria-label="' + r.n + '"><i></i></button></div>';
+      + '<button class="sw crem" data-member="' + esc(d.n) + '" data-id="' + r.id + '" role="switch" aria-checked="' + on + '" aria-label="' + r.n + '"><i></i></button></div>';
   }).join('');
   const off = REMINDERS.filter(r => !r.need(d)).map(r => r.n).join('・');
   return '<div class="card" id="remcard"><div class="hd">'
@@ -1668,7 +1668,7 @@ function remCard(d, o){
     + '<div class="bd" style="border-top:1px solid var(--line)"><p style="font-size:12px;color:var(--muted);margin:0">'
     + '個別にOFFにすると、この子だけ送信を止められます。'
     + (off ? '<br>現在の対象外: ' + off : '')
-    + '<br>送信先: ' + o.name + ' 様' + (o.line ? '（LINE連携済み）' : '（LINE未連携のため送信されません）')
+    + '<br>送信先: ' + esc(o.name) + ' 様' + (o.line ? '（LINE連携済み）' : '（LINE未連携のため送信されません）')
     + '</p></div></div>';
 }
 document.addEventListener('click', e => {
@@ -1718,11 +1718,11 @@ async function openCarte(d, o){
   await loadPetCredits(d);   // 先に読んでから描く（後から差し込むと画面が跳ねるため）
   const lapsedTotal = d.lapsed.reduce((a, x) => a + x[3], 0);
   const tags = [];
-  if (d.plan) tags.push('<span class="pill acc">' + d.plan.label + '</span>');
-  if (d.ticket) tags.push('<span class="pill hny">回数券 残' + d.ticket.left + '回（期限 ' + d.ticket.exp + '）</span>');
+  if (d.plan) tags.push('<span class="pill acc">' + esc(d.plan.label) + '</span>');
+  if (d.ticket) tags.push('<span class="pill hny">回数券 残' + d.ticket.left + '回（期限 ' + esc(d.ticket.exp) + '）</span>');
   if (d.patch) tags.push('<span class="pill ' + d.patch.state[0] + '">ワクチン ' + d.patch.state[1] + '</span>');
   if (lapsedTotal) tags.push('<span class="pill crit">失効 累計' + lapsedTotal + '回</span>');
-  if (d.first) tags.push('<span class="pill ' + d.first[1] + '">初回後: ' + d.first[0] + '</span>');
+  if (d.first) tags.push('<span class="pill ' + d.first[1] + '">初回後: ' + esc(d.first[0]) + '</span>');
   if (o.optOut) tags.push('<span class="pill crit">配信停止中</span>');
 
   const planActions = adminLive
@@ -1739,9 +1739,9 @@ async function openCarte(d, o){
       + '<div class="bd"><p style="font-size:12.5px;color:var(--muted);margin:0">'
       + 'この子は定額コースに加入していません。</p>' + planActions + '</div></div>'
     : d.plan ? '<div class="card"><div class="hd"><h2>保育コースの利用</h2></div><div class="bd">'
-    + '<div style="display:flex;justify-content:space-between;font-size:12.5px"><span>当月分（' + d.plan.label.replace('保育コース ', '') + '）</span><b class="num">' + d.plan.used + ' / ' + d.plan.quota + ' 回</b></div>'
+    + '<div style="display:flex;justify-content:space-between;font-size:12.5px"><span>当月分（' + esc(d.plan.label.replace('保育コース ', '')) + '）</span><b class="num">' + d.plan.used + ' / ' + d.plan.quota + ' 回</b></div>'
     + '<div class="meter"><i style="width:' + (d.plan.used / d.plan.quota * 100) + '%"></i></div>'
-    + (d.plan.carry ? '<div style="display:flex;justify-content:space-between;font-size:12.5px;margin-top:8px"><span>先月からの繰越分</span><b class="num">' + d.plan.carry + ' 回（' + d.plan.carryLimit + '）</b></div><div class="meter"><i style="width:0%;background:var(--honey)"></i></div>' : '')
+    + (d.plan.carry ? '<div style="display:flex;justify-content:space-between;font-size:12.5px;margin-top:8px"><span>先月からの繰越分</span><b class="num">' + d.plan.carry + ' 回（' + esc(d.plan.carryLimit) + '）</b></div><div class="meter"><i style="width:0%;background:var(--honey)"></i></div>' : '')
     + '<p style="font-size:12px;color:var(--muted);margin:8px 0 0">当月分を優先消化 → その後に繰越分を消化。1週間ご来店がない場合は残回数をご案内します。</p>'
     + planActions + '</div></div>' : '';
 
@@ -1750,7 +1750,7 @@ async function openCarte(d, o){
     ? '<div class="card"><div class="hd"><h2>回数券</h2>'
       + '<span class="pill ' + (d.ticket ? 'hny' : 'mut') + ' num">残 ' + (d.ticket ? d.ticket.left : 0) + ' 回</span></div><div class="bd">'
       + (d.ticket
-        ? '<p style="font-size:12.5px;margin:0">次の期限: <b>' + d.ticket.exp + '</b></p>'
+        ? '<p style="font-size:12.5px;margin:0">次の期限: <b>' + esc(d.ticket.exp) + '</b></p>'
         : '<p style="font-size:12.5px;color:var(--muted);margin:0">有効な回数券はありません。</p>')
       + '<div class="frow" style="margin-top:10px">'
       + '<button class="sbtn" data-credit="add-ticket">回数券を追加</button>'
@@ -1762,7 +1762,7 @@ async function openCarte(d, o){
   const lapsed = adminLive && !d.lapsed.length ? '' : '<div class="card"><div class="hd"><h2>失効した回数</h2><span class="pill ' + (lapsedTotal ? 'crit' : 'good') + ' num">累計 ' + lapsedTotal + ' 回</span></div><div class="bd">'
     + (lapsedTotal
       ? '<table style="table-layout:fixed"><tr><th style="width:78px">失効日</th><th>内訳</th><th class="r" style="width:56px;white-space:nowrap">回数</th></tr>'
-        + d.lapsed.map(x => '<tr><td class="num">' + x[0] + '</td><td>' + x[1] + '<span style="display:block;font-size:11.5px;color:var(--muted)">' + x[2] + '</span></td><td class="r num">' + x[3] + '</td></tr>').join('')
+        + d.lapsed.map(x => '<tr><td class="num">' + esc(x[0]) + '</td><td>' + esc(x[1]) + '<span style="display:block;font-size:11.5px;color:var(--muted)">' + esc(x[2]) + '</span></td><td class="r num">' + x[3] + '</td></tr>').join('')
         + '</table><p style="font-size:12px;color:var(--muted);margin:10px 0 0">当月分・繰越分ともに消化されずに期限を過ぎた回数を、お客様ごとに記録します。</p>'
       : '<p style="font-size:12.5px;color:var(--muted);margin:0">失効した回数はありません。</p>')
     + '</div></div>';
@@ -1771,11 +1771,11 @@ async function openCarte(d, o){
   custbody.innerHTML =
     '<div class="crumb"><a href="#" id="bkcarte" style="color:var(--accent)">ペットカルテ</a> / '
     + '<a href="#" id="bklist" style="color:var(--accent)">顧客一覧</a> /</div>'
-    + '<div class="cust-hd"><div class="avatar">' + d.n.charAt(0) + '</div><div>'
-    + '<h1 style="margin-bottom:0">' + d.n + ' <span style="font-size:13px;color:var(--muted);font-weight:600">' + dogSub(d) + '</span></h1>'
-    + '<div style="font-size:12.5px;color:var(--muted)">飼い主: ' + o.name + ' 様'
-    + (o.since ? '｜初回来店: ' + o.since + '（経路: ' + o.source + '）' : '')
-    + (o.members.length > 1 ? '｜同伴: ' + o.members.filter(x => x !== d).map(x => x.n).join('・') : '') + '</div>'
+    + '<div class="cust-hd"><div class="avatar">' + esc(d.n.charAt(0)) + '</div><div>'
+    + '<h1 style="margin-bottom:0">' + esc(d.n) + ' <span style="font-size:13px;color:var(--muted);font-weight:600">' + esc(dogSub(d)) + '</span></h1>'
+    + '<div style="font-size:12.5px;color:var(--muted)">飼い主: ' + esc(o.name) + ' 様'
+    + (o.since ? '｜初回来店: ' + esc(o.since) + '（経路: ' + esc(o.source) + '）' : '')
+    + (o.members.length > 1 ? '｜同伴: ' + o.members.filter(x => x !== d).map(x => esc(x.n)).join('・') : '') + '</div>'
     + (adminLive
       ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">'
         + '<button class="sbtn" id="ed-pet">この子の情報を編集</button>'
@@ -1786,21 +1786,21 @@ async function openCarte(d, o){
     + '<div style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;max-width:520px">' + tags.join('') + '</div></div>'
     + '<div class="grid cust2"><div style="display:grid;gap:16px;align-content:start">'
     + '<div class="card"><div class="hd"><h2>基本情報</h2></div><div class="bd"><dl class="kv">'
-    + '<dt>飼い主</dt><dd>' + o.name + ' 様</dd>'
-    + '<dt>連絡先</dt><dd>' + o.tel + '</dd>'
+    + '<dt>飼い主</dt><dd>' + esc(o.name) + ' 様</dd>'
+    + '<dt>連絡先</dt><dd>' + esc(o.tel) + '</dd>'
     + '<dt>LINE</dt><dd>' + (o.line ? '<span class="pill good">連携済み</span>' : '<span class="pill mut">未連携（配信対象外）</span>') + '</dd>'
-    + '<dt>誕生日</dt><dd>' + (d.bd ? d.bd + (adminLive ? '' : '<span class="pill mut">自動メッセージON</span>') : '未登録') + '</dd>'
+    + '<dt>誕生日</dt><dd>' + (d.bd ? esc(d.bd) + (adminLive ? '' : '<span class="pill mut">自動メッセージON</span>') : '未登録') + '</dd>'
     // 誕生日メッセージは飼い主様の誕生日に送られるため、実運用モードでは分けて表示する
     + (adminLive ? '<dt>飼い主様 誕生日</dt><dd>'
         + (o.obd ? dateJp(o.obd) + (o.optOut ? '' : '<span class="pill mut">自動メッセージON</span>') : '未登録') + '</dd>' : '')
-    + (o.source ? '<dt>来店経路</dt><dd>' + o.source + '</dd>' : '')
-    + (o.stylist ? '<dt>かかりつけ</dt><dd>' + o.stylist + '</dd>' : '')
-    + (d.notes ? '<dt>メモ</dt><dd>' + d.notes + '</dd>' : '')
+    + (o.source ? '<dt>来店経路</dt><dd>' + esc(o.source) + '</dd>' : '')
+    + (o.stylist ? '<dt>かかりつけ</dt><dd>' + esc(o.stylist) + '</dd>' : '')
+    + (d.notes ? '<dt>メモ</dt><dd>' + esc(d.notes) + '</dd>' : '')
     + '</dl></div></div>'
     + (adminLive && !d.patch ? '' : '<div class="card"><div class="hd"><h2>ワクチン</h2></div><div class="bd">'
     + (d.patch
-      ? '<dl class="kv"><dt>混合</dt><dd>' + d.patch.date + ' 接種 <span class="pill ' + d.patch.state[0] + '">' + d.patch.state[1] + '</span></dd>'
-        + '<dt>狂犬病</dt><dd>' + d.patch.allergy + ' 接種 <span class="pill good">有効</span></dd></dl>'
+      ? '<dl class="kv"><dt>混合</dt><dd>' + esc(d.patch.date) + ' 接種 <span class="pill ' + d.patch.state[0] + '">' + d.patch.state[1] + '</span></dd>'
+        + '<dt>狂犬病</dt><dd>' + esc(d.patch.allergy) + ' 接種 <span class="pill good">有効</span></dd></dl>'
         + '<p style="font-size:12px;color:var(--muted);margin:8px 0 0">お預かりの前に期限切れが分かるよう、期限が近い方へ自動でご案内します（スタッフにも通知）。</p>'
       : '')
     + '</div></div>')
@@ -1818,10 +1818,10 @@ async function openCarte(d, o){
     + '<div class="bd" style="padding-top:4px">'
     + (d.visits.length
       ? '<ul class="tl">'
-        + d.visits.map(v => '<li><span class="dt num">' + v[0] + '</span><div class="tt"><b>' + v[1] + '</b>'
+        + d.visits.map(v => '<li><span class="dt num">' + esc(v[0]) + '</span><div class="tt"><b>' + esc(v[1]) + '</b>'
             + '<span class="src ' + v[2] + '">' + ({ line:'LINE', epark:'EPARK', tel:'電話', sys:'予約' })[v[2]] + '</span>'
-            + (v[3] ? ' 担当: ' + v[3] : '')
-            + (v[4] ? '<div class="memo">' + v[4] + '</div>' : '') + '</div></li>').join('')
+            + (v[3] ? ' 担当: ' + esc(v[3]) : '')
+            + (v[4] ? '<div class="memo">' + esc(v[4]) + '</div>' : '') + '</div></li>').join('')
         + '</ul>'
       : '<p style="font-size:12.5px;color:var(--muted);margin:10px 0">来店履歴はまだありません。</p>')
     + '</div></div></div></div>';
@@ -2070,9 +2070,9 @@ function renderDayView(){
     DEMO_ROWS.forEach(r => {
       const tr = document.createElement('div'); tr.className = 'trow';
       const lb = document.createElement('div'); lb.className = 'rlab';
-      lb.innerHTML = '<span style="display:flex;align-items:center;gap:2px">' + r.name
-        + (r.st ? '<button class="star" data-star="' + r.name + '" aria-label="' + r.name + 'の新人マーク">&#9734;</button>' : '')
-        + '</span><span class="role">' + r.role + '</span>';
+      lb.innerHTML = '<span style="display:flex;align-items:center;gap:2px">' + esc(r.name)
+        + (r.st ? '<button class="star" data-star="' + esc(r.name) + '" aria-label="' + esc(r.name) + 'の新人マーク">&#9734;</button>' : '')
+        + '</span><span class="role">' + esc(r.role) + '</span>';
       const bd = document.createElement('div'); bd.className = 'rbody';
       if (r.off) {
         const h = document.createElement('div'); h.className = 'hatch';
@@ -2099,9 +2099,9 @@ function renderDayView(){
   rowsDef.forEach(r => {
     const tr = document.createElement('div'); tr.className = 'trow';
     const lb = document.createElement('div'); lb.className = 'rlab';
-    lb.innerHTML = '<span style="display:flex;align-items:center;gap:2px">' + r.name
-      + (r.st ? '<button class="star" data-star="' + r.name + '" aria-label="' + r.name + 'の新人マーク">&#9734;</button>' : '')
-      + '</span><span class="role">' + r.role + '</span>';
+    lb.innerHTML = '<span style="display:flex;align-items:center;gap:2px">' + esc(r.name)
+      + (r.st ? '<button class="star" data-star="' + esc(r.name) + '" aria-label="' + esc(r.name) + 'の新人マーク">&#9734;</button>' : '')
+      + '</span><span class="role">' + esc(r.role) + '</span>';
     const bd = document.createElement('div'); bd.className = 'rbody';
     // シフトが入っていれば休みを斜線で示す（未入力の日は何も出さない）
     const sh = calShifts[r.id + '|' + calDate];
@@ -2134,7 +2134,7 @@ function renderDayView(){
       s: hourOf(r.reserved_at),
       d: resvMinutes(r) / 60,
       cls: r.status === 'requested' ? 'trial' : '',
-      html: '<b>' + (r.customer_name || 'お客様') + ' ' + (r.menu || 'ご予約') + '</b>'
+      html: '<b>' + esc(r.customer_name || 'お客様') + ' ' + esc(r.menu || 'ご予約') + '</b>'
         + (r.status === 'requested' ? '<span class="src">承認待ち</span>' : ''),
     });
   });
@@ -2226,8 +2226,8 @@ function renderWeekView(){
       el.style.left  = ((e.s - DAY_START) / DAY_HOURS * 100) + '%';
       el.style.width = (e.dur / DAY_HOURS * 100) + '%';
       el.innerHTML = school
-        ? '<b>' + e.t + '</b>　' + fmt(e.s) + '〜' + fmt(e.s + e.dur)
-        : '<b>' + e.t + '</b>' + fmt(e.s) + '〜' + fmt(e.s + e.dur);
+        ? '<b>' + esc(e.t) + '</b>　' + fmt(e.s) + '〜' + fmt(e.s + e.dur)
+        : '<b>' + esc(e.t) + '</b>' + fmt(e.s) + '〜' + fmt(e.s + e.dur);
       el.title = jpMonthDay(iso) + ' ' + fmt(e.s) + '〜' + fmt(e.s + e.dur) + '　' + e.t;
       bd.appendChild(el);
     });
@@ -2487,10 +2487,10 @@ function renderShiftReqs(){
   }
   shiftReqs.forEach(r => {
     const row = document.createElement('div'); row.className = 'sreq';
-    row.innerHTML = '<div><div class="sn">' + r.name + '　' + r.day + ' → ' + r.short + '</div>'
-      + '<div class="sd">LINEから申請' + (r.note ? '｜理由: ' + r.note : '')
+    row.innerHTML = '<div><div class="sn">' + esc(r.name) + '　' + esc(r.day) + ' → ' + esc(r.short) + '</div>'
+      + '<div class="sd">LINEから申請' + (r.note ? '｜理由: ' + esc(r.note) : '')
       // 解釈がずれていないか承認前に確かめられるよう、申請の原文も見せる
-      + (r.raw ? '<br><span style="opacity:.85">原文: ' + r.raw + '</span>' : '') + '</div></div>';
+      + (r.raw ? '<br><span style="opacity:.85">原文: ' + esc(r.raw) + '</span>' : '') + '</div></div>';
     const acts = document.createElement('div'); acts.className = 'acts2';
     // 決着済み（反映済み・取りやめ）は状態だけを見せる。
     // 本人の返事待ちと保留は、店長が代わりに承認・却下できる余地を残す
@@ -2578,10 +2578,10 @@ function staffRow(s, { live }){
     ? '<span class="pill ' + MEMBERSHIP_LABELS[s.membership][1] + '">'
       + MEMBERSHIP_LABELS[s.membership][0] + '</span>'
     : '';
-  row.innerHTML = '<div><div class="sn">' + s.name + ' '
+  row.innerHTML = '<div><div class="sn">' + esc(s.name) + ' '
     + (s.active ? '<span class="pill acc">在職</span>' : '<span class="pill mut">退職</span>')
     + ' ' + line + ' ' + mem + '</div>'
-    + '<div class="sd">' + (s.line_user_id ? 'LINE ID: ' + s.line_user_id.slice(0, 8) + '…' : 'LINE ID 未設定')
+    + '<div class="sd">' + (s.line_user_id ? 'LINE ID: ' + esc(s.line_user_id.slice(0, 8)) + '…' : 'LINE ID 未設定')
     + '</div></div>';
 
   const acts = document.createElement('div');
@@ -2660,11 +2660,11 @@ async function applyStoreProfile(){
 
   document.title = store.name + ' 店舗管理';
   document.querySelector('.brand .logo').innerHTML =
-    '<span class="mark"></span>' + store.name;
+    '<span class="mark"></span>' + esc(store.name);
   document.querySelector('.brand .logo .mark').textContent = store.logo;
   document.querySelector('.brand .store').textContent = store.tagline;
   document.querySelector('.foot').innerHTML =
-    store.name + ' 管理システム<br><b>実運用モード</b><br>実データに接続しています';
+    esc(store.name) + ' 管理システム<br><b>実運用モード</b><br>実データに接続しています';
 
   // 店舗情報カード。持っていない項目（住所・電話）は行ごと出さない
   const info = document.getElementById('storeinfo');
@@ -2674,7 +2674,7 @@ async function applyStoreProfile(){
     if (store.phone) rows.push(['電話', store.phone]);
     rows.push(['営業時間', store.openTime + '〜' + store.closeTime]);
     rows.push(['定休日', store.closedDayLabel + '（祝日の場合は営業）']);
-    info.innerHTML = rows.map(([k, v]) => '<dt>' + k + '</dt><dd>' + v + '</dd>').join('');
+    info.innerHTML = rows.map(([k, v]) => '<dt>' + esc(k) + '</dt><dd>' + esc(v) + '</dd>').join('');
   }
   storeClosedDays = store.closedDays;
   renderShiftTable().catch(() => {});   // 定休日の見出しを引き直す
@@ -3260,8 +3260,8 @@ document.getElementById('kpiTrial').addEventListener('click', () => {
     const row = document.createElement(dog ? 'button' : 'div');
     row.className = 'trow2';
     row.innerHTML = '<span class="td2 num">' + dt + '</span>'
-      + '<span class="tn"><b>' + name + '</b><span>' + breed + '</span>'
-      + (owner ? '<span class="ow">' + owner.name + ' 様</span>' : '<span class="ow">（カルテ未登録）</span>') + '</span>'
+      + '<span class="tn"><b>' + esc(name) + '</b><span>' + esc(breed) + '</span>'
+      + (owner ? '<span class="ow">' + esc(owner.name) + ' 様</span>' : '<span class="ow">（カルテ未登録）</span>') + '</span>'
       + '<span class="pill ' + cls + '">' + status + '</span>';
     if (dog) row.addEventListener('click', () => { closeTrialModal(); openCarte(dog, owner); });
     list.appendChild(row);
@@ -3313,7 +3313,7 @@ function openPop(ev, x, y){
   const el = document.createElement('div'); el.className = 'pop';
   el.innerHTML = '<h3></h3>'
     + '<div class="meta">時間: <b>' + fmt(s) + ' 〜 ' + fmt(s + d) + '</b></div>'
-    + '<div class="meta">担当・枠: <b>' + row.name + '</b>（' + row.role + '）</div>';
+    + '<div class="meta">担当・枠: <b>' + esc(row.name) + '</b>（' + esc(row.role) + '）</div>';
   el.querySelector('h3').textContent = title;
   const acts = document.createElement('div'); acts.className = 'acts';
   const mk = (cls, label, fn) => { const b = document.createElement('button'); b.className = 'pbtn ' + cls; b.textContent = label; b.addEventListener('click', fn); return b; };
@@ -3572,7 +3572,7 @@ function snsPhotoEl(item, no){
   } else {
     d.style.background = `linear-gradient(135deg, hsl(${item.hue} 32% 62%), hsl(${(item.hue+40)%360} 30% 44%))`;
   }
-  d.innerHTML = `${item.label}<span class="no num">${no}</span>`;
+  d.innerHTML = `${esc(item.label)}<span class="no num">${no}</span>`;
   d.classList.toggle('picked', !!item.pick);
   // 左上のチェック＝スレッズへ出す写真。Instagram の候補はそのまま残す
   const pick = document.createElement('input');
@@ -3688,12 +3688,12 @@ function renderSnsHist(){
     const [label, cls] = SNS_ST[h.status];
     const tr = document.createElement('tr');
     const [pfLabel, pfCls] = SNS_PF[h.platform] ?? SNS_PF.instagram;
-    tr.innerHTML = `<td class="num" style="white-space:nowrap">${h.at}</td>`
+    tr.innerHTML = `<td class="num" style="white-space:nowrap">${esc(h.at)}</td>`
       + `<td><span class="pill ${pfCls}">${pfLabel}</span></td>`
       + `<td class="r num">${h.count}</td>`
       + `<td><span class="pill ${cls}">${label}</span>`
-      + (h.error ? `<div style="font-size:11.5px;color:var(--muted);margin-top:2px">${h.error}</div>` : '') + `</td>`
-      + `<td style="font-size:12px;color:var(--muted)">${h.caption.slice(0, 30)}</td>`;
+      + (h.error ? `<div style="font-size:11.5px;color:var(--muted);margin-top:2px">${esc(h.error)}</div>` : '') + `</td>`
+      + `<td style="font-size:12px;color:var(--muted)">${esc(h.caption.slice(0, 30))}</td>`;
     const td = document.createElement('td');
     if (h.status === 'scheduled' || h.status === 'failed') {
       const b = document.createElement('button');
@@ -4168,13 +4168,13 @@ function renderResv(){
     const [label, cls] = RV_STATUS[r.status];
     const tr = document.createElement('tr');
     if (r.status === 'requested') tr.className = 'await';
-    tr.innerHTML = '<td class="num rvat" data-label="日時">' + r.at + '</td>'
-      + '<td class="rvname" data-label="わんちゃん">' + r.name + '</td>'
-      + '<td data-label="コース">' + r.menu + '</td>'
-      + '<td class="rvname" data-label="担当">' + rvStaffLabel(r) + '</td>'
+    tr.innerHTML = '<td class="num rvat" data-label="日時">' + esc(r.at) + '</td>'
+      + '<td class="rvname" data-label="わんちゃん">' + esc(r.name) + '</td>'
+      + '<td data-label="コース">' + esc(r.menu) + '</td>'
+      + '<td class="rvname" data-label="担当">' + esc(rvStaffLabel(r)) + '</td>'
       + '<td data-label="状態"><span class="pill ' + cls + '">' + label + '</span>'
       + (r.status === 'confirmed' && r.ok ? ' <span class="pill good">本人確認済</span>' : '') + '</td>'
-      + '<td class="rvnote" data-label="ご要望・メモ">' + (r.note || '—') + '</td>';
+      + '<td class="rvnote" data-label="ご要望・メモ">' + esc(r.note || '—') + '</td>';
     const td = document.createElement('td');
     td.className = 'rowacts';
     td.dataset.label = '操作';
@@ -4246,7 +4246,7 @@ function renderMenus(){
   MENUS.forEach(m => {
     const li = document.createElement('li');
     if (!m.active) li.className = 'off';
-    li.innerHTML = '<span>' + m.name + (m.min ? ' <span class="dur num">' + m.min + '分</span>' : '') + '</span>';
+    li.innerHTML = '<span>' + esc(m.name) + (m.min ? ' <span class="dur num">' + m.min + '分</span>' : '') + '</span>';
     const b = document.createElement('button');
     b.className = 'sbtn' + (m.active ? ' mut' : ' pri');
     b.textContent = m.active ? '停止' : '再開';
@@ -4421,7 +4421,7 @@ async function tsRenderState(){
     const [cls, mode, text] = states[sendMode] ?? ['mut', sendMode, ''];
     box.innerHTML = '<p class="hint" style="margin:0"><span class="pill ' + cls + '">SEND_MODE = ' + mode + '</span> ' + text + '</p>';
   } catch (err) {
-    box.innerHTML = '<p class="hint" style="margin:0">送信モードを確認できませんでした: ' + err.message + '</p>';
+    box.innerHTML = '<p class="hint" style="margin:0">送信モードを確認できませんでした: ' + esc(err.message) + '</p>';
   }
 }
 // 予約の選択肢。テスト送信は過去の予約でも文面を確認できるため、既定は前後2週間

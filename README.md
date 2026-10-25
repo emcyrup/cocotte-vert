@@ -159,6 +159,12 @@ STORE_NAME="FREE WAN" node scripts/build-manual-pdf.js  # 別店舗の名前で�
 （`plan_credits`）の合計から導く。月次付与・失効は cron で自動実行する。
 ペットカルテから加入・付与・消化ができる。詳細は [docs/plans.md](docs/plans.md)。
 
+## セキュリティ
+
+守りの要点（XSS・CSRF・クリックジャッキング・依存ライブラリ）と、環境ごとに確かめることは
+[docs/security.md](docs/security.md)。**画面で `innerHTML` に入れる値は必ず `esc()` を通す**こと
+（お客様の名前やご要望は外から入る）。
+
 ## 引き継ぎ
 
 作業を別の担当・別のセッションへ引き継ぐときは [docs/handover.md](docs/handover.md) を見る。

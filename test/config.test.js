@@ -221,3 +221,14 @@ test('正しい形なら通る（postgresql:// も可）', () => {
     assert.equal(loadConfig({ ...baseEnv, DATABASE_URL: url }).databaseUrl, url, url);
   }
 });
+
+test('HOST 未設定なら待ち受けアドレスを指定しない（全インターフェース＝従来どおり）', () => {
+  assert.equal(loadConfig({ ...baseEnv }).host, undefined);
+  assert.equal(loadConfig({ ...baseEnv, HOST: '' }).host, undefined);
+  assert.equal(loadConfig({ ...baseEnv, HOST: '   ' }).host, undefined);
+});
+
+test('HOST=127.0.0.1 で手元からしか受け付けない（プロキシを経由しない経路を塞ぐ）', () => {
+  assert.equal(loadConfig({ ...baseEnv, HOST: '127.0.0.1' }).host, '127.0.0.1');
+  assert.equal(loadConfig({ ...baseEnv, HOST: ' 127.0.0.1 ' }).host, '127.0.0.1');
+});

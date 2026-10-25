@@ -1,11 +1,14 @@
 # CI/CD: 全ブランチでテスト実行、main へのプッシュでサーバーへ自動デプロイ。
 #
-# 宛先は現在1つ。手順は .github/actions/deploy に置いてあり、宛先を増やすときは
+# 宛先は現在0（全環境を停止中）。手順は .github/actions/deploy に置いてあり、宛先を増やすときは
 # **別々の Secret を使う**ジョブを足す（片方を足すときにもう片方を壊さないため）。
 #
 #   deploy-prod  … 本番環境（管理会社の共用サーバー。Docker も sudo も無いので plain 固定）
 #     Secrets:   PROD_VM_HOST / PROD_VM_USER / PROD_VM_SSH_KEY（配布された .pem の全文）
 #     Variables: PROD_DEPLOY_ENABLED = true
+#
+# **いまは全環境を停止しているので、デプロイ先は1つも無い**（2026-10）。テストだけ動く。
+# 本番のジョブはこのファイルの末尾にコメントアウトして残してある。
 #
 # **検証環境（GCP）へのデプロイは外してある**（2026-09）。VM を停止して課金を止めたため、
 # 残しておくと main へ push するたびに届かない相手へ SSH して失敗し続ける。
@@ -53,23 +56,29 @@ jobs:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
       - run: npm test
 
-  # 本番環境（管理会社の共用サーバー）。宛先ごとに別の Secret を使うので、
-  # 宛先を増やしても既存のものを書き換えずに済む
-  deploy-prod:
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.PROD_DEPLOY_ENABLED == 'true'
-    needs: test
-    runs-on: ubuntu-latest
-    concurrency: deploy-prod
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/deploy
-        with:
-          host: ${{ secrets.PROD_VM_HOST }}
-          user: ${{ secrets.PROD_VM_USER }}
-          ssh-key: ${{ secrets.PROD_VM_SSH_KEY }}
-          repo-url: ${{ github.server_url }}/${{ github.repository }}.git
-          # 本番は Docker が使えないため plain。待ち受けポートは .env の PORT を見る
-          style: plain
-          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
-          # 任意。登録すると、このホスト鍵の相手にしか繋がない（docs/deploy-aws.md）
-          known-hosts: ${{ secrets.PROD_VM_KNOWN_HOSTS }}
+  # ---- 本番（AWS）への自動デプロイ：停止中（2026-10） ----
+  # 全環境を止めたため外してある。残しておくと main へ push するたびに本番のアプリを
+  # 起動し直してしまう（実際に、止まっていたアプリがデプロイで立ち上がったことがある）。
+  # 再開するときは、下の各行の先頭の「# 」を外す。Secrets の PROD_* は消していない。
+  # 手順は docs/handover.md の「全環境を停止した」を参照。
+  #
+  # # 本番環境（管理会社の共用サーバー）。宛先ごとに別の Secret を使うので、
+  # # 宛先を増やしても既存のものを書き換えずに済む
+  # deploy-prod:
+  #   if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.PROD_DEPLOY_ENABLED == 'true'
+  #   needs: test
+  #   runs-on: ubuntu-latest
+  #   concurrency: deploy-prod
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: ./.github/actions/deploy
+  #       with:
+  #         host: ${{ secrets.PROD_VM_HOST }}
+  #         user: ${{ secrets.PROD_VM_USER }}
+  #         ssh-key: ${{ secrets.PROD_VM_SSH_KEY }}
+  #         repo-url: ${{ github.server_url }}/${{ github.repository }}.git
+  #         # 本番は Docker が使えないため plain。待ち受けポートは .env の PORT を見る
+  #         style: plain
+  #         anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+  #         # 任意。登録すると、このホスト鍵の相手にしか繋がない（docs/deploy-aws.md）
+  #         known-hosts: ${{ secrets.PROD_VM_KNOWN_HOSTS }}
